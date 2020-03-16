@@ -1,10 +1,13 @@
 module Jasskell.Card where
 
+import           Data.Set                       ( Set )
 import           Jasskell.Card.Suit
 import           Jasskell.Card.Rank
 import           Jasskell.Variant
 
 data Card = Card { suit :: Suit, rank :: Rank } deriving (Eq, Ord, Show)
+
+type Cards = Set Card
 
 puur :: Suit -> Card
 puur s = Card { suit = s, rank = Under }
