@@ -4,8 +4,11 @@ import           Data.Finite
 import           Data.Vector.Sized              ( Vector
                                                 , index
                                                 )
+import           Control.Monad                  ( forM_ )
 import           Jasskell.Action
 import           Jasskell.Event
+import           Jasskell.GameView
+import           Jasskell.Message
 import           Jasskell.Player
 import           Jasskell.Round
 import           GHC.TypeLits
@@ -19,6 +22,7 @@ data Game n = Game { players :: Vector n Player
 playGame :: KnownNat n => Game n -> IO (Game n)
 playGame game = do
     let c = currentIndex game
+    forM_ (players game) (\p -> putMessage p $ UpdateGameView $ toGameView game)
     event <- PlayerAction c <$> (getAction $ index (players game) c)
     playGame $ update event game
 
@@ -31,3 +35,6 @@ update event game = case event of
                 Playing  r -> game { currentRound = playCard c r }
                 Finished _ -> error "Round already finished"
             else error "It's not your turn"
+
+toGameView :: Game n -> GameView
+toGameView = undefined
