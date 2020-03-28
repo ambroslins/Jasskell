@@ -1,7 +1,9 @@
 module Jasskell.Game where
 
 import           Data.Finite
-import           Data.Vector.Sized
+import           Data.Vector.Sized              ( Vector
+                                                , index
+                                                )
 import           Jasskell.Action
 import           Jasskell.Event
 import           Jasskell.Player
@@ -13,6 +15,12 @@ data Game n = Game { players :: Vector n Player
                    , currentRound :: Round n
                    , rounds :: [RoundFinished n]
                    }
+
+playGame :: KnownNat n => Game n -> IO (Game n)
+playGame game = do
+    let c = currentIndex game
+    event <- PlayerAction c <$> (getAction $ index (players game) c)
+    playGame $ update event game
 
 update :: KnownNat n => Event n -> Game n -> Game n
 update event game = case event of
