@@ -17,8 +17,8 @@ data Round n = Starting
            | Playing (RoundPlaying n)
            | Finished (RoundFinished n)
 
-playCard :: KnownNat n => Card -> RoundPlaying n -> RoundPlaying n
+playCard :: KnownNat n => Card -> RoundPlaying n -> Round n
 playCard c r = case trick r of
-    Unresolved t -> r { trick = addCard c t }
+    Unresolved t -> Playing $ r { trick = addCard c t }
     Resolved   _ -> error "start next trick"
 
