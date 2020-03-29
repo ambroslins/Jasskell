@@ -1,6 +1,7 @@
 module Jasskell.Game where
 
 import           Data.Finite
+import qualified Data.Vector.Sized             as Vector
 import           Data.Vector.Sized              ( Vector
                                                 , index
                                                 , imapM_
@@ -35,8 +36,11 @@ update event game = case event of
     PlayerAction ix action -> case action of
         PlayCard c -> if ix == currentIndex game
             then case currentRound game of
-                Starting   -> error "Choose a trump first"
-                Playing  r -> game { currentRound = playCard c r }
+                Starting  -> error "Choose a trump first"
+                Playing r -> game
+                    { players      = Vector.map (removeCard c) $ players game
+                    , currentRound = playCard c r
+                    }
                 Finished _ -> error "Round already finished"
             else error "It's not your turn"
 
