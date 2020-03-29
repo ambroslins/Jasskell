@@ -27,13 +27,13 @@ data Trick n = Unresolved (TrickUnresolved n)
 
 addCard :: KnownNat n => Card -> TrickUnresolved n -> Trick n
 addCard c (TrickUnresolved f cs) = case Vector.fromListN cs' of
-  Just v  -> Resolved $ TrickResolved f $ rotateN (-toInteger f) v
-  Nothing -> Unresolved $ TrickUnresolved f cs'
-  where cs' = cs ++ [c]
+    Just v  -> Resolved $ TrickResolved f $ rotateN (-toInteger f) v
+    Nothing -> Unresolved $ TrickUnresolved f cs'
+    where cs' = cs ++ [c]
 
 playedCard :: KnownNat n => Finite n -> Trick n -> Maybe Card
 playedCard i (Unresolved (TrickUnresolved f cs)) =
-  lookup i $ zip (iterate (+ 1) f) cs
+    lookup i $ zip (iterate (+ 1) f) cs
 playedCard i (Resolved (TrickResolved _ v)) = Just $ index v i
 
 newTrick :: Finite n -> TrickUnresolved n
@@ -44,4 +44,4 @@ rotateN n vec = Vector.generate (index vec . (+ modulo n))
 
 winner :: Variant -> TrickResolved n -> Finite n
 winner var (TrickResolved f v) =
-  fst $ maximumBy (compareCard var (suit $ index v f) `on` snd) $ indexed v
+    fst $ maximumBy (compareCard var (suit $ index v f) `on` snd) $ indexed v

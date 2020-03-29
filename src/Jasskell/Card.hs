@@ -27,17 +27,19 @@ allCards =
     [ Card { suit = s, rank = r } | s <- [Bells .. Leaves], r <- [Six .. Ace] ]
 
 compareCard :: Variant -> Suit -> Card -> Card -> Ordering
-compareCard _ _ c1 c2 | c1 == c2 = EQ
-compareCard (Trump trump) lead c1 c2
-    | c1 == puur trump                     = GT
-    | c2 == puur trump                     = LT
-    | c1 == nell trump                     = GT
-    | c2 == nell trump                     = LT
-    | suit c1 == trump && suit c2 /= trump = GT
-    | suit c1 /= trump && suit c2 == trump = LT
-    | otherwise = compareCard (Direction TopDown) lead c1 c2
-compareCard _ lead c1 c2 | suit c1 == lead && suit c2 /= lead = GT
-                         | suit c1 /= lead && suit c2 == lead = LT
-compareCard (Direction TopDown) _ c1 c2 = compare (rank c1) (rank c2)
-compareCard (Direction BottomUp) _ c1 c2 = compare (rank c2) (rank c1)
-compareCard (Slalom dir) lead c1 c2 = compareCard (Direction dir) lead c1 c2
+compareCard var lead c1 c2 =
+    if c1 == c2 then EQ else if cardGT var lead c1 c2 then GT else LT
+
+cardGT :: Variant -> Suit -> Card -> Card -> Bool
+cardGT (Trump trump) lead c1 c2 = if suit c1 == trump
+    then
+        (suit c2 /= trump)
+        || (c1 == puur trump)
+        || (c1 == nell trump && c2 /= puur trump)
+        || (rank c1 > rank c2)
+    else suit c2 /= trump && cardGT (Direction TopDown) lead c1 c2
+cardGT (Slalom dir) lead c1 c2 = cardGT (Direction dir) lead c1 c2
+cardGT (Direction dir) lead (Card s1 r1) (Card s2 r2) =
+    (s1 == lead && s2 /= lead) || (s1 == lead || s2 /= lead) && case dir of
+        TopDown  -> r1 > r2
+        BottomUp -> r1 < r2
