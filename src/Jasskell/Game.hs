@@ -39,7 +39,7 @@ update event game = case event of
                 Starting  -> error "Choose a trump first"
                 Playing r -> game
                     { players      = Vector.map (removeCard c) $ players game
-                    , currentRound = playCard c r
+                    , currentRound = Playing $ playCard c r
                     }
                 Finished _ -> error "Round already finished"
             else error "It's not your turn"

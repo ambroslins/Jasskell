@@ -2,12 +2,16 @@
 
 module Jasskell.Trick where
 
+import           Data.List                      ( maximumBy )
 import           Data.Finite
+import           Data.Function                  ( on )
 import qualified Data.Vector.Sized             as Vector
 import           Data.Vector.Sized              ( Vector
                                                 , index
+                                                , indexed
                                                 )
 import           Jasskell.Card
+import           Jasskell.Variant
 import           GHC.TypeLits
 
 data Resolved
@@ -37,3 +41,7 @@ newTrick f = TrickUnresolved f []
 
 rotateN :: (KnownNat n) => Integer -> Vector n a -> Vector n a
 rotateN n vec = Vector.generate (index vec . (+ modulo n))
+
+winner :: Variant -> TrickResolved n -> Finite n
+winner var (TrickResolved f v) =
+  fst $ maximumBy (compareCard var (suit $ index v f) `on` snd) $ indexed v

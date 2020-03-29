@@ -1,6 +1,7 @@
 module Jasskell.Round where
 
-import           Data.Vector.Sized
+import           Data.List                      ( foldl' )
+import           Data.Vector.Sized              ( Vector )
 import           Jasskell.Card
 import           Jasskell.Trick
 import           Jasskell.Variant
@@ -17,8 +18,14 @@ data Round n = Starting
            | Playing (RoundPlaying n)
            | Finished (RoundFinished n)
 
-playCard :: KnownNat n => Card -> RoundPlaying n -> Round n
+currentVariant :: RoundPlaying n -> Variant
+currentVariant r = foldl' (const . nextVariant) (variant r) $ tricks r
+
+playCard :: KnownNat n => Card -> RoundPlaying n -> RoundPlaying n
 playCard c r = case trick r of
-    Unresolved t -> Playing $ r { trick = addCard c t }
-    Resolved   _ -> error "start next trick"
+    Unresolved t -> r { trick = addCard c t }
+    Resolved   t -> r
+        { tricks = t : tricks r
+        , trick  = addCard c $ newTrick $ winner (currentVariant r) t
+        }
 
