@@ -3,14 +3,16 @@ module Jasskell.Game where
 import           Data.Finite
 import           Data.Vector.Sized              ( Vector
                                                 , index
+                                                , imapM_
+                                                , toList
                                                 )
-import           Control.Monad                  ( forM_ )
 import           Jasskell.Action
 import           Jasskell.Event
 import           Jasskell.GameView
 import           Jasskell.Message
 import           Jasskell.Player
 import           Jasskell.Round
+import           Jasskell.Trick
 import           GHC.TypeLits
 
 data Game n = Game { players :: Vector n Player
@@ -22,7 +24,8 @@ data Game n = Game { players :: Vector n Player
 playGame :: KnownNat n => Game n -> IO (Game n)
 playGame game = do
     let c = currentIndex game
-    forM_ (players game) (\p -> putMessage p $ UpdateGameView $ toGameView game)
+    imapM_ (\i p -> putMessage p $ UpdateGameView $ toGameView i game)
+           (players game)
     event <- PlayerAction c <$> (getAction $ index (players game) c)
     playGame $ update event game
 
@@ -36,5 +39,13 @@ update event game = case event of
                 Finished _ -> error "Round already finished"
             else error "It's not your turn"
 
-toGameView :: Game n -> GameView
-toGameView = undefined
+toGameView :: KnownNat n => Finite n -> Game n -> GameView
+toGameView f g = GameView
+    { hand        = cards $ index (players g) $ currentIndex g
+    , table       =
+        map (\p -> (name p, Nothing)) $ toList $ rotateN (toInteger f) $ players
+            g
+    , variantView = case currentRound g of
+                        Playing r -> Just $ variant r
+                        _         -> Nothing
+    }

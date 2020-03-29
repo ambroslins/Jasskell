@@ -7,9 +7,9 @@ import           Jasskell.Variant
 import           GHC.TypeLits
 
 data RoundPlaying n = RoundPlaying { variant :: Variant
-                     , trick :: Trick n
-                     , tricks :: [TrickResolved n]
-                     }
+                                   , trick :: Trick n
+                                   , tricks :: [TrickResolved n]
+                                   }
 
 data RoundFinished n = RoundFinished (Vector n Int)
 
