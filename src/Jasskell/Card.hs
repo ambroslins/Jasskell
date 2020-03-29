@@ -4,8 +4,15 @@ import           Data.Set                       ( Set )
 import           Jasskell.Card.Suit
 import           Jasskell.Card.Rank
 import           Jasskell.Variant
+import           Text.Read
 
-data Card = Card { suit :: Suit, rank :: Rank } deriving (Eq, Ord, Show)
+data Card = Card { suit :: Suit, rank :: Rank } deriving (Eq, Ord)
+
+instance Show Card where
+    show c = show (suit c) ++ " " ++ show (rank c)
+
+instance Read Card where
+    readPrec = Card <$> readPrec <*> readPrec
 
 type Cards = Set Card
 
