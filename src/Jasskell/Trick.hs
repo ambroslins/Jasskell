@@ -4,7 +4,9 @@ module Jasskell.Trick where
 
 import           Data.Finite
 import qualified Data.Vector.Sized             as Vector
-import           Data.Vector.Sized              ( Vector )
+import           Data.Vector.Sized              ( Vector
+                                                , index
+                                                )
 import           Jasskell.Card
 import           GHC.TypeLits
 
@@ -25,8 +27,13 @@ addCard c (TrickUnresolved f cs) = case Vector.fromListN cs' of
   Nothing -> Unresolved $ TrickUnresolved f cs'
   where cs' = cs ++ [c]
 
+playedCard :: KnownNat n => Finite n -> Trick n -> Maybe Card
+playedCard i (Unresolved (TrickUnresolved f cs)) =
+  lookup i $ zip (iterate (+ 1) f) cs
+playedCard i (Resolved (TrickResolved _ v)) = Just $ index v i
+
 newTrick :: Finite n -> TrickUnresolved n
 newTrick f = TrickUnresolved f []
 
 rotateN :: (KnownNat n) => Integer -> Vector n a -> Vector n a
-rotateN n vec = Vector.generate (Vector.index vec . (+ modulo n))
+rotateN n vec = Vector.generate (index vec . (+ modulo n))

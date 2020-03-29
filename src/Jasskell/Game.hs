@@ -5,6 +5,7 @@ import           Data.Vector.Sized              ( Vector
                                                 , index
                                                 , imapM_
                                                 , toList
+                                                , imap
                                                 )
 import           Jasskell.Action
 import           Jasskell.Event
@@ -43,9 +44,15 @@ toGameView :: KnownNat n => Finite n -> Game n -> GameView
 toGameView f g = GameView
     { hand        = cards $ index (players g) $ currentIndex g
     , table       =
-        map (\p -> (name p, Nothing)) $ toList $ rotateN (toInteger f) $ players
-            g
+        toList
+        $ imap (\i p -> (name p, card i))
+        $ rotateN (toInteger f)
+        $ players g
     , variantView = case currentRound g of
                         Playing r -> Just $ variant r
                         _         -> Nothing
     }
+  where
+    card x = case currentRound g of
+        Playing r -> playedCard x $ trick r
+        _         -> Nothing
