@@ -13,3 +13,10 @@ data Player = Player { name :: String
 
 removeCard :: Card -> Player -> Player
 removeCard c p = p { cards = delete c $ cards p }
+
+cliPlayer :: String -> Cards -> Player
+cliPlayer n cs = Player { name       = n
+                        , cards      = cs
+                        , getAction  = PlayCard . read <$> getLine
+                        , putMessage = \(UpdateGameView gv) -> print gv
+                        }
