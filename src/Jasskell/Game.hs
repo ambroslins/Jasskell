@@ -28,7 +28,7 @@ playGame game = do
     let c = currentIndex game
     imapM_ (\i p -> putMessage p $ UpdateGameView $ toGameView i game)
            (players game)
-    event <- PlayerAction c <$> (getAction $ index (players game) c)
+    event <- PlayerAction c <$> getAction (index (players game) c)
     playGame $ update event game
 
 update :: KnownNat n => Event n -> Game n -> Game n

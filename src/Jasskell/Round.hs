@@ -12,7 +12,7 @@ data RoundPlaying n = RoundPlaying { variant :: Variant
                                    , tricks :: [TrickResolved n]
                                    }
 
-data RoundFinished n = RoundFinished (Vector n Int)
+newtype RoundFinished n = RoundFinished (Vector n Int)
 
 data Round n = Starting
            | Playing (RoundPlaying n)

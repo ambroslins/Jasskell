@@ -27,8 +27,9 @@ allCards =
     [ Card { suit = s, rank = r } | s <- [Bells .. Leaves], r <- [Six .. Ace] ]
 
 compareCard :: Variant -> Suit -> Card -> Card -> Ordering
-compareCard var lead c1 c2 =
-    if c1 == c2 then EQ else if cardGT var lead c1 c2 then GT else LT
+compareCard var lead c1 c2 | c1 == c2              = EQ
+                           | cardGT var lead c1 c2 = GT
+                           | otherwise             = LT
 
 cardGT :: Variant -> Suit -> Card -> Card -> Bool
 cardGT (Trump trump) lead c1 c2 = if suit c1 == trump
