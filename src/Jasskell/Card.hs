@@ -1,4 +1,16 @@
-module Jasskell.Card where
+module Jasskell.Card
+    ( Card
+    , Cards
+    , suit
+    , rank
+    , isPuur
+    , isNell
+    , allCards
+    , compareCard
+    , highestCard
+    , playableCards
+    )
+where
 
 import           Data.Foldable                  ( maximumBy )
 import           Data.List.NonEmpty             ( NonEmpty(..) )
@@ -25,8 +37,8 @@ isPuur t c = suit c == t && rank c == Under
 isNell :: Suit -> Card -> Bool
 isNell t c = suit c == t && rank c == Nine
 
-allCards :: [Card]
-allCards =
+allCards :: Cards
+allCards = Set.fromList
     [ Card { suit = s, rank = r } | s <- [Bells .. Leaves], r <- [Six .. Ace] ]
 
 compareCard :: Variant -> Suit -> Card -> Card -> Ordering

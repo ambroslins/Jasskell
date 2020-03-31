@@ -1,4 +1,11 @@
-module Jasskell.User where
+module Jasskell.User
+    ( User
+    , name
+    , getAction
+    , putMessage
+    , cliUser
+    )
+where
 
 import           Jasskell.Action
 import           Jasskell.Message

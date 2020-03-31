@@ -1,4 +1,10 @@
-module Jasskell.Round where
+module Jasskell.Round
+    ( Round(..)
+    , RoundPlaying
+    , RoundFinished
+    , playCard
+    )
+where
 
 import           Data.Finite
 import           Data.Vector.Sized              ( Vector )

@@ -1,6 +1,13 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-
-module Jasskell.Trick where
+module Jasskell.Trick
+    ( Trick(..)
+    , TrickUnresolved
+    , TrickResolved
+    , addCard
+    , playedCard
+    , newTrick
+    , winner
+    )
+where
 
 import           Data.Foldable                  ( maximumBy )
 import           Data.Finite
@@ -13,9 +20,6 @@ import           Data.Vector.Sized              ( Vector
 import           Jasskell.Card
 import           Jasskell.Variant
 import           GHC.TypeLits
-
-data Resolved
-data Unresolved
 
 data TrickUnresolved n = TrickUnresolved (Finite n) [Card]
 
