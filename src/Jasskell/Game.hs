@@ -1,23 +1,19 @@
 module Jasskell.Game where
 
 import           Data.Finite
-import qualified Data.Vector.Sized             as Vector
 import           Data.Vector.Sized              ( Vector
                                                 , index
                                                 , imapM_
-                                                , toList
-                                                , imap
                                                 )
 import           Jasskell.Action
 import           Jasskell.Event
 import           Jasskell.GameView
 import           Jasskell.Message
-import           Jasskell.Player
+import           Jasskell.User
 import           Jasskell.Round
-import           Jasskell.Trick
 import           GHC.TypeLits
 
-data Game n = Game { players :: Vector n Player
+data Game n = Game { users :: Vector n User
                    , currentIndex :: Finite n
                    , currentRound :: Round n
                    , rounds :: [RoundFinished n]
@@ -26,37 +22,18 @@ data Game n = Game { players :: Vector n Player
 playGame :: KnownNat n => Game n -> IO (Game n)
 playGame game = do
     let c = currentIndex game
-    imapM_ (\i p -> putMessage p $ UpdateGameView $ toGameView i game)
-           (players game)
-    event <- PlayerAction c <$> getAction (index (players game) c)
+    imapM_ (\i u -> putMessage u $ UpdateGameView $ toGameView i game)
+           (users game)
+    event <- UserAction c <$> getAction (index (users game) c)
     playGame $ update event game
 
 update :: KnownNat n => Event n -> Game n -> Game n
 update event game = case event of
-    PlayerAction ix action -> case action of
-        PlayCard c -> if ix == currentIndex game
-            then case currentRound game of
-                Starting  -> error "Choose a trump first"
-                Playing r -> game
-                    { players      = Vector.map (removeCard c) $ players game
-                    , currentRound = Playing $ playCard c r
-                    }
-                Finished _ -> error "Round already finished"
-            else error "It's not your turn"
+    UserAction ix action -> case action of
+        PlayCard c -> case currentRound game of
+            Starting _ -> error "Choose a trump first"
+            Playing  r -> game { currentRound = Playing $ playCard ix c r }
+            Finished _ -> error "Round already finished"
 
 toGameView :: KnownNat n => Finite n -> Game n -> GameView
-toGameView f g = GameView
-    { hand        = cards $ index (players g) $ currentIndex g
-    , table       =
-        toList
-        $ imap (\i p -> (name p, card i))
-        $ rotateN (toInteger f)
-        $ players g
-    , variantView = case currentRound g of
-                        Playing r -> Just $ variant r
-                        _         -> Nothing
-    }
-  where
-    card x = case currentRound g of
-        Playing r -> playedCard x $ trick r
-        _         -> Nothing
+toGameView f g = undefined
