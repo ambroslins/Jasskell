@@ -32,7 +32,7 @@ update event game = case event of
     UserAction ix action -> case action of
         PlayCard c -> case currentRound game of
             Starting _ -> error "Choose a trump first"
-            Playing  r -> game { currentRound = Playing $ playCard ix c r }
+            Playing  r -> game { currentRound = playCard ix c r }
             Finished _ -> error "Round already finished"
 
 toGameView :: KnownNat n => Finite n -> Game n -> GameView

@@ -6,6 +6,7 @@ module Jasskell.Trick
     , playedCard
     , newTrick
     , winner
+    , points
     )
 where
 
@@ -48,4 +49,7 @@ rotateN n vec = Vector.generate (index vec . (+ modulo n))
 winner :: Variant -> TrickResolved n -> Finite n
 winner var (TrickResolved f v) =
     fst $ maximumBy (compareCard var (suit $ index v f) `on` snd) $ indexed v
+
+points :: Variant -> TrickResolved n -> Int
+points var (TrickResolved _ cs) = sum $ fmap (value var) cs
 

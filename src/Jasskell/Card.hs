@@ -6,6 +6,7 @@ module Jasskell.Card
     , isPuur
     , isNell
     , allCards
+    , value
     , compareCard
     , highestCard
     , playableCards
@@ -40,6 +41,20 @@ isNell t c = suit c == t && rank c == Nine
 allCards :: Cards
 allCards = Set.fromList
     [ Card { suit = s, rank = r } | s <- [Bells .. Leaves], r <- [Six .. Ace] ]
+
+value :: Variant -> Card -> Int
+value (Trump trump) c | isPuur trump c = 21
+                      | isNell trump c = 14
+value (Direction _) c | rank c == Eight = 8
+value (Slalom _) c | rank c == Eight    = 8
+value _ c                               = case rank c of
+    Ace   -> 11
+    King  -> 4
+    Over  -> 3
+    Under -> 2
+    Ten   -> 10
+    _     -> 0
+
 
 compareCard :: Variant -> Suit -> Card -> Card -> Ordering
 compareCard var lead c1 c2 | c1 == c2              = EQ
