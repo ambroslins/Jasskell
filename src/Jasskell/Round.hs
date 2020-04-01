@@ -22,7 +22,6 @@ import           GHC.TypeLits
 
 data RoundPlaying n = RoundPlaying { variant :: Variant
                                    , players :: Vector n Player
-                                   , currentPlayer :: Finite n
                                    , trick :: Trick n
                                    , tricks :: [TrickResolved n]
                                    }
@@ -34,11 +33,10 @@ data Round n = Starting (Vector n Player)
              | Finished (RoundFinished n)
 
 startRound :: Variant -> Finite n -> Vector n Player -> RoundPlaying n
-startRound var ix ps = RoundPlaying { variant       = var
-                                    , players       = ps
-                                    , currentPlayer = ix
-                                    , trick         = Unresolved $ newTrick ix
-                                    , tricks        = []
+startRound var ix ps = RoundPlaying { variant = var
+                                    , players = ps
+                                    , trick   = Unresolved $ newTrick ix
+                                    , tricks  = []
                                     }
 
 playCard :: KnownNat n => Finite n -> Card -> RoundPlaying n -> Round n
@@ -64,4 +62,7 @@ playCard i c r
 playerPoints :: KnownNat n => Variant -> [TrickResolved n] -> Vector n Int
 playerPoints var = Vector.accum (+) (Vector.replicate 0) . zipWith
     (\v t -> (fromIntegral $ winner v t, points v t))
-    (iterate nextVariant $ var)
+    (iterate nextVariant var)
+
+currentPlayer :: KnownNat n => RoundPlaying n -> Finite n
+currentPlayer = currentIndex . trick

@@ -18,14 +18,14 @@ import           Jasskell.Trick
 import           GHC.TypeLits
 
 data Game n = Game { users :: Vector n User
-                   , currentIndex :: Finite n
+                   , currentUser :: Finite n
                    , currentRound :: Round n
                    , rounds :: [RoundFinished n]
                    }
 
 playGame :: KnownNat n => Game n -> IO (Game n)
 playGame game = do
-    let c = currentIndex game
+    let c = currentUser game
     imapM_ (\i u -> putMessage u $ UpdateGameView $ toGameView i game)
            (users game)
     event <- UserAction c <$> getAction (index (users game) c)
@@ -39,7 +39,7 @@ update event game = case event of
             Playing  r -> game { currentRound = playCard ix c r }
             Finished _ -> error "Round already finished"
         ChooseVariant v -> case currentRound game of
-            Starting ps -> if ix == currentIndex game
+            Starting ps -> if ix == currentUser game
                 then game { currentRound = Playing $ startRound v ix ps }
                 else error "You can't choose the variant"
             _ -> error "You can't choose a trump now"
