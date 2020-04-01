@@ -2,6 +2,9 @@ module Jasskell.Round
     ( Round(..)
     , RoundPlaying
     , RoundFinished
+    , variant
+    , players
+    , trick
     , playCard
     )
 where

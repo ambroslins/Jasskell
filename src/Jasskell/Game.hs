@@ -1,16 +1,20 @@
 module Jasskell.Game where
 
 import           Data.Finite
+import           Data.Foldable                  ( toList )
 import           Data.Vector.Sized              ( Vector
                                                 , index
                                                 , imapM_
+                                                , imap
                                                 )
 import           Jasskell.Action
 import           Jasskell.Event
 import           Jasskell.GameView
 import           Jasskell.Message
-import           Jasskell.User
+import           Jasskell.Player
 import           Jasskell.Round
+import           Jasskell.User
+import           Jasskell.Trick
 import           GHC.TypeLits
 
 data Game n = Game { users :: Vector n User
@@ -36,4 +40,17 @@ update event game = case event of
             Finished _ -> error "Round already finished"
 
 toGameView :: KnownNat n => Finite n -> Game n -> GameView
-toGameView f g = undefined
+toGameView ix g = case currentRound g of
+    Starting vec -> GameView
+        { hand        = cards $ index vec ix
+        , table       = toList $ (\u -> (name u, Nothing)) <$> users g
+        , variantView = Nothing
+        }
+    Playing r -> GameView
+        { hand        = cards $ index (players r) ix
+        , table       =
+            toList $ imap (\i u -> (name u, playedCard i $ trick r)) $ users g
+        , variantView = Just $ variant r
+        }
+    Finished _ -> undefined
+
