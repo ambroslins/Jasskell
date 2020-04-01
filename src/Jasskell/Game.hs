@@ -38,6 +38,11 @@ update event game = case event of
             Starting _ -> error "Choose a trump first"
             Playing  r -> game { currentRound = playCard ix c r }
             Finished _ -> error "Round already finished"
+        ChooseVariant v -> case currentRound game of
+            Starting ps -> if ix == currentIndex game
+                then game { currentRound = Playing $ startRound v ix ps }
+                else error "You can't choose the variant"
+            _ -> error "You can't choose a trump now"
 
 toGameView :: KnownNat n => Finite n -> Game n -> GameView
 toGameView ix g = case currentRound g of

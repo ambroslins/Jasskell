@@ -6,6 +6,7 @@ module Jasskell.Round
     , players
     , trick
     , playCard
+    , startRound
     )
 where
 
@@ -31,6 +32,14 @@ newtype RoundFinished n = RoundFinished (Vector n Int)
 data Round n = Starting (Vector n Player)
              | Playing (RoundPlaying n)
              | Finished (RoundFinished n)
+
+startRound :: Variant -> Finite n -> Vector n Player -> RoundPlaying n
+startRound var ix ps = RoundPlaying { variant       = var
+                                    , players       = ps
+                                    , currentPlayer = ix
+                                    , trick         = Unresolved $ newTrick ix
+                                    , tricks        = []
+                                    }
 
 playCard :: KnownNat n => Finite n -> Card -> RoundPlaying n -> Round n
 playCard i c r
