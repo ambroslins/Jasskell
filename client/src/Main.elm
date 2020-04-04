@@ -90,37 +90,72 @@ showCard c =
 
 
 type alias Model =
-    List Card
+    { hand : List Card
+    , table : List (Maybe Card)
+    }
 
 
 init : Model
 init =
-    List.map (\r -> { suit = Bells, rank = r })
-        [ Six
-        , Seven
-        , Eight
-        , Nine
-        , Ten
-        , Under
-        , Over
-        , King
-        , Ace
-        ]
+    { hand =
+        List.map (\r -> { suit = Bells, rank = r })
+            [ Six
+            , Seven
+            , Eight
+            , Nine
+            , Ten
+            , Under
+            , Over
+            , King
+            , Ace
+            ]
+    , table = List.repeat 4 Nothing
+    }
 
 
 type Msg
     = RemoveCard Card
 
 
+addCardToTable : Card -> List (Maybe Card) -> List (Maybe Card)
+addCardToTable c cs =
+    case cs of
+        [] ->
+            []
+
+        Nothing :: xs ->
+            Just c :: xs
+
+        x :: xs ->
+            x :: addCardToTable c xs
+
+
 update : Msg -> Model -> Model
 update msg model =
     case msg of
         RemoveCard c ->
-            List.filter (\x -> x /= c) model
+            { model
+                | hand = List.filter (\x -> x /= c) model.hand
+                , table = addCardToTable c model.table
+            }
 
 
-viewCard : Int -> Int -> Card -> Html Msg
-viewCard size i card =
+viewCard : Card -> Html Msg
+viewCard card =
+    div
+        [ css
+            [ width (rem 10)
+            , height (rem 15)
+            , border (px 5)
+            , borderStyle solid
+            , borderColor (rgb 255 0 0)
+            ]
+        ]
+        [ text (showCard card) ]
+
+
+viewHandCard : Int -> Int -> Card -> Html Msg
+viewHandCard size i card =
     let
         angle =
             0.1
@@ -131,12 +166,7 @@ viewCard size i card =
     div
         [ onClick (RemoveCard card)
         , css
-            [ width (rem 10)
-            , height (rem 15)
-            , border (px 5)
-            , borderStyle solid
-            , borderColor (rgb 255 0 0)
-            , position absolute
+            [ position absolute
             , top (pct 50)
             , transforms
                 [ translateX (rem (sin angle * 100))
@@ -150,19 +180,59 @@ viewCard size i card =
                 ]
             ]
         ]
-        [ text (showCard card) ]
+        [ viewCard card ]
+
+
+viewHand : List Card -> Html Msg
+viewHand hand =
+    div
+        [ css
+            [ justifyContent center
+            , displayFlex
+            , alignItems center
+            , position relative
+            ]
+        ]
+        (List.indexedMap (viewHandCard (List.length hand)) hand)
+
+
+viewNoCard : Html Msg
+viewNoCard =
+    div
+        [ css
+            [ width (rem 10)
+            , height (rem 15)
+            , border (px 3)
+            , borderStyle solid
+            , borderColor (rgb 0 0 0)
+            ]
+        ]
+        []
+
+
+viewTabel : List (Maybe Card) -> Html Msg
+viewTabel table =
+    div
+        [ css
+            [ justifyContent center
+            , displayFlex
+            , alignItems center
+            , position relative
+            ]
+        ]
+        (List.map
+            (\x ->
+                case x of
+                    Nothing ->
+                        viewNoCard
+
+                    Just c ->
+                        viewCard c
+            )
+            table
+        )
 
 
 view : Model -> Unstyled.Html Msg
 view model =
-    toUnstyled
-        (div
-            [ css
-                [ justifyContent center
-                , displayFlex
-                , alignItems center
-                , position relative
-                ]
-            ]
-            (List.indexedMap (viewCard (List.length model)) model)
-        )
+    toUnstyled (div [] [ viewTabel model.table, viewHand model.hand ])
