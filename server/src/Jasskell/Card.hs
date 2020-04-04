@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Jasskell.Card
     ( Card
     , Cards
@@ -13,6 +15,7 @@ module Jasskell.Card
     )
 where
 
+import           Data.Aeson
 import           Data.Foldable                  ( maximumBy )
 import           Data.List.NonEmpty             ( NonEmpty(..) )
 import qualified Data.Set                      as Set
@@ -20,7 +23,7 @@ import           Data.Set                       ( Set )
 import           Jasskell.Card.Suit
 import           Jasskell.Card.Rank
 import           Jasskell.Variant
-import           Text.Read
+import           Text.Read                      ( readPrec )
 
 data Card = Card { suit :: Suit, rank :: Rank } deriving (Eq, Ord)
 
@@ -65,7 +68,7 @@ cardGE :: Variant -> Suit -> Card -> Card -> Bool
 cardGE (Trump trump) lead c1 c2 = if suit c1 == trump
     then
         (suit c2 /= trump)
-        || (isPuur trump c1)
+        || isPuur trump c1
         || (isNell trump c1 && not (isPuur trump c2))
         || (rank c1 > rank c2)
     else suit c2 /= trump && cardGE (Direction TopDown) lead c1 c2
@@ -97,3 +100,10 @@ playableCards var lead (c : cs) hand = case var of
     follows s = Set.filter ((== s) . suit) hand
     highest       = highestCard var lead (c :| cs)
     followerOrAll = if Set.null $ follows lead then hand else follows lead
+
+instance ToJSON Card where
+    toJSON c = object ["suit" .= suit c, "rank" .= rank c]
+
+instance FromJSON Card where
+    parseJSON (Object v) = Card <$> v .: "suit" <*> v .: "rank"
+    parseJSON _          = fail ""
