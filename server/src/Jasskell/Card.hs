@@ -105,5 +105,4 @@ instance ToJSON Card where
     toJSON c = object ["suit" .= suit c, "rank" .= rank c]
 
 instance FromJSON Card where
-    parseJSON (Object v) = Card <$> v .: "suit" <*> v .: "rank"
-    parseJSON _          = fail ""
+    parseJSON = withObject "card" $ \o -> Card <$> o .: "suit" <*> o .: "rank"
