@@ -43,7 +43,7 @@ allCards = Set.fromList
     [ Card { suit = s, rank = r } | s <- [Bells .. Leaves], r <- [Six .. Ace] ]
 
 value :: Variant -> Card -> Int
-value (Trump trump) c | isPuur trump c = 21
+value (Trump trump) c | isPuur trump c = 20
                       | isNell trump c = 14
 value (Direction _) c | rank c == Eight = 8
 value (Slalom _) c | rank c == Eight    = 8
