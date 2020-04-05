@@ -1,11 +1,14 @@
 module Main exposing (..)
 
+import Array as Array exposing (Array)
 import Browser
 import Css exposing (..)
 import Html as Unstyled
 import Html.Styled exposing (..)
 import Html.Styled.Attributes exposing (css)
 import Html.Styled.Events exposing (onClick)
+import Json.Decode as Decode
+import Json.Encode as Encode
 
 
 main =
@@ -17,6 +20,34 @@ type Suit
     | Hearts
     | Acorns
     | Leaves
+
+
+encodeSuit : Suit -> Encode.Value
+encodeSuit s =
+    Encode.string (showSuit s)
+
+
+decodeSuit : Decode.Decoder Suit
+decodeSuit =
+    Decode.string
+        |> Decode.andThen
+            (\str ->
+                case str of
+                    "Bells" ->
+                        Decode.succeed Bells
+
+                    "Hearts" ->
+                        Decode.succeed Hearts
+
+                    "Acorns" ->
+                        Decode.succeed Acorns
+
+                    "Leaves" ->
+                        Decode.succeed Leaves
+
+                    somethingElse ->
+                        Decode.fail <| "Unknown suit: " ++ somethingElse
+            )
 
 
 showSuit : Suit -> String
@@ -78,6 +109,49 @@ showRank r =
             "Ace"
 
 
+encodeRank : Rank -> Encode.Value
+encodeRank r =
+    Encode.string (showRank r)
+
+
+decodeRank : Decode.Decoder Rank
+decodeRank =
+    Decode.string
+        |> Decode.andThen
+            (\str ->
+                case str of
+                    "Six" ->
+                        Decode.succeed Six
+
+                    "Seven" ->
+                        Decode.succeed Seven
+
+                    "Eight" ->
+                        Decode.succeed Eight
+
+                    "Nine" ->
+                        Decode.succeed Nine
+
+                    "Ten" ->
+                        Decode.succeed Ten
+
+                    "Under" ->
+                        Decode.succeed Under
+
+                    "Over" ->
+                        Decode.succeed Over
+
+                    "King" ->
+                        Decode.succeed King
+
+                    "Ace" ->
+                        Decode.succeed Ace
+
+                    somethingElse ->
+                        Decode.fail <| "Unknown rank: " ++ somethingElse
+            )
+
+
 type alias Card =
     { suit : Suit
     , rank : Rank
@@ -89,27 +163,46 @@ showCard c =
     showSuit c.suit ++ " " ++ showRank c.rank
 
 
+encodeCard : Card -> Encode.Value
+encodeCard c =
+    Encode.object [ ( "suit", encodeSuit c.suit ), ( "rank", encodeRank c.rank ) ]
+
+
+decodeCard : Decode.Decoder Card
+decodeCard =
+    Decode.map2 Card (Decode.field "suit" decodeSuit) (Decode.field "rank" decodeRank)
+
+
 type alias Model =
-    { hand : List Card
-    , table : List (Maybe Card)
+    { hand : Array Card
+    , table : Array (Maybe Card)
     }
+
+
+modelDecoder : Decode.Decoder Model
+modelDecoder =
+    Decode.map2 Model
+        (Decode.field "hand" (Decode.array decodeCard))
+        (Decode.field "table" (Decode.array (Decode.nullable decodeCard)))
 
 
 init : Model
 init =
     { hand =
-        List.map (\r -> { suit = Bells, rank = r })
-            [ Six
-            , Seven
-            , Eight
-            , Nine
-            , Ten
-            , Under
-            , Over
-            , King
-            , Ace
-            ]
-    , table = List.repeat 4 Nothing
+        Array.fromList
+            (List.map (\r -> { suit = Bells, rank = r })
+                [ Six
+                , Seven
+                , Eight
+                , Nine
+                , Ten
+                , Under
+                , Over
+                , King
+                , Ace
+                ]
+            )
+    , table = Array.repeat 4 Nothing
     }
 
 
@@ -117,26 +210,12 @@ type Msg
     = RemoveCard Card
 
 
-addCardToTable : Card -> List (Maybe Card) -> List (Maybe Card)
-addCardToTable c cs =
-    case cs of
-        [] ->
-            []
-
-        Nothing :: xs ->
-            Just c :: xs
-
-        x :: xs ->
-            x :: addCardToTable c xs
-
-
 update : Msg -> Model -> Model
 update msg model =
     case msg of
         RemoveCard c ->
             { model
-                | hand = List.filter (\x -> x /= c) model.hand
-                , table = addCardToTable c model.table
+                | hand = Array.filter (\x -> x /= c) model.hand
             }
 
 
@@ -183,7 +262,7 @@ viewHandCard size i card =
         [ viewCard card ]
 
 
-viewHand : List Card -> Html Msg
+viewHand : Array Card -> Html Msg
 viewHand hand =
     div
         [ css
@@ -193,7 +272,7 @@ viewHand hand =
             , position relative
             ]
         ]
-        (List.indexedMap (viewHandCard (List.length hand)) hand)
+        (Array.toList (Array.indexedMap (viewHandCard (Array.length hand)) hand))
 
 
 viewNoCard : Html Msg
@@ -210,7 +289,7 @@ viewNoCard =
         []
 
 
-viewTabel : List (Maybe Card) -> Html Msg
+viewTabel : Array (Maybe Card) -> Html Msg
 viewTabel table =
     div
         [ css
@@ -229,7 +308,7 @@ viewTabel table =
                     Just c ->
                         viewCard c
             )
-            table
+            (Array.toList table)
         )
 
 
