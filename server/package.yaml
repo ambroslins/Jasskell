@@ -25,6 +25,7 @@ dependencies:
 - vector-sized
 - text
 - aeson
+- websockets
 
 library:
   source-dirs: src
