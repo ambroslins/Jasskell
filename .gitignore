@@ -12,3 +12,6 @@ repl-temp-*
 # JavaScript
 *.js
 *.js.map
+
+# Node
+node_modules/
