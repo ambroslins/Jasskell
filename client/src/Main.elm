@@ -1,11 +1,9 @@
 module Main exposing (..)
 
 import Browser
-import Css exposing (..)
-import Html as Unstyled
-import Html.Styled exposing (..)
-import Html.Styled.Attributes exposing (css)
-import Html.Styled.Events exposing (onClick)
+import Html exposing (..)
+import Html.Attributes exposing (..)
+import Html.Events exposing (..)
 import Json.Encode as Encode
 import WebSocket
 
@@ -150,13 +148,7 @@ update msg model =
 viewCard : Card -> Html Msg
 viewCard card =
     div
-        [ css
-            [ width (rem 10)
-            , height (rem 15)
-            , border (px 5)
-            , borderStyle solid
-            , borderColor (rgb 255 0 0)
-            ]
+        [ class "card"
         ]
         [ text (showCard card) ]
 
@@ -172,20 +164,10 @@ viewHandCard size i card =
     in
     div
         [ onClick (PlayCard card)
-        , css
-            [ position absolute
-            , top (pct 50)
-            , transforms
-                [ translateX (rem (sin angle * 100))
-                , translateY
-                    (rem ((1.0 - cos angle) * 100))
-                , rotate
-                    (rad angle)
-                ]
-            , hover
-                [ borderColor (rgb 0 255 0)
-                ]
-            ]
+        , style "translateX" (String.fromFloat (sin angle * 100))
+        , style "translateY" (String.fromFloat ((1.0 - cos angle) * 100))
+        , style "rotate" (String.fromFloat angle)
+        , style "positon" "absolute"
         ]
         [ viewCard card ]
 
@@ -193,12 +175,7 @@ viewHandCard size i card =
 viewHand : List Card -> Html Msg
 viewHand hand =
     div
-        [ css
-            [ justifyContent center
-            , displayFlex
-            , alignItems center
-            , position relative
-            ]
+        [ class "hand"
         ]
         (List.indexedMap (viewHandCard (List.length hand)) hand)
 
@@ -206,13 +183,8 @@ viewHand hand =
 viewNoCard : Html Msg
 viewNoCard =
     div
-        [ css
-            [ width (rem 10)
-            , height (rem 15)
-            , border (px 3)
-            , borderStyle solid
-            , borderColor (rgb 0 0 0)
-            ]
+        [ class "card"
+        , style "border-color" "black"
         ]
         []
 
@@ -220,12 +192,7 @@ viewNoCard =
 viewTabel : List (Maybe Card) -> Html Msg
 viewTabel table =
     div
-        [ css
-            [ justifyContent center
-            , displayFlex
-            , alignItems center
-            , position relative
-            ]
+        [ class "table"
         ]
         (List.map
             (\x ->
@@ -244,7 +211,7 @@ view : Model -> Browser.Document Msg
 view model =
     { title = "Jasskell"
     , body =
-        [ toUnstyled (div [] [ viewTabel model.table, viewHand model.hand ])
+        [ div [] [ viewTabel model.table, viewHand model.hand ]
         ]
     }
 
