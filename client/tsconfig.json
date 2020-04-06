@@ -1,0 +1,9 @@
+{
+    "compilerOptions": {
+        "outFile": "app.js",
+        "sourceMap": true
+    },
+    "include": [
+        "./src/typescript"
+    ]
+}
