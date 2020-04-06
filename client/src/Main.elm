@@ -6,6 +6,8 @@ import Html as Unstyled
 import Html.Styled exposing (..)
 import Html.Styled.Attributes exposing (css)
 import Html.Styled.Events exposing (onClick)
+import Json.Encode as Encode
+import WebSocket
 
 
 main : Program () Model Msg
@@ -112,12 +114,12 @@ init _ =
                 ]
       , table = List.repeat 4 Nothing
       }
-    , Cmd.none
+    , WebSocket.connect "ws://127.0.0.1:9000"
     )
 
 
 type Msg
-    = RemoveCard Card
+    = PlayCard Card
 
 
 addCardToTable : Card -> List (Maybe Card) -> List (Maybe Card)
@@ -136,12 +138,12 @@ addCardToTable c cs =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        RemoveCard c ->
+        PlayCard c ->
             ( { model
                 | hand = List.filter (\x -> x /= c) model.hand
                 , table = addCardToTable c model.table
               }
-            , Cmd.none
+            , WebSocket.send (Encode.string (showCard c))
             )
 
 
@@ -169,7 +171,7 @@ viewHandCard size i card =
                   )
     in
     div
-        [ onClick (RemoveCard card)
+        [ onClick (PlayCard card)
         , css
             [ position absolute
             , top (pct 50)

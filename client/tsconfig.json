@@ -3,7 +3,7 @@
         "outFile": "app.js",
         "sourceMap": true
     },
-    "include": [
-        "./src/typescript"
+    "files": [
+        "./src/typescript/app.ts"
     ]
 }
