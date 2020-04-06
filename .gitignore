@@ -8,3 +8,7 @@ Jasskell.cabal
 elm-stuff
 # elm-repl generated files
 repl-temp-*
+
+# JavaScript
+*.js
+*.js.map
