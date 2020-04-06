@@ -8,8 +8,9 @@ import Html.Styled.Attributes exposing (css)
 import Html.Styled.Events exposing (onClick)
 
 
+main : Program () Model Msg
 main =
-    Browser.sandbox { init = init, update = update, view = view }
+    Browser.document { init = init, update = update, view = view, subscriptions = subscriptions }
 
 
 type Suit
@@ -95,22 +96,24 @@ type alias Model =
     }
 
 
-init : Model
-init =
-    { hand =
-        List.map (\r -> { suit = Bells, rank = r })
-            [ Six
-            , Seven
-            , Eight
-            , Nine
-            , Ten
-            , Under
-            , Over
-            , King
-            , Ace
-            ]
-    , table = List.repeat 4 Nothing
-    }
+init : () -> ( Model, Cmd Msg )
+init _ =
+    ( { hand =
+            List.map (\r -> { suit = Bells, rank = r })
+                [ Six
+                , Seven
+                , Eight
+                , Nine
+                , Ten
+                , Under
+                , Over
+                , King
+                , Ace
+                ]
+      , table = List.repeat 4 Nothing
+      }
+    , Cmd.none
+    )
 
 
 type Msg
@@ -130,14 +133,16 @@ addCardToTable c cs =
             x :: addCardToTable c xs
 
 
-update : Msg -> Model -> Model
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         RemoveCard c ->
-            { model
+            ( { model
                 | hand = List.filter (\x -> x /= c) model.hand
                 , table = addCardToTable c model.table
-            }
+              }
+            , Cmd.none
+            )
 
 
 viewCard : Card -> Html Msg
@@ -233,6 +238,15 @@ viewTabel table =
         )
 
 
-view : Model -> Unstyled.Html Msg
+view : Model -> Browser.Document Msg
 view model =
-    toUnstyled (div [] [ viewTabel model.table, viewHand model.hand ])
+    { title = "Jasskell"
+    , body =
+        [ toUnstyled (div [] [ viewTabel model.table, viewHand model.hand ])
+        ]
+    }
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.none
