@@ -1,166 +1,20 @@
 module Main exposing (..)
 
-import Array as Array exposing (Array)
+import Array exposing (Array)
 import Browser
-import Css exposing (..)
-import Html as Unstyled
-import Html.Styled exposing (..)
-import Html.Styled.Attributes exposing (css)
-import Html.Styled.Events exposing (onClick)
-import Json.Decode as Decode
+import Card exposing (..)
+import Html exposing (..)
+import Html.Attributes exposing (..)
+import Html.Events exposing (..)
+import Json.Decode as Decode exposing (Decoder)
+import Json.Decode.Pipeline as Pipeline
 import Json.Encode as Encode
+import WebSocket
 
 
+main : Program () Model Msg
 main =
-    Browser.sandbox { init = init, update = update, view = view }
-
-
-type Suit
-    = Bells
-    | Hearts
-    | Acorns
-    | Leaves
-
-
-encodeSuit : Suit -> Encode.Value
-encodeSuit s =
-    Encode.string (showSuit s)
-
-
-decodeSuit : Decode.Decoder Suit
-decodeSuit =
-    Decode.string
-        |> Decode.andThen
-            (\str ->
-                case str of
-                    "Bells" ->
-                        Decode.succeed Bells
-
-                    "Hearts" ->
-                        Decode.succeed Hearts
-
-                    "Acorns" ->
-                        Decode.succeed Acorns
-
-                    "Leaves" ->
-                        Decode.succeed Leaves
-
-                    somethingElse ->
-                        Decode.fail <| "Unknown suit: " ++ somethingElse
-            )
-
-
-showSuit : Suit -> String
-showSuit s =
-    case s of
-        Bells ->
-            "Bells"
-
-        Hearts ->
-            "Hearts"
-
-        Acorns ->
-            "Acorns"
-
-        Leaves ->
-            "Leaves"
-
-
-type Rank
-    = Six
-    | Seven
-    | Eight
-    | Nine
-    | Ten
-    | Under
-    | Over
-    | King
-    | Ace
-
-
-showRank : Rank -> String
-showRank r =
-    case r of
-        Six ->
-            "Six"
-
-        Seven ->
-            "Seven"
-
-        Eight ->
-            "Eight"
-
-        Nine ->
-            "Nine"
-
-        Ten ->
-            "Ten"
-
-        Under ->
-            "Under"
-
-        Over ->
-            "Over"
-
-        King ->
-            "King"
-
-        Ace ->
-            "Ace"
-
-
-encodeRank : Rank -> Encode.Value
-encodeRank r =
-    Encode.string (showRank r)
-
-
-decodeRank : Decode.Decoder Rank
-decodeRank =
-    Decode.string
-        |> Decode.andThen
-            (\str ->
-                case str of
-                    "Six" ->
-                        Decode.succeed Six
-
-                    "Seven" ->
-                        Decode.succeed Seven
-
-                    "Eight" ->
-                        Decode.succeed Eight
-
-                    "Nine" ->
-                        Decode.succeed Nine
-
-                    "Ten" ->
-                        Decode.succeed Ten
-
-                    "Under" ->
-                        Decode.succeed Under
-
-                    "Over" ->
-                        Decode.succeed Over
-
-                    "King" ->
-                        Decode.succeed King
-
-                    "Ace" ->
-                        Decode.succeed Ace
-
-                    somethingElse ->
-                        Decode.fail <| "Unknown rank: " ++ somethingElse
-            )
-
-
-type alias Card =
-    { suit : Suit
-    , rank : Rank
-    }
-
-
-showCard : Card -> String
-showCard c =
-    showSuit c.suit ++ " " ++ showRank c.rank
+    Browser.document { init = init, update = update, view = view, subscriptions = subscriptions }
 
 
 encodeCard : Card -> Encode.Value
@@ -179,56 +33,68 @@ type alias Model =
     }
 
 
-modelDecoder : Decode.Decoder Model
-modelDecoder =
-    Decode.map2 Model
-        (Decode.field "hand" (Decode.array decodeCard))
-        (Decode.field "table" (Decode.array (Decode.nullable decodeCard)))
+decodeModel : Decoder Model
+decodeModel =
+    Decode.succeed Model
+        |> Pipeline.required "hand" (Decode.array decodeCard)
+        |> Pipeline.required "table" (Decode.array (Decode.nullable decodeCard))
 
 
-init : Model
-init =
-    { hand =
-        Array.fromList
-            (List.map (\r -> { suit = Bells, rank = r })
-                [ Six
-                , Seven
-                , Eight
-                , Nine
-                , Ten
-                , Under
-                , Over
-                , King
-                , Ace
-                ]
-            )
-    , table = Array.repeat 4 Nothing
-    }
+init : () -> ( Model, Cmd Msg )
+init _ =
+    ( { hand =
+            Array.fromList
+                (List.map
+                    (\r -> { suit = Bells, rank = r })
+                    [ Six
+                    , Seven
+                    , Eight
+                    , Nine
+                    , Ten
+                    , Under
+                    , Over
+                    , King
+                    , Ace
+                    ]
+                )
+      , table = Array.repeat 4 Nothing
+      }
+    , WebSocket.connect "ws://127.0.0.1:9000"
+    )
 
 
 type Msg
-    = RemoveCard Card
+    = NoOp
+    | PlayCard Card
+    | Update (Result Decode.Error Model)
 
 
-update : Msg -> Model -> Model
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        RemoveCard c ->
-            { model
+        NoOp ->
+            ( model, Cmd.none )
+
+        PlayCard c ->
+            ( { model
                 | hand = Array.filter (\x -> x /= c) model.hand
-            }
+              }
+            , WebSocket.send (encodeCard c)
+            )
+
+        Update r ->
+            case r of
+                Ok m ->
+                    ( m, Cmd.none )
+
+                Err e ->
+                    ( Debug.log (Decode.errorToString e) model, Cmd.none )
 
 
 viewCard : Card -> Html Msg
 viewCard card =
     div
-        [ css
-            [ width (rem 10)
-            , height (rem 15)
-            , border (px 5)
-            , borderStyle solid
-            , borderColor (rgb 255 0 0)
-            ]
+        [ class "card"
         ]
         [ text (showCard card) ]
 
@@ -243,21 +109,11 @@ viewHandCard size i card =
                   )
     in
     div
-        [ onClick (RemoveCard card)
-        , css
-            [ position absolute
-            , top (pct 50)
-            , transforms
-                [ translateX (rem (sin angle * 100))
-                , translateY
-                    (rem ((1.0 - cos angle) * 100))
-                , rotate
-                    (rad angle)
-                ]
-            , hover
-                [ borderColor (rgb 0 255 0)
-                ]
-            ]
+        [ onClick (PlayCard card)
+        , style "translateX" (String.fromFloat (sin angle * 100))
+        , style "translateY" (String.fromFloat ((1.0 - cos angle) * 100))
+        , style "rotate" (String.fromFloat angle)
+        , style "positon" "absolute"
         ]
         [ viewCard card ]
 
@@ -265,26 +121,16 @@ viewHandCard size i card =
 viewHand : Array Card -> Html Msg
 viewHand hand =
     div
-        [ css
-            [ justifyContent center
-            , displayFlex
-            , alignItems center
-            , position relative
-            ]
+        [ class "hand"
         ]
-        (Array.toList (Array.indexedMap (viewHandCard (Array.length hand)) hand))
+        (List.indexedMap (viewHandCard (Array.length hand)) (Array.toList hand))
 
 
 viewNoCard : Html Msg
 viewNoCard =
     div
-        [ css
-            [ width (rem 10)
-            , height (rem 15)
-            , border (px 3)
-            , borderStyle solid
-            , borderColor (rgb 0 0 0)
-            ]
+        [ class "card"
+        , style "border-color" "black"
         ]
         []
 
@@ -292,12 +138,7 @@ viewNoCard =
 viewTabel : Array (Maybe Card) -> Html Msg
 viewTabel table =
     div
-        [ css
-            [ justifyContent center
-            , displayFlex
-            , alignItems center
-            , position relative
-            ]
+        [ class "table"
         ]
         (List.map
             (\x ->
@@ -312,6 +153,28 @@ viewTabel table =
         )
 
 
-view : Model -> Unstyled.Html Msg
+view : Model -> Browser.Document Msg
 view model =
-    toUnstyled (div [] [ viewTabel model.table, viewHand model.hand ])
+    { title = "Jasskell"
+    , body =
+        [ div [] [ viewTabel (Array.toList model.table), viewHand model.hand ]
+        ]
+    }
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    WebSocket.receive
+        (\r ->
+            case r of
+                Err e ->
+                    Debug.log (Decode.errorToString e) NoOp
+
+                Ok e ->
+                    case e of
+                        WebSocket.Message m ->
+                            Update (Decode.decodeValue decodeModel m)
+
+                        _ ->
+                            Debug.log "unkown event" NoOp
+        )

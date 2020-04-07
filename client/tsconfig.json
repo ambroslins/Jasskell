@@ -1,0 +1,9 @@
+{
+    "compilerOptions": {
+        "outFile": "index.js",
+        "sourceMap": true
+    },
+    "files": [
+        "./src/typescript/index.ts"
+    ]
+}

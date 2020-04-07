@@ -1,0 +1,25 @@
+.card {
+    width: 10rem;
+    height: 15rem;
+    border: 5px;
+    border-style: solid;
+    border-color: red;
+}
+
+.card:hover {
+    border-color: green;
+}
+
+.hand {
+    justify-content: center;
+    display: flex;
+    align-items: center;
+    position: relative;
+}
+
+.table {
+    justify-content: center;
+    display: flex;
+    align-items: center;
+    position: relative;
+}
