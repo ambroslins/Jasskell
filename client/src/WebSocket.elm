@@ -37,14 +37,14 @@ close =
 type Event
     = Close
     | Error
-    | Message Encode.Value
+    | Message String
     | Open
 
 
 decodeEvent : Decoder Event
 decodeEvent =
     let
-        event : String -> Maybe Encode.Value -> Decoder Event
+        event : String -> Maybe String -> Decoder Event
         event t d =
             case t of
                 "close" ->
@@ -69,7 +69,7 @@ decodeEvent =
     in
     Decode.succeed event
         |> required "type" Decode.string
-        |> custom (Decode.maybe (Decode.field "data" Decode.value))
+        |> custom (Decode.maybe (Decode.field "data" Decode.string))
         |> resolve
 
 

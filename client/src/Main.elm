@@ -79,7 +79,7 @@ update msg model =
             ( { model
                 | hand = Array.filter (\x -> x /= c) model.hand
               }
-            , WebSocket.send (encodeCard c)
+            , WebSocket.send (Encode.object [ ( "playCard", encodeCard c ) ])
             )
 
         Update r ->
@@ -157,7 +157,7 @@ view : Model -> Browser.Document Msg
 view model =
     { title = "Jasskell"
     , body =
-        [ div [] [ viewTabel (Array.toList model.table), viewHand model.hand ]
+        [ div [] [ viewTabel model.table, viewHand model.hand ]
         ]
     }
 
@@ -173,7 +173,7 @@ subscriptions model =
                 Ok e ->
                     case e of
                         WebSocket.Message m ->
-                            Update (Decode.decodeValue decodeModel m)
+                            Update (Decode.decodeString decodeModel m)
 
                         _ ->
                             Debug.log "unkown event" NoOp
