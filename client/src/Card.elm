@@ -2,7 +2,7 @@ module Card exposing (..)
 
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (..)
-import Json.Encode as Encode exposing (Value)
+import Json.Encode as Encode
 
 
 type Suit
@@ -28,7 +28,7 @@ showSuit s =
             "Leaves"
 
 
-encodeSuit : Suit -> Value
+encodeSuit : Suit -> Encode.Value
 encodeSuit =
     Encode.string << showSuit
 
@@ -99,7 +99,7 @@ showRank r =
             "Ace"
 
 
-encodeRank : Rank -> Value
+encodeRank : Rank -> Encode.Value
 encodeRank =
     Encode.string << showRank
 
@@ -153,7 +153,7 @@ showCard c =
     showSuit c.suit ++ " " ++ showRank c.rank
 
 
-encodeCard : Card -> Value
+encodeCard : Card -> Encode.Value
 encodeCard c =
     Encode.object
         [ ( "suit", encodeSuit c.suit )

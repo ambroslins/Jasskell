@@ -54,13 +54,17 @@ init _ =
 
 
 type Msg
-    = PlayCard Card
+    = NoOp
+    | PlayCard Card
     | Update (Result Decode.Error Model)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        NoOp ->
+            ( model, Cmd.none )
+
         PlayCard c ->
             ( { model
                 | hand = Array.filter (\x -> x /= c) model.hand
@@ -150,4 +154,17 @@ view model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    WebSocket.receive (Update << Decode.decodeValue decodeModel)
+    WebSocket.receive
+        (\r ->
+            case r of
+                Err e ->
+                    Debug.log (Decode.errorToString e) NoOp
+
+                Ok e ->
+                    case e of
+                        WebSocket.Message m ->
+                            Update (Decode.decodeValue decodeModel m)
+
+                        _ ->
+                            Debug.log "unkown event" NoOp
+        )
