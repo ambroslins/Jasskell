@@ -19,5 +19,5 @@ instance ToJSON GameView where
     toJSON gv = object
         [ "hand" .= hand gv
         , "table" .= map snd (table gv)
-        , "variant" .= variantView gv
+        -- , "variant" .= variantView gv
         ]

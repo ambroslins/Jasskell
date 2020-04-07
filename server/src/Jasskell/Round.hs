@@ -7,6 +7,7 @@ module Jasskell.Round
     , trick
     , playCard
     , startRound
+    , currentPlayer
     )
 where
 

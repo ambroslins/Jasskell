@@ -25,10 +25,13 @@ data Game n = Game { users :: Vector n User
 
 playGame :: KnownNat n => Game n -> IO (Game n)
 playGame game = do
-    let c = currentUser game
+    let c = case currentRound game of
+            Playing r -> currentPlayer r
+            _         -> 0
     imapM_ (\i u -> putMessage u $ UpdateGameView $ toGameView i game)
            (users game)
     event <- UserAction c <$> getAction (index (users game) c)
+    print "game loop"
     playGame $ update event game
 
 update :: KnownNat n => Event n -> Game n -> Game n
