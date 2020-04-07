@@ -12,18 +12,24 @@ module Jasskell.Card
     , compareCard
     , highestCard
     , playableCards
+    , dealCards
     )
 where
 
 import           Data.Aeson
 import           Data.Foldable                  ( maximumBy )
+import           Data.List                      ( sortOn )
 import           Data.List.NonEmpty             ( NonEmpty(..) )
 import qualified Data.Set                      as Set
 import           Data.Set                       ( Set )
+import qualified Data.Vector.Sized             as Vector
+import           Data.Vector.Sized              ( Vector )
 import           Jasskell.Card.Suit
 import           Jasskell.Card.Rank
 import           Jasskell.Variant
+import           System.Random
 import           Text.Read                      ( readPrec )
+import           GHC.TypeLits
 
 data Card = Card { suit :: Suit, rank :: Rank } deriving (Eq, Ord)
 
@@ -106,3 +112,26 @@ instance ToJSON Card where
 
 instance FromJSON Card where
     parseJSON = withObject "card" $ \o -> Card <$> o .: "suit" <*> o .: "rank"
+
+
+dealCards :: (RandomGen g, KnownNat n) => g -> (Vector n Cards, g)
+dealCards g = (v, g'')
+  where
+    v = Vector.generate
+        (\f ->
+            let i = fromIntegral f in Set.fromList $ take n $ drop (n * i) cs
+        )
+    l         = Vector.length v
+    n         = 36 `div` l
+    (g', g'') = split g
+    cs =
+        map snd
+            $ sortOn fst
+            $ zip (randoms g' :: [Int])
+            $ Set.toList
+            $ (case 36 `mod` l of
+                  0 -> id
+                  1 -> Set.delete (Card Bells Six)
+                  _ -> error ("invalid number of players: " ++ show n)
+              )
+                  allCards
