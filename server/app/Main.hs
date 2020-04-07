@@ -1,10 +1,8 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
 import qualified Data.Vector.Sized             as Vector
-import           Data.Text
 import           Jasskell.Card
 import           Jasskell.Game
 import           Jasskell.Round
@@ -19,21 +17,24 @@ import           Control.Concurrent
 
 main :: IO ()
 main = do
-    print "listening"
-    WS.runServer "127.0.0.1" 9000 $ \penn -> do
-        conn <- WS.acceptRequest penn
-        print "player connected"
-        let
-            Just v =
-                (Vector.fromList
-                    [websocketUser conn "websocket user", cliUser "cli user"]
-                ) :: Maybe (Vector.Vector 2 User)
-        g <- exampleGame v
-        print "game starting"
-        g' <- playGame g
-        print $ currentUser g'
-        return ()
-
+    state <- newMVar []
+    putStrLn "listening"
+    WS.runServer "127.0.0.1" 9000 $ \pen -> do
+        c <- WS.acceptRequest pen
+        putStrLn "user connected"
+        cs <- takeMVar state
+        let cs' = c : cs
+        case Vector.fromList cs' :: Maybe (Vector.Vector 2 WS.Connection) of
+            Just v -> do
+                let
+                    us = Vector.imap
+                        (\i x -> websocketUser x ("websocket user " ++ show i))
+                        v
+                putMVar state []
+                g <- exampleGame us
+                _ <- playGame g
+                return ()
+            Nothing -> putMVar state cs'
 
 
 exampleGame :: KnownNat n => Vector.Vector n User -> IO (Game n)
