@@ -1,5 +1,7 @@
 module Jasskell.Game where
 
+import           Control.Concurrent
+import           Control.Monad
 import           Data.Finite
 import           Data.Foldable                  ( toList )
 import           Data.Vector.Sized              ( Vector
@@ -25,14 +27,23 @@ data Game n = Game { users :: Vector n User
 
 playGame :: KnownNat n => Game n -> IO (Game n)
 playGame game = do
-    let c = case currentRound game of
-            Playing r -> currentPlayer r
-            _         -> 0
-    imapM_ (\i u -> putMessage u $ UpdateGameView $ toGameView i game)
-           (users game)
-    event <- UserAction c <$> getAction (index (users game) c)
-    print "game loop"
-    playGame $ update event game
+    chan <- newChan
+    imapM_
+        (\i u ->
+            forkIO $ forever (UserAction i <$> getAction u >>= writeChan chan)
+        )
+        (users game)
+    let loop g = do
+            imapM_ (\i u -> putMessage u $ UpdateGameView $ toGameView i g)
+                   (users game)
+            putStrLn $ "turn" ++ show
+                (case currentRound g of
+                    Playing r -> Just $ currentPlayer r
+                    _         -> Nothing
+                )
+            event <- readChan chan
+            loop $ update event g
+    loop game
 
 update :: KnownNat n => Event n -> Game n -> Game n
 update event game = case event of
