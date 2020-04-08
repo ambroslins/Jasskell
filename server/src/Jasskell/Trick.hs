@@ -51,10 +51,8 @@ winner :: Variant -> TrickResolved n -> Finite n
 winner var (TrickResolved f v) =
     fst $ maximumBy (compareCard var (suit $ index v f) `on` snd) $ indexed v
 
-currentIndex :: KnownNat n => Trick n -> Finite n
-currentIndex (Resolved (TrickResolved i _)) = i
-currentIndex (Unresolved (TrickUnresolved i cs)) =
-    i + modulo (toInteger $ length cs)
+currentIndex :: KnownNat n => TrickUnresolved n -> Finite n
+currentIndex (TrickUnresolved i cs) = i + modulo (toInteger $ length cs)
 
 points :: Variant -> TrickResolved n -> Int
 points var (TrickResolved _ cs) = sum $ fmap (value var) cs

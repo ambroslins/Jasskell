@@ -66,4 +66,6 @@ playerPoints var = Vector.accum (+) (Vector.replicate 0) . zipWith
     (iterate nextVariant var)
 
 currentPlayer :: KnownNat n => RoundPlaying n -> Finite n
-currentPlayer = currentIndex . trick
+currentPlayer r = case trick r of
+    Unresolved t -> currentIndex t
+    Resolved   t -> winner (variant r) t
