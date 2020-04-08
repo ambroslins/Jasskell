@@ -110,10 +110,17 @@ viewHandCard size i card =
     in
     div
         [ onClick (PlayCard card)
-        , style "translateX" (String.fromFloat (sin angle * 100))
-        , style "translateY" (String.fromFloat ((1.0 - cos angle) * 100))
-        , style "rotate" (String.fromFloat angle)
-        , style "positon" "absolute"
+        , class "card-hand"
+        , style "transform"
+            (String.concat
+                [ "translate("
+                    ++ String.fromFloat (sin angle * 100)
+                    ++ "rem, "
+                    ++ String.fromFloat ((1.0 - cos angle) * 100)
+                    ++ "rem) "
+                , "rotate(" ++ String.fromFloat angle ++ "rad)"
+                ]
+            )
         ]
         [ viewCard card ]
 

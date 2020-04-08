@@ -1,3 +1,8 @@
+body {
+    margin: 0;
+    padding: 0;
+}
+
 .card {
     width: 10rem;
     height: 15rem;
@@ -10,11 +15,18 @@
     border-color: green;
 }
 
+.card-hand {
+    position: absolute;
+}
+
 .hand {
-    justify-content: center;
+    position: fixed;
     display: flex;
-    align-items: center;
-    position: relative;
+    justify-content: center;
+    bottom: 0;
+    height: 20rem;
+    width: 100%;
+    padding-inline-start: 0;
 }
 
 .table {
