@@ -4,15 +4,10 @@ module Jasskell.User
     , getAction
     , putMessage
     , cliUser
-    , websocketUser
+    , newUser
     )
 where
 
-import           Data.Aeson
-import           Network.WebSockets             ( Connection
-                                                , receiveData
-                                                , sendTextData
-                                                )
 import           Jasskell.Action
 import           Jasskell.Message
 
@@ -21,16 +16,10 @@ data User = User { name :: String
                  , putMessage :: Message -> IO ()
                  }
 
-cliUser :: String -> User
-cliUser n = User { name       = n
-                 , getAction  = PlayCard . read <$> getLine
-                 , putMessage = \(UpdateGameView gv) -> print gv
-                 }
+newUser :: IO Action -> (Message -> IO ()) -> String -> User
+newUser get put n = User { name = n, getAction = get, putMessage = put }
 
-websocketUser :: Connection -> String -> User
-websocketUser c n = User
-    { name       = n
-    , getAction  = get
-    , putMessage = \(UpdateGameView g) -> sendTextData c $ encode g
-    }
-    where get = decode <$> receiveData c >>= \a -> maybe get return a
+cliUser :: String -> User
+cliUser =
+    newUser (PlayCard . read <$> getLine) (\(UpdateGameView gv) -> print gv)
+
