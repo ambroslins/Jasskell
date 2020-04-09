@@ -1,2 +1,8 @@
 cradle:
   stack:
+    - path: "./"
+      component: "Jasskell:lib"
+    - path: "./app"
+      component: "Jasskell:exe:Jasskell-exe"
+    - path: "./test"
+      component: "Jasskell:test:Jasskell-test"
