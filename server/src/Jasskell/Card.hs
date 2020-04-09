@@ -1,10 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Jasskell.Card
-    ( Card
+    ( Card(..)
     , Cards
-    , suit
-    , rank
     , isPuur
     , isNell
     , allCards
@@ -66,23 +64,31 @@ value _ c                               = case rank c of
 
 
 compareCard :: Variant -> Suit -> Card -> Card -> Ordering
-compareCard var lead c1 c2 | c1 == c2              = EQ
-                           | cardGE var lead c1 c2 = GT
-                           | otherwise             = LT
+compareCard var lead c1 c2 | c1 `gt` c2 = GT
+                           | c2 `gt` c1 = LT
+                           | otherwise  = EQ
+    where gt = cardGT var lead
 
-cardGE :: Variant -> Suit -> Card -> Card -> Bool
-cardGE (Trump trump) lead c1 c2 = if suit c1 == trump
-    then
-        (suit c2 /= trump)
-        || isPuur trump c1
-        || (isNell trump c1 && not (isPuur trump c2))
-        || (rank c1 > rank c2)
-    else suit c2 /= trump && cardGE (Direction TopDown) lead c1 c2
-cardGE (Slalom dir) lead c1 c2 = cardGE (Direction dir) lead c1 c2
-cardGE (Direction dir) lead (Card s1 r1) (Card s2 r2) =
-    (s1 == lead && s2 /= lead) || (s1 == lead || s2 /= lead) && case dir of
-        TopDown  -> r1 >= r2
-        BottomUp -> r1 <= r2
+cardGT :: Variant -> Suit -> Card -> Card -> Bool
+cardGT var lead c1@(Card s1 r1) c2@(Card s2 r2) = c1 /= c2 && case var of
+    Trump trump -> if s1 == trump && s2 == trump
+        then
+            r1
+            == Under
+            || (r2 /= Under && (r1 == Nine || r2 /= Nine && r1 > r2))
+        else
+            s1
+            == trump
+            || (s2 /= trump && cardGT (Direction TopDown) lead c1 c2)
+    Slalom dir -> cardGT (Direction dir) lead c1 c2
+    Direction dir ->
+        s1
+            == lead
+            && (s2 /= lead || case dir of
+                   TopDown  -> r1 > r2
+                   BottomUp -> r1 < r2
+               )
+
 
 highestCard :: Variant -> Suit -> NonEmpty Card -> Card
 highestCard var lead = maximumBy (compareCard var lead)
@@ -98,7 +104,7 @@ playableCards var lead (c : cs) hand = case var of
             let followAndTrump = Set.union (follows trump) followerOrAll
             in  if suit highest == trump
                     then Set.filter
-                        (\x -> suit x /= trump || cardGE var lead x highest)
+                        (\x -> suit x /= trump || cardGT var lead x highest)
                         followAndTrump
                     else followAndTrump
     _ -> followerOrAll
