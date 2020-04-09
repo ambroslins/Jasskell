@@ -9,8 +9,8 @@ body {
 }
 
 .card {
-    width: 10rem;
-    height: 15rem;
+    width: 9rem;
+    height: 16rem;
     border: 5px;
     border-radius: 1rem;
     border-style: solid;
@@ -20,7 +20,7 @@ body {
     font-size: 3rem;
     z-index: 1;
     box-shadow: 0 0;
-    transition: box-shadow cubic-bezier(0, 0.7, 0, 0.7) 0.5s;
+    transition: all 0.5s cubic-bezier(0, 0.7, 0, 0.7);
 }
 .card p {
     padding-left: 10px;
@@ -31,10 +31,12 @@ body {
     border-color: whitesmoke;
     box-shadow: 0 0 10px 10px rgba(255, 255, 255, 0.5);
     z-index: 10;
+    transform: translateY(-2rem) scale(1.1);
 }
 
 .card-hand {
     position: absolute;
+    transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1.2);
 }
 
 .hand {
