@@ -10,7 +10,6 @@ import           Jasskell.Message
 import           Jasskell.Round
 import           Jasskell.User
 import           Jasskell.Variant
-import           Jasskell.Card.Suit
 import           Jasskell.Player
 import           System.Random
 import qualified Network.WebSockets            as WS

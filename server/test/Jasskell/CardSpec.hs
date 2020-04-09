@@ -12,7 +12,7 @@ import           Data.List.NonEmpty             ( NonEmpty(..) )
 import qualified Data.Set                      as Set
 import           Test.Hspec
 import           Test.QuickCheck
-import           Jasskell.Card
+import           Jasskell.Card.Internal
 import           Jasskell.Card.Suit
 import           Jasskell.Card.Rank
 import           Jasskell.Variant
