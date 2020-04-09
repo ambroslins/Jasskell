@@ -40,10 +40,9 @@ instance Arbitrary Card where
 
 spec :: Spec
 spec = describe "Card" $ do
-    describe "allCards"
-        $ it "contains 36 cards" (Set.size allCards `shouldBe` 36)
+    describe "allCards" $ it "contains 36 cards" (length allCards `shouldBe` 36)
     describe "value" $ it "of all cards is 152" $ mapM_
-        (\var -> sum (map (value var) $ Set.toList allCards) `shouldBe` 152)
+        (\var -> sum (map (value var) allCards) `shouldBe` 152)
         [ Trump Bells
         , Trump Hearts
         , Trump Acorns
