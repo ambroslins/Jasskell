@@ -96,7 +96,7 @@ viewCard card =
     div
         [ class "card"
         ]
-        [ text (showCard card) ]
+        [ p [] [ text (showCard card) ] ]
 
 
 viewHandCard : Int -> Int -> Card -> Html Msg
@@ -107,6 +107,9 @@ viewHandCard size i card =
                 * (toFloat i
                     - (toFloat (size - 1) / 2)
                   )
+
+        radius =
+            50
     in
     div
         [ onClick (PlayCard card)
@@ -114,9 +117,9 @@ viewHandCard size i card =
         , style "transform"
             (String.concat
                 [ "translate("
-                    ++ String.fromFloat (sin angle * 100)
+                    ++ String.fromFloat (sin angle * radius)
                     ++ "rem, "
-                    ++ String.fromFloat ((1.0 - cos angle) * 100)
+                    ++ String.fromFloat ((1.0 - cos angle) * radius)
                     ++ "rem) "
                 , "rotate(" ++ String.fromFloat angle ++ "rad)"
                 ]
@@ -137,7 +140,6 @@ viewNoCard : Html Msg
 viewNoCard =
     div
         [ class "card"
-        , style "border-color" "black"
         ]
         []
 

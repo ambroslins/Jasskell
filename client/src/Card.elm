@@ -150,7 +150,26 @@ type alias Card =
 
 showCard : Card -> String
 showCard c =
-    showSuit c.suit ++ " " ++ showRank c.rank
+    String.left 1 (showSuit c.suit)
+        ++ (case c.rank of
+                Six ->
+                    "6"
+
+                Seven ->
+                    "7"
+
+                Eight ->
+                    "8"
+
+                Nine ->
+                    "9"
+
+                Ten ->
+                    "X"
+
+                _ ->
+                    String.left 1 (showRank c.rank)
+           )
 
 
 encodeCard : Card -> Encode.Value
