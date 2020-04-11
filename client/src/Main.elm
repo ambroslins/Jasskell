@@ -6,6 +6,7 @@ import Card exposing (..)
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
+import Html.Keyed as Keyed
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as Pipeline
 import Json.Encode as Encode
@@ -24,11 +25,13 @@ encodeCard c =
 
 decodeCard : Decode.Decoder Card
 decodeCard =
-    Decode.map2 Card (Decode.field "suit" decodeSuit) (Decode.field "rank" decodeRank)
+    Decode.succeed Card
+        |> Pipeline.required "suit" decodeSuit
+        |> Pipeline.required "rank" decodeRank
 
 
 type alias Model =
-    { hand : Array Card
+    { hand : Array ( Card, Bool )
     , table : Array (Maybe Card)
     }
 
@@ -36,7 +39,13 @@ type alias Model =
 decodeModel : Decoder Model
 decodeModel =
     Decode.succeed Model
-        |> Pipeline.required "hand" (Decode.array decodeCard)
+        |> Pipeline.required "hand"
+            (Decode.array
+                (Decode.succeed Tuple.pair
+                    |> Pipeline.required "card" decodeCard
+                    |> Pipeline.required "playable" Decode.bool
+                )
+            )
         |> Pipeline.required "table" (Decode.array (Decode.nullable decodeCard))
 
 
@@ -45,7 +54,7 @@ init _ =
     ( { hand =
             Array.fromList
                 (List.map
-                    (\r -> { suit = Bells, rank = r })
+                    (\r -> ( { suit = Bells, rank = r }, True ))
                     [ Six
                     , Seven
                     , Eight
@@ -77,7 +86,7 @@ update msg model =
 
         PlayCard c ->
             ( { model
-                | hand = Array.filter (\x -> x /= c) model.hand
+                | hand = Array.filter (\x -> Tuple.first x /= c) model.hand
               }
             , WebSocket.send (Encode.object [ ( "playCard", encodeCard c ) ])
             )
@@ -99,8 +108,8 @@ viewCard card =
         [ p [] [ text (showCard card) ] ]
 
 
-viewHandCard : Int -> Int -> Card -> Html Msg
-viewHandCard size i card =
+viewHandCard : Int -> Int -> ( Card, Bool ) -> ( String, Html Msg )
+viewHandCard size i ( card, p ) =
     let
         angle =
             0.1
@@ -111,9 +120,16 @@ viewHandCard size i card =
         radius =
             50
     in
-    div
-        [ onClick (PlayCard card)
-        , class "card-hand"
+    ( showCard card
+    , div
+        [ onClick
+            (if p then
+                PlayCard card
+
+             else
+                NoOp
+            )
+        , classList [ ( "card-hand", True ), ( "card-hand-playable", p ) ]
         , style "transform"
             (String.concat
                 [ "translate("
@@ -126,11 +142,12 @@ viewHandCard size i card =
             )
         ]
         [ viewCard card ]
+    )
 
 
-viewHand : Array Card -> Html Msg
+viewHand : Array ( Card, Bool ) -> Html Msg
 viewHand hand =
-    div
+    Keyed.ul
         [ class "hand"
         ]
         (List.indexedMap (viewHandCard (Array.length hand)) (Array.toList hand))
