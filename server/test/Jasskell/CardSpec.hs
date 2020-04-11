@@ -102,9 +102,9 @@ spec = describe "Card" $ do
             (\x -> compareCard v l (highestCard v l (c :| cs)) x /= LT)
             (c : cs)
     describe "playableCards" $ do
-        it "is not empty if hand is not empty" $ property $ \v l cs hand ->
-            not (Set.null hand) ==> not (Set.null $ playableCards v l cs hand)
-        it "is the hand if table is empty" $ property $ \v l hand ->
-            playableCards v l [] hand == hand
+        it "is not empty if hand is not empty" $ property $ \v cs hand ->
+            not (Set.null hand) ==> not (Set.null $ playableCards v cs hand)
+        it "is the hand if table is empty" $ property $ \v hand ->
+            playableCards v [] hand == hand
     it "json decode is invers to encode" $ property $ \c ->
         (decode . encode) c `shouldBe` (Just c :: Maybe Card)

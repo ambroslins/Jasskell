@@ -3,6 +3,7 @@ module Jasskell.Card
     , Suit(..)
     , Rank(..)
     , Cards
+    , isPuur
     , suit
     , rank
     , value

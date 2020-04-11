@@ -27,11 +27,17 @@ instance Read Card where
 
 type Cards = Set Card
 
+puur :: Suit -> Card
+puur = flip Card Under
+
 isPuur :: Suit -> Card -> Bool
-isPuur t c = suit c == t && rank c == Under
+isPuur t = (== puur t)
+
+nell :: Suit -> Card
+nell = flip Card Nine
 
 isNell :: Suit -> Card -> Bool
-isNell t c = suit c == t && rank c == Nine
+isNell t = (== nell t)
 
 allCards :: [Card]
 allCards =
@@ -81,22 +87,27 @@ cardGT var lead c1@(Card s1 r1) c2@(Card s2 r2) = c1 /= c2 && case var of
 highestCard :: Variant -> Suit -> NonEmpty Card -> Card
 highestCard var lead = maximumBy (compareCard var lead)
 
-playableCards :: Variant -> Suit -> [Card] -> Cards -> Cards
-playableCards _   _    []       hand = hand
-playableCards var lead (c : cs) hand = case var of
-    Trump trump -> if lead == trump
-        then if Set.null $ Set.filter (not . isPuur trump) $ follows trump
+playableCards :: Variant -> [Card] -> Cards -> Cards
+playableCards _   []       hand = hand
+playableCards var (c : cs) hand = case var of
+    Trump trump
+        | lead == trump
+        -> if Set.null $ Set.delete (puur trump) $ follows trump
             then hand
             else follows trump
-        else
-            let followAndTrump = Set.union (follows trump) followerOrAll
-            in  if suit highest == trump
-                    then Set.filter
-                        (\x -> suit x /= trump || cardGT var lead x highest)
-                        followAndTrump
-                    else followAndTrump
+        | suit highest == trump
+        -> let
+               undertrump =
+                   Set.filter (cardGT var lead highest) $ follows trump
+               s = Set.difference (Set.union followerOrAll (follows trump))
+                                  undertrump
+           in
+               if Set.null s then hand else s
+        | otherwise
+        -> Set.union followerOrAll (follows trump)
     _ -> followerOrAll
   where
+    lead = suit c
     follows s = Set.filter ((== s) . suit) hand
     highest       = highestCard var lead (c :| cs)
     followerOrAll = if Set.null $ follows lead then hand else follows lead
@@ -106,7 +117,6 @@ instance ToJSON Card where
 
 instance FromJSON Card where
     parseJSON = withObject "card" $ \o -> Card <$> o .: "suit" <*> o .: "rank"
-
 
 dealCards :: (RandomGen g, KnownNat n) => g -> (Vector n Cards, g)
 dealCards g = (v, g'')

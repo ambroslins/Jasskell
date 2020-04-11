@@ -4,6 +4,7 @@ import           Control.Concurrent
 import           Control.Monad
 import           Data.Finite
 import           Data.Foldable                  ( toList )
+import qualified Data.Set                      as Set
 import           Data.Vector.Sized              ( Vector
                                                 , index
                                                 , imapM_
@@ -50,7 +51,9 @@ update event game = case event of
     UserAction ix action -> case action of
         PlayCard c -> case currentRound game of
             Starting _ -> error "Choose a trump first"
-            Playing  r -> game { currentRound = playCard ix c r }
+            Playing  r -> if Set.member c (validCards r ix)
+                then game { currentRound = playCard c r }
+                else error "you are not allowed to play this card"
             Finished _ -> error "Round already finished"
         ChooseVariant v -> case currentRound game of
             Starting ps -> if ix == currentUser game
@@ -61,12 +64,15 @@ update event game = case event of
 toGameView :: KnownNat n => Finite n -> Game n -> GameView
 toGameView ix g = case currentRound g of
     Starting vec -> GameView
-        { hand        = cards $ index vec ix
-        , table       = toList $ (\u -> (name u, Nothing)) <$> users g
+        { hand = map (flip HandCard False) $ toList $ cards $ index vec ix
+        , table = toList $ (\u -> (name u, Nothing)) <$> users g
         , variantView = Nothing
         }
     Playing r -> GameView
-        { hand        = cards $ index (players r) ix
+        { hand        = map (\c -> HandCard c (Set.member c (validCards r ix)))
+                        $ toList
+                        $ cards
+                        $ index (players r) ix
         , table       =
             toList $ imap (\i u -> (name u, playedCard i $ trick r)) $ users g
         , variantView = Just $ variant r

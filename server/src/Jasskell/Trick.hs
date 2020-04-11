@@ -2,6 +2,7 @@ module Jasskell.Trick
     ( Trick(..)
     , TrickUnresolved
     , TrickResolved
+    , playedCards
     , addCard
     , playedCard
     , newTrick
@@ -11,7 +12,9 @@ module Jasskell.Trick
     )
 where
 
-import           Data.Foldable                  ( maximumBy )
+import           Data.Foldable                  ( maximumBy
+                                                , toList
+                                                )
 import           Data.Finite
 import           Data.Function                  ( on )
 import qualified Data.Vector.Sized             as Vector
@@ -23,7 +26,10 @@ import           Jasskell.Card
 import           Jasskell.Variant
 import           GHC.TypeLits
 
-data TrickUnresolved n = TrickUnresolved (Finite n) [Card]
+data TrickUnresolved n = TrickUnresolved
+    { leadIndex :: Finite n
+    , playedCards :: [Card]
+    }
 
 data TrickResolved n = TrickResolved (Finite n) (Vector n Card)
 
@@ -36,10 +42,13 @@ addCard c (TrickUnresolved f cs) = case Vector.fromListN cs' of
     Nothing -> Unresolved $ TrickUnresolved f cs'
     where cs' = cs ++ [c]
 
+association :: KnownNat n => Trick n -> [(Finite n, Card)]
+association (Unresolved t) = zip (iterate (+ 1) (leadIndex t)) $ playedCards t
+association (Resolved (TrickResolved i v)) =
+    toList $ rotateN (-toInteger i) $ Vector.indexed v
+
 playedCard :: KnownNat n => Finite n -> Trick n -> Maybe Card
-playedCard i (Unresolved (TrickUnresolved f cs)) =
-    lookup i $ zip (iterate (+ 1) f) cs
-playedCard i (Resolved (TrickResolved _ v)) = Just $ index v i
+playedCard i = lookup i . association
 
 newTrick :: Finite n -> TrickUnresolved n
 newTrick f = TrickUnresolved f []
@@ -56,4 +65,3 @@ currentIndex (TrickUnresolved i cs) = i + modulo (toInteger $ length cs)
 
 points :: Variant -> TrickResolved n -> Int
 points var (TrickResolved _ cs) = sum $ fmap (value var) cs
-
