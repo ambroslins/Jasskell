@@ -73,8 +73,10 @@ toGameView ix g = case currentRound g of
                         $ toList
                         $ cards
                         $ index (players r) ix
-        , table       =
-            toList $ imap (\i u -> (name u, playedCard i $ trick r)) $ users g
+        , table       = (drop <> take) (fromIntegral ix)
+                        $ toList
+                        $ imap (\i u -> (name u, playedCard i $ trick r))
+                        $ users g
         , variantView = Just $ variant r
         }
     Finished _ -> undefined
