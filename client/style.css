@@ -9,6 +9,7 @@ body {
 }
 
 .card {
+    list-style: none;
     width: 9rem;
     height: 16rem;
     border: 5px;
@@ -26,16 +27,14 @@ body {
     padding-left: 10px;
 }
 
-.card:hover {
+.card-playable {
     color: whitesmoke;
     border-color: whitesmoke;
-    box-shadow: 0 0 10px 10px rgba(255, 255, 255, 0.5);
-    transform: translateY(-2rem) scale(1.1);
 }
 
-.card-hand {
-    position: absolute;
-    transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1.2);
+.card-playable:hover {
+    box-shadow: 0 0 10px 10px rgba(255, 255, 255, 0.5);
+    transform: translateY(-2rem) scale(1.1);
 }
 
 .hand {

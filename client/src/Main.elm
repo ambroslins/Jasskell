@@ -5,7 +5,7 @@ import Browser
 import Card exposing (Card)
 import Card.Rank exposing (Rank(..))
 import Card.Suit exposing (Suit(..))
-import Html exposing (Html, div, p, text)
+import Html exposing (Html, div, li)
 import Html.Attributes exposing (class, classList, style)
 import Html.Events exposing (onClick)
 import Html.Keyed as Keyed
@@ -78,51 +78,54 @@ viewHand hand =
     Keyed.ul
         [ class "hand"
         ]
-        (List.indexedMap (viewHandCard (Array.length hand)) (Array.toList hand))
+        (List.indexedMap
+            (\i ->
+                let
+                    offset =
+                        toFloat i - (toFloat (Array.length hand - 1) / 2)
+                in
+                viewHandCard offset
+            )
+            (Array.toList hand)
+        )
 
 
-viewCard : Card -> Html Msg
-viewCard card =
-    div
-        [ class "card"
-        ]
-        [ p [] [ text (Card.toString card) ] ]
-
-
-viewHandCard : Int -> Int -> ( Card, Bool ) -> ( String, Html Msg )
-viewHandCard size i ( card, p ) =
+viewHandCard : Float -> ( Card, Bool ) -> ( String, Html Msg )
+viewHandCard offset ( card, p ) =
     let
         angle =
-            0.1
-                * (toFloat i
-                    - (toFloat (size - 1) / 2)
-                  )
+            0.15
+                * offset
 
         radius =
             50
+
+        atts =
+            [ onClick
+                (if p then
+                    PlayCard card
+
+                 else
+                    NoOp
+                )
+            , classList [ ( "card-playable", p ) ]
+            ]
     in
     ( Card.toString card
-    , div
-        [ onClick
-            (if p then
-                PlayCard card
-
-             else
-                NoOp
-            )
-        , classList [ ( "card-hand", True ), ( "card-hand-playable", p ) ]
+    , li
+        [ style "position" "absolute"
         , style "transform"
-            (String.concat
-                [ "translate("
-                    ++ String.fromFloat (sin angle * radius)
-                    ++ "rem, "
-                    ++ String.fromFloat ((1.0 - cos angle) * radius)
-                    ++ "rem) "
-                , "rotate(" ++ String.fromFloat angle ++ "rad)"
-                ]
+            ("translate("
+                ++ String.fromFloat (sin angle * radius)
+                ++ "rem, "
+                ++ String.fromFloat ((1.0 - cos angle) * radius)
+                ++ "rem) "
+                ++ "rotate("
+                ++ String.fromFloat angle
+                ++ "rad)"
             )
         ]
-        [ viewCard card ]
+        [ Card.view atts card ]
     )
 
 
@@ -136,17 +139,36 @@ viewNoCard =
 
 viewTabel : Array (Maybe Card) -> Html Msg
 viewTabel table =
+    let
+        n =
+            Array.length table
+    in
     div
         [ class "table"
         ]
-        (List.map
-            (\x ->
-                case x of
-                    Nothing ->
-                        viewNoCard
+        (List.indexedMap
+            (\i x ->
+                let
+                    pos =
+                        2 * pi * toFloat i / toFloat n
+                in
+                div
+                    [ style "position" "absolute"
+                    , style "transform"
+                        ("translate("
+                            ++ String.fromFloat (-9 * sin pos)
+                            ++ "rem, "
+                            ++ String.fromFloat (8 * cos pos + 16)
+                            ++ "rem)"
+                        )
+                    ]
+                    [ case x of
+                        Nothing ->
+                            viewNoCard
 
-                    Just c ->
-                        viewCard c
+                        Just c ->
+                            Card.view [] c
+                    ]
             )
             (Array.toList table)
         )

@@ -1,7 +1,9 @@
-module Card exposing (Card, decode, encode, toString)
+module Card exposing (Card, decode, encode, toString, view)
 
 import Card.Rank as Rank exposing (Rank)
 import Card.Suit as Suit exposing (Suit)
+import Html exposing (Attribute, Html, div, p, text)
+import Html.Attributes exposing (class)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (required)
 import Json.Encode as Encode
@@ -32,3 +34,8 @@ decode =
     Decode.succeed Card
         |> required "suit" Suit.decode
         |> required "rank" Rank.decode
+
+
+view : List (Attribute msg) -> Card -> Html msg
+view a card =
+    div (a ++ [ class "card" ]) [ p [] [ text (toString card) ] ]

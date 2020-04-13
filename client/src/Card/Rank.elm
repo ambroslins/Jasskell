@@ -20,31 +20,31 @@ toString : Rank -> String
 toString r =
     case r of
         Six ->
-            "6"
+            "Six"
 
         Seven ->
-            "7"
+            "Seven"
 
         Eight ->
-            "8"
+            "Eight"
 
         Nine ->
-            "9"
+            "Nine"
 
         Ten ->
-            "X"
+            "Ten"
 
         Under ->
-            "U"
+            "Under"
 
         Over ->
-            "O"
+            "Over"
 
         King ->
-            "K"
+            "King"
 
         Ace ->
-            "A"
+            "Ace"
 
 
 encode : Rank -> Encode.Value
