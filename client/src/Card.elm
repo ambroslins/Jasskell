@@ -1,145 +1,10 @@
-module Card exposing (..)
+module Card exposing (Card, decode, encode, toString)
 
+import Card.Rank as Rank exposing (Rank)
+import Card.Suit as Suit exposing (Suit)
 import Json.Decode as Decode exposing (Decoder)
-import Json.Decode.Pipeline exposing (..)
+import Json.Decode.Pipeline exposing (required)
 import Json.Encode as Encode
-
-
-type Suit
-    = Bells
-    | Hearts
-    | Acorns
-    | Leaves
-
-
-showSuit : Suit -> String
-showSuit s =
-    case s of
-        Bells ->
-            "Bells"
-
-        Hearts ->
-            "Hearts"
-
-        Acorns ->
-            "Acorns"
-
-        Leaves ->
-            "Leaves"
-
-
-encodeSuit : Suit -> Encode.Value
-encodeSuit =
-    Encode.string << showSuit
-
-
-decodeSuit : Decoder Suit
-decodeSuit =
-    Decode.string
-        |> Decode.andThen
-            (\s ->
-                case s of
-                    "Bells" ->
-                        Decode.succeed Bells
-
-                    "Hearts" ->
-                        Decode.succeed Hearts
-
-                    "Acorns" ->
-                        Decode.succeed Acorns
-
-                    "Leaves" ->
-                        Decode.succeed Leaves
-
-                    _ ->
-                        Decode.fail ("Unkown suit: " ++ s)
-            )
-
-
-type Rank
-    = Six
-    | Seven
-    | Eight
-    | Nine
-    | Ten
-    | Under
-    | Over
-    | King
-    | Ace
-
-
-showRank : Rank -> String
-showRank r =
-    case r of
-        Six ->
-            "Six"
-
-        Seven ->
-            "Seven"
-
-        Eight ->
-            "Eight"
-
-        Nine ->
-            "Nine"
-
-        Ten ->
-            "Ten"
-
-        Under ->
-            "Under"
-
-        Over ->
-            "Over"
-
-        King ->
-            "King"
-
-        Ace ->
-            "Ace"
-
-
-encodeRank : Rank -> Encode.Value
-encodeRank =
-    Encode.string << showRank
-
-
-decodeRank : Decoder Rank
-decodeRank =
-    Decode.string
-        |> Decode.andThen
-            (\r ->
-                case r of
-                    "Six" ->
-                        Decode.succeed Six
-
-                    "Seven" ->
-                        Decode.succeed Seven
-
-                    "Eight" ->
-                        Decode.succeed Eight
-
-                    "Nine" ->
-                        Decode.succeed Nine
-
-                    "Ten" ->
-                        Decode.succeed Ten
-
-                    "Under" ->
-                        Decode.succeed Under
-
-                    "Over" ->
-                        Decode.succeed Over
-
-                    "King" ->
-                        Decode.succeed King
-
-                    "Ace" ->
-                        Decode.succeed Ace
-
-                    _ ->
-                        Decode.fail ("Unkown rank: " ++ r)
-            )
 
 
 type alias Card =
@@ -148,40 +13,22 @@ type alias Card =
     }
 
 
-showCard : Card -> String
-showCard c =
-    String.left 1 (showSuit c.suit)
-        ++ (case c.rank of
-                Six ->
-                    "6"
-
-                Seven ->
-                    "7"
-
-                Eight ->
-                    "8"
-
-                Nine ->
-                    "9"
-
-                Ten ->
-                    "X"
-
-                _ ->
-                    String.left 1 (showRank c.rank)
-           )
+toString : Card -> String
+toString c =
+    String.left 1 (Suit.toString c.suit)
+        ++ Rank.toString c.rank
 
 
-encodeCard : Card -> Encode.Value
-encodeCard c =
+encode : Card -> Encode.Value
+encode c =
     Encode.object
-        [ ( "suit", encodeSuit c.suit )
-        , ( "rank", encodeRank c.rank )
+        [ ( "suit", Suit.encode c.suit )
+        , ( "rank", Rank.encode c.rank )
         ]
 
 
-decodeCard : Decoder Card
-decodeCard =
+decode : Decoder Card
+decode =
     Decode.succeed Card
-        |> required "suit" decodeSuit
-        |> required "rank" decodeRank
+        |> required "suit" Suit.decode
+        |> required "rank" Rank.decode
