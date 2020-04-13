@@ -1,4 +1,4 @@
-module Card.Rank exposing (Rank, decode, encode, toString)
+module Card.Rank exposing (Rank(..), decode, encode, toString)
 
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode

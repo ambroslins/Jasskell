@@ -1,4 +1,4 @@
-module Card.Suit exposing (Suit, decode, encode, toString)
+module Card.Suit exposing (Suit(..), decode, encode, toString)
 
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode

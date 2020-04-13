@@ -1,11 +1,13 @@
-module Main exposing (..)
+module Main exposing (main)
 
 import Array exposing (Array)
 import Browser
-import Card exposing (..)
-import Html exposing (..)
-import Html.Attributes exposing (..)
-import Html.Events exposing (..)
+import Card exposing (Card)
+import Card.Rank exposing (Rank(..))
+import Card.Suit exposing (Suit(..))
+import Html exposing (Html, div, p, text)
+import Html.Attributes exposing (class, classList, style)
+import Html.Events exposing (onClick)
 import Html.Keyed as Keyed
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as Pipeline
@@ -13,21 +15,8 @@ import Json.Encode as Encode
 import WebSocket
 
 
-main : Program () Model Msg
-main =
-    Browser.document { init = init, update = update, view = view, subscriptions = subscriptions }
 
-
-encodeCard : Card -> Encode.Value
-encodeCard c =
-    Encode.object [ ( "suit", encodeSuit c.suit ), ( "rank", encodeRank c.rank ) ]
-
-
-decodeCard : Decode.Decoder Card
-decodeCard =
-    Decode.succeed Card
-        |> Pipeline.required "suit" decodeSuit
-        |> Pipeline.required "rank" decodeRank
+-- MODEL
 
 
 type alias Model =
@@ -42,11 +31,11 @@ decodeModel =
         |> Pipeline.required "hand"
             (Decode.array
                 (Decode.succeed Tuple.pair
-                    |> Pipeline.required "card" decodeCard
+                    |> Pipeline.required "card" Card.decode
                     |> Pipeline.required "playable" Decode.bool
                 )
             )
-        |> Pipeline.required "table" (Decode.array (Decode.nullable decodeCard))
+        |> Pipeline.required "table" (Decode.array (Decode.nullable Card.decode))
 
 
 init : () -> ( Model, Cmd Msg )
@@ -72,32 +61,24 @@ init _ =
     )
 
 
-type Msg
-    = NoOp
-    | PlayCard Card
-    | Update (Result Decode.Error Model)
+
+-- VIEW
 
 
-update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
-    case msg of
-        NoOp ->
-            ( model, Cmd.none )
+view : Model -> Browser.Document Msg
+view model =
+    { title = "Jasskell"
+    , body =
+        [ viewTabel model.table, viewHand model.hand ]
+    }
 
-        PlayCard c ->
-            ( { model
-                | hand = Array.filter (\x -> Tuple.first x /= c) model.hand
-              }
-            , WebSocket.send (Encode.object [ ( "playCard", encodeCard c ) ])
-            )
 
-        Update r ->
-            case r of
-                Ok m ->
-                    ( m, Cmd.none )
-
-                Err e ->
-                    ( Debug.log (Decode.errorToString e) model, Cmd.none )
+viewHand : Array ( Card, Bool ) -> Html Msg
+viewHand hand =
+    Keyed.ul
+        [ class "hand"
+        ]
+        (List.indexedMap (viewHandCard (Array.length hand)) (Array.toList hand))
 
 
 viewCard : Card -> Html Msg
@@ -105,7 +86,7 @@ viewCard card =
     div
         [ class "card"
         ]
-        [ p [] [ text (showCard card) ] ]
+        [ p [] [ text (Card.toString card) ] ]
 
 
 viewHandCard : Int -> Int -> ( Card, Bool ) -> ( String, Html Msg )
@@ -120,7 +101,7 @@ viewHandCard size i ( card, p ) =
         radius =
             50
     in
-    ( showCard card
+    ( Card.toString card
     , div
         [ onClick
             (if p then
@@ -143,14 +124,6 @@ viewHandCard size i ( card, p ) =
         ]
         [ viewCard card ]
     )
-
-
-viewHand : Array ( Card, Bool ) -> Html Msg
-viewHand hand =
-    Keyed.ul
-        [ class "hand"
-        ]
-        (List.indexedMap (viewHandCard (Array.length hand)) (Array.toList hand))
 
 
 viewNoCard : Html Msg
@@ -179,22 +152,49 @@ viewTabel table =
         )
 
 
-view : Model -> Browser.Document Msg
-view model =
-    { title = "Jasskell"
-    , body =
-        [ div [] [ viewTabel model.table, viewHand model.hand ]
-        ]
-    }
+
+-- UPDATE
+
+
+type Msg
+    = NoOp
+    | PlayCard Card
+    | Update (Result Decode.Error Model)
+
+
+update : Msg -> Model -> ( Model, Cmd Msg )
+update msg model =
+    case msg of
+        NoOp ->
+            ( model, Cmd.none )
+
+        PlayCard c ->
+            ( { model
+                | hand = Array.filter (\x -> Tuple.first x /= c) model.hand
+              }
+            , WebSocket.send (Encode.object [ ( "playCard", Card.encode c ) ])
+            )
+
+        Update r ->
+            case r of
+                Ok m ->
+                    ( m, Cmd.none )
+
+                Err _ ->
+                    ( model, Cmd.none )
+
+
+
+-- SUBSCRIPTIONS
 
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
+subscriptions _ =
     WebSocket.receive
         (\r ->
             case r of
-                Err e ->
-                    Debug.log (Decode.errorToString e) NoOp
+                Err _ ->
+                    NoOp
 
                 Ok e ->
                     case e of
@@ -202,5 +202,19 @@ subscriptions model =
                             Update (Decode.decodeString decodeModel m)
 
                         _ ->
-                            Debug.log "unkown event" NoOp
+                            NoOp
         )
+
+
+
+-- MAIN
+
+
+main : Program () Model Msg
+main =
+    Browser.document
+        { init = init
+        , view = view
+        , update = update
+        , subscriptions = subscriptions
+        }
