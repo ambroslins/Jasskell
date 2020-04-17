@@ -114,6 +114,7 @@ viewHandCard offset ( card, p ) =
     ( Card.toString card
     , li
         [ style "position" "absolute"
+        , class "card-hand"
         , style "transform"
             ("translate("
                 ++ String.fromFloat (sin angle * radius)
@@ -191,9 +192,7 @@ update msg model =
             ( model, Cmd.none )
 
         PlayCard c ->
-            ( { model
-                | hand = Array.filter (\x -> Tuple.first x /= c) model.hand
-              }
+            ( model
             , WebSocket.send (Encode.object [ ( "playCard", Card.encode c ) ])
             )
 

@@ -27,6 +27,10 @@ body {
     padding-left: 10px;
 }
 
+.card-hand {
+    transition: all 0.5s ease-in;
+}
+
 .card-playable {
     color: whitesmoke;
     border-color: whitesmoke;
