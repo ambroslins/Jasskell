@@ -1,4 +1,4 @@
-module Jasskell.Game where
+module Jasskell.GameState where
 
 import           Control.Concurrent
 import           Control.Monad
@@ -20,13 +20,13 @@ import           Jasskell.User
 import           Jasskell.Trick
 import           GHC.TypeLits
 
-data Game n = Game { users :: Vector n User
+data GameState n = GameState { users :: Vector n User
                    , currentUser :: Finite n
                    , currentRound :: Round n
                    , rounds :: [RoundFinished n]
                    }
 
-playGame :: KnownNat n => Game n -> IO (Game n)
+playGame :: KnownNat n => GameState n -> IO (GameState n)
 playGame game = do
     chan <- newChan
     imapM_
@@ -46,7 +46,7 @@ playGame game = do
             loop $ update event g
     loop game
 
-update :: KnownNat n => Event n -> Game n -> Game n
+update :: KnownNat n => Event n -> GameState n -> GameState n
 update event game = case event of
     UserAction ix action -> case action of
         PlayCard c -> case currentRound game of
@@ -61,7 +61,7 @@ update event game = case event of
                 else error "You can't choose the variant"
             _ -> error "You can't choose a trump now"
 
-toGameView :: KnownNat n => Finite n -> Game n -> GameView
+toGameView :: KnownNat n => Finite n -> GameState n -> GameView
 toGameView ix g = case currentRound g of
     Starting vec -> GameView
         { hand = map (flip HandCard False) $ toList $ cards $ index vec ix

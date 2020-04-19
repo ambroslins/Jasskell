@@ -5,7 +5,7 @@ module Main where
 import           Data.Aeson
 import qualified Data.Vector.Sized             as Vector
 import           Jasskell.Card
-import           Jasskell.Game
+import           Jasskell.GameState
 import           Jasskell.Message
 import           Jasskell.Round
 import           Jasskell.User
@@ -46,11 +46,11 @@ main = do
         forever receive
 
 
-exampleGame :: KnownNat n => Vector.Vector n User -> IO (Game n)
+exampleGame :: KnownNat n => Vector.Vector n User -> IO (GameState n)
 exampleGame us = do
     ps <- fmap newPlayer <$> getStdRandom dealCards
-    return Game { users        = us
-                , currentUser  = 0
-                , currentRound = Playing $ startRound (Trump Bells) 0 ps
-                , rounds       = []
-                }
+    return GameState { users        = us
+                     , currentUser  = 0
+                     , currentRound = Playing $ startRound (Trump Bells) 0 ps
+                     , rounds       = []
+                     }
