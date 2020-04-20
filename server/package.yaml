@@ -28,6 +28,10 @@ dependencies:
 - websockets
 - random
 - uuid
+- wai
+- wai-websockets
+- wai-middleware-static
+- scotty
 
 library:
   source-dirs: src
