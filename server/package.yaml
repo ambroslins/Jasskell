@@ -21,22 +21,23 @@ description:         Please see the README on GitHub at <https://github.com/gith
 dependencies:
 - base >= 4.7 && < 5
 - containers
-- finite-typelits
-- vector-sized
-- text
 - aeson
-- websockets
-- random
-- uuid
-- wai
-- wai-websockets
-- wai-middleware-static
-- scotty
 
 library:
   source-dirs: src
   ghc-options:
     - -Wall
+  dependencies:
+  - finite-typelits
+  - vector-sized
+  - text
+  - websockets
+  - random
+  - uuid
+  - wai
+  - wai-websockets
+  - wai-middleware-static
+  - scotty
 
 executables:
   Jasskell-exe:
