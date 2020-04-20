@@ -27,6 +27,7 @@ dependencies:
 - aeson
 - websockets
 - random
+- uuid
 
 library:
   source-dirs: src
