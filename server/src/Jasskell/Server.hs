@@ -1,47 +1,37 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DataKinds #-}
 
 module Jasskell.Server where
 
 import           Data.Aeson
-import qualified Data.Vector.Sized             as Vector
-import           Jasskell.Card
-import           Jasskell.GameState
+import qualified Data.Text.Lazy                as Text
+import           Data.Text.Lazy                 ( pack )
 import           Jasskell.Message
-import           Jasskell.Round
+import           Jasskell.ServerState
 import           Jasskell.User
-import           Jasskell.Variant
-import           Jasskell.Player
-import           System.Random
 import           Network.Wai.Middleware.Static
 import           Network.Wai.Handler.WebSockets
 import qualified Network.WebSockets            as WS
 import           Web.Scotty
-import           GHC.TypeLits
 import           Control.Concurrent
 import           Control.Monad
 
 
 server :: IO ()
 server = do
-    mvar <- newEmptyMVar
-    let lobby us = do
-            u <- takeMVar mvar
-            let us' = u : us
-            case Vector.fromList us' :: Maybe (Vector.Vector 4 User) of
-                Just v -> do
-                    g <- exampleGame $ Vector.reverse v
-                    _ <- playGame g
-                    return ()
-                Nothing -> lobby us'
-    _ <- forkIO $ lobby []
+    state <- emptyServerState
     scotty 9000 $ do
         middleware $ staticPolicy (addBase "../client")
-        middleware $ websocketsOr WS.defaultConnectionOptions (wsServer mvar)
+        middleware $ websocketsOr WS.defaultConnectionOptions (wsServer state)
         get "/" $ file "../client/index.html"
+        get "/newgame" $ do
+            gameID <- liftAndCatchIO $ createGame state
+            text $ pack (show gameID)
+        get "/games" $ do
+            games <- liftAndCatchIO $ allGames state
+            text $ Text.unlines $ map (pack . show) games
 
-wsServer :: MVar User -> WS.ServerApp
-wsServer mvar pen = do
+wsServer :: ServerState -> WS.ServerApp
+wsServer state pen = do
     c <- WS.acceptRequest pen
     putStrLn "accepted connection"
     chan <- newChan
@@ -51,15 +41,6 @@ wsServer mvar pen = do
     let u = newUser (readChan chan)
                     (\(UpdateGameView g) -> WS.sendTextData c $ encode g)
                     "Websocket User"
-    putMVar mvar u
+    game <- head <$> allGames state
+    userJoin state game u
     forever receive
-
-
-exampleGame :: KnownNat n => Vector.Vector n User -> IO (GameState n)
-exampleGame us = do
-    ps <- fmap newPlayer <$> getStdRandom dealCards
-    return GameState { users        = us
-                     , currentUser  = 0
-                     , currentRound = Playing $ startRound (Trump Bells) 0 ps
-                     , rounds       = []
-                     }
