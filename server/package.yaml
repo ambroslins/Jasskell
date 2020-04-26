@@ -38,6 +38,7 @@ library:
   - wai-websockets
   - wai-middleware-static
   - scotty
+  - stm
 
 executables:
   Jasskell-exe:
