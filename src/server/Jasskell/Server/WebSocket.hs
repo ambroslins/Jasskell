@@ -38,7 +38,6 @@ server state pending = do
             let put (UpdateGameView g) = sendTextData connection $ encode g
             let user = newUser get put $ username j
             userJoin state (gameID j) user
-            forever
-                $   maybe (return ()) (writeChan chan)
-                .   decode
-                <$> receiveData connection
+            forever $ do
+                action <- receiveData connection
+                maybe (return ()) (writeChan chan) (decode action)

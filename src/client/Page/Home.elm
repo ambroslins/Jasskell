@@ -4,6 +4,7 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http
+import Json.Decode as Decode
 import Json.Encode as Encode
 import Result
 import WebSocket
@@ -42,7 +43,7 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         NewGame ->
-            ( model, Http.post { body = Http.emptyBody, url = "/newgame", expect = Http.expectString (ChangeGameID << Result.withDefault "") } )
+            ( model, Http.post { body = Http.emptyBody, url = "/newgame", expect = Http.expectJson (ChangeGameID << Result.withDefault "") Decode.string } )
 
         ChangeGameID s ->
             ( s, Cmd.none )
