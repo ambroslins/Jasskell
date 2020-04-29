@@ -14,9 +14,9 @@ server :: IO ()
 server = do
     state <- emptyServerState
     scotty 9000 $ do
-        middleware $ staticPolicy (addBase "../client")
+        middleware $ staticPolicy (addBase "static")
         middleware $ WebSocketServer.middleware state
-        get "/" $ file "../client/index.html"
+        get "/" $ file "static/index.html"
         get "/newgame" $ do
             gameID <- liftAndCatchIO $ createGame state
             text $ pack (show gameID)
