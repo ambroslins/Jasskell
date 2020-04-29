@@ -21,7 +21,9 @@ instance FromJSON JoinMessage where
         withObject "join" $ \o -> Join <$> o .: "gameID" <*> o .: "username"
 
 middleware :: ServerState -> Middleware
-middleware = websocketsOr defaultConnectionOptions . server
+middleware =
+    websocketsOr defaultConnectionOptions { connectionStrictUnicode = True }
+        . server
 
 server :: ServerState -> ServerApp
 server state pending = do
