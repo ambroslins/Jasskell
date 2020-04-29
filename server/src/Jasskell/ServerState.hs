@@ -1,17 +1,30 @@
 module Jasskell.ServerState where
 
+import           Data.Aeson
 import qualified Data.Map                      as Map
 import           Data.Map                       ( Map )
+import           Data.Text                      ( pack
+                                                , unpack
+                                                )
 import           Data.UUID                      ( UUID )
 import           Data.UUID.V4                   ( nextRandom )
 import           Control.Monad.STM
 import           Control.Concurrent
 import           Control.Concurrent.STM.TVar
+import           Text.Read                      ( readMaybe )
 import           Jasskell.Game
 import           Jasskell.User                  ( User )
 
 
-newtype GameID = GameID UUID deriving (Eq, Ord, Show)
+newtype GameID = GameID UUID deriving (Eq, Ord, Show, Read)
+
+instance ToJSON GameID where
+    toJSON = String . pack . show
+
+instance FromJSON GameID where
+    parseJSON = withText "gameID" $ \t -> case readMaybe $ unpack t of
+        Just g  -> pure g
+        Nothing -> fail "not a GameID"
 
 newtype ServerState = ServerState (TVar (Map GameID Game))
 
