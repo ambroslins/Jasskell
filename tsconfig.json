@@ -3,6 +3,6 @@
         "outFile": "static/index.js",
     },
     "files": [
-        "src/client/typescript/index.ts"
+        "src/client/index.ts"
     ]
 }
