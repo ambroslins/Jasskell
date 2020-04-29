@@ -46,7 +46,6 @@ createGame (ServerState var) = do
 userJoin :: ServerState -> GameID -> User -> IO ()
 userJoin (ServerState var) gameID user = do
     game <- Map.lookup gameID <$> readTVarIO var
-    putStrLn $ "user joined" ++ show gameID
     case game of
         Just g  -> writeChan (joinChan g) user >> putStrLn "User joined"
         Nothing -> return ()

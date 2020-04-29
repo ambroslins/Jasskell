@@ -12,6 +12,7 @@ import Html.Keyed as Keyed
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as Pipeline
 import Json.Encode as Encode
+import Page.Home as Home
 import WebSocket
 
 
@@ -19,15 +20,20 @@ import WebSocket
 -- MODEL
 
 
-type alias Model =
+type Model
+    = HomePage Home.Model
+    | Game GameState
+
+
+type alias GameState =
     { hand : Array ( Card, Bool )
     , table : Array (Maybe Card)
     }
 
 
-decodeModel : Decoder Model
-decodeModel =
-    Decode.succeed Model
+decodeGameState : Decoder GameState
+decodeGameState =
+    Decode.succeed GameState
         |> Pipeline.required "hand"
             (Decode.array
                 (Decode.succeed Tuple.pair
@@ -40,25 +46,7 @@ decodeModel =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { hand =
-            Array.fromList
-                (List.map
-                    (\r -> ( { suit = Bells, rank = r }, True ))
-                    [ Six
-                    , Seven
-                    , Eight
-                    , Nine
-                    , Ten
-                    , Under
-                    , Over
-                    , King
-                    , Ace
-                    ]
-                )
-      , table = Array.repeat 4 Nothing
-      }
-    , WebSocket.connect "ws://127.0.0.1:9000"
-    )
+    ( HomePage Home.init, Cmd.none )
 
 
 
@@ -69,7 +57,12 @@ view : Model -> Browser.Document Msg
 view model =
     { title = "Jasskell"
     , body =
-        [ viewTabel model.table, viewHand model.hand ]
+        case model of
+            HomePage home ->
+                [ Html.map HomeMsg (Home.view home) ]
+
+            Game state ->
+                [ viewTabel state.table, viewHand state.hand ]
     }
 
 
@@ -182,7 +175,8 @@ viewTabel table =
 type Msg
     = NoOp
     | PlayCard Card
-    | Update (Result Decode.Error Model)
+    | Update (Result Decode.Error GameState)
+    | HomeMsg Home.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -199,9 +193,21 @@ update msg model =
         Update r ->
             case r of
                 Ok m ->
-                    ( m, Cmd.none )
+                    ( Game m, Cmd.none )
 
                 Err _ ->
+                    ( model, Cmd.none )
+
+        HomeMsg subMsg ->
+            case model of
+                HomePage home ->
+                    let
+                        ( m, c ) =
+                            Home.update subMsg home
+                    in
+                    ( HomePage m, Cmd.map HomeMsg c )
+
+                _ ->
                     ( model, Cmd.none )
 
 
@@ -220,7 +226,10 @@ subscriptions _ =
                 Ok e ->
                     case e of
                         WebSocket.Message m ->
-                            Update (Decode.decodeString decodeModel m)
+                            Update (Decode.decodeString decodeGameState m)
+
+                        WebSocket.Open ->
+                            HomeMsg Home.OnOpen
 
                         _ ->
                             NoOp
