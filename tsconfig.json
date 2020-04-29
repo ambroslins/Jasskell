@@ -1,7 +1,6 @@
 {
     "compilerOptions": {
         "outFile": "static/index.js",
-        "sourceMap": true
     },
     "files": [
         "src/client/typescript/index.ts"
