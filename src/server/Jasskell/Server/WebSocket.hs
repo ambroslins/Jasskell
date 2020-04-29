@@ -28,8 +28,9 @@ middleware =
 server :: ServerState -> ServerApp
 server state pending = do
     connection <- acceptRequest pending
-    msg        <- decode <$> receiveData connection
-    case msg of
+    msg        <- receiveData connection
+    print msg
+    case decode msg of
         Nothing -> sendClose connection ("invalid join requst" :: Text)
         Just j  -> do
             chan <- newChan
