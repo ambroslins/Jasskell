@@ -10,6 +10,7 @@ import           Network.Wai                    ( Middleware )
 import           Network.Wai.Handler.WebSockets ( websocketsOr )
 import           Network.WebSockets
 import           Jasskell.Message
+import           Jasskell.GameID
 import           Jasskell.User
 import           Jasskell.ServerState
 

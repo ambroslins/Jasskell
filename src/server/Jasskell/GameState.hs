@@ -60,6 +60,7 @@ update event game = case event of
                 then game { currentRound = Playing $ startRound v ix ps }
                 else error "You can't choose the variant"
             _ -> error "You can't choose a trump now"
+        Join _ _ -> error "You can't join a running game"
 
 toGameView :: KnownNat n => Finite n -> GameState n -> GameView
 toGameView ix g = case currentRound g of

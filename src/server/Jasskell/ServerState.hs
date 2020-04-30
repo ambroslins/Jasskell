@@ -1,34 +1,15 @@
 module Jasskell.ServerState where
 
-import           Data.Aeson
 import qualified Data.Map                      as Map
 import           Data.Map                       ( Map )
-
-import           Data.UUID                      ( UUID
-                                                , toString
-                                                , toText
-                                                , fromText
-                                                )
-import           Data.UUID.V4                   ( nextRandom )
 import           Control.Monad.STM
 import           Control.Concurrent
 import           Control.Concurrent.STM.TVar
 import           Jasskell.Game
+import           Jasskell.GameID
 import           Jasskell.User                  ( User )
 
 
-newtype GameID = GameID UUID deriving (Eq, Ord)
-
-instance Show GameID where
-    show (GameID uuid) = toString uuid
-
-instance ToJSON GameID where
-    toJSON (GameID uuid) = String $ toText uuid
-
-instance FromJSON GameID where
-    parseJSON = withText "gameID" $ \t -> case fromText t of
-        Just g  -> pure $ GameID g
-        Nothing -> fail "not a GameID"
 
 newtype ServerState = ServerState (TVar (Map GameID Game))
 
@@ -37,7 +18,7 @@ emptyServerState = ServerState <$> newTVarIO Map.empty
 
 createGame :: ServerState -> IO GameID
 createGame (ServerState var) = do
-    gameID <- GameID <$> nextRandom
+    gameID <- newGameID
     game   <- newGame
     atomically $ modifyTVar var (Map.insert gameID game)
     putStrLn $ "Game created: " ++ show gameID
