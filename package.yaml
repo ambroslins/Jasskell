@@ -24,23 +24,22 @@ dependencies:
 - base >= 4.7 && < 5
 - containers
 - aeson
+- finite-typelits
+- vector-sized
+- text
+- websockets
+- random
+- uuid
+- wai
+- wai-websockets
+- wai-middleware-static
+- scotty
+- stm
 
 library:
   source-dirs: src/server
   ghc-options:
     - -Wall
-  dependencies:
-  - finite-typelits
-  - vector-sized
-  - text
-  - websockets
-  - random
-  - uuid
-  - wai
-  - wai-websockets
-  - wai-middleware-static
-  - scotty
-  - stm
 
 executables:
   Jasskell-exe:
