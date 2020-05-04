@@ -1,21 +1,13 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Jasskell.Card.Rank where
 
 import           Data.Aeson
-import           Data.Text                      ( pack
-                                                , unpack
-                                                )
-import           Text.Read                      ( readMaybe )
+import           GHC.Generics
 
 data Rank = Six | Seven | Eight | Nine | Ten | Under | Over | King | Ace
-    deriving(Eq, Ord, Bounded, Enum, Show, Read)
+    deriving(Eq, Ord, Bounded, Enum, Show, Read, Generic)
 
 instance ToJSON Rank where
-    toJSON = String . pack . show
 
 instance FromJSON Rank where
-    parseJSON (String t) = case readMaybe $ unpack t of
-        Just r  -> pure r
-        Nothing -> fail ""
-    parseJSON _ = fail ""

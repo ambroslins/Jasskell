@@ -15,6 +15,8 @@ data GameView = GameView { hand :: [HandCard]
                          , variantView :: Maybe Variant
                          }
 
+-- TODO
+
 instance Show GameView where
     show gv = unlines [show $ variantView gv, show $ table gv, show $ hand gv]
 

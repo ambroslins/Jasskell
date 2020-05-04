@@ -5,9 +5,6 @@ module Jasskell.CardSpec
     )
 where
 
-import           Data.Aeson                     ( encode
-                                                , decode
-                                                )
 import           Data.List.NonEmpty             ( NonEmpty(..) )
 import qualified Data.Set                      as Set
 import           Test.Hspec
@@ -106,5 +103,3 @@ spec = describe "Card" $ do
             not (Set.null hand) ==> not (Set.null $ playableCards v cs hand)
         it "is the hand if table is empty" $ property $ \v hand ->
             playableCards v [] hand == hand
-    it "json decode is invers to encode" $ property $ \c ->
-        (decode . encode) c `shouldBe` (Just c :: Maybe Card)

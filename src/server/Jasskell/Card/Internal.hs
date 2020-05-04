@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Jasskell.Card.Internal where
 
@@ -15,15 +15,20 @@ import           Jasskell.Card.Rank
 import           Jasskell.Variant
 import           System.Random
 import           Text.Read                      ( readPrec )
+import           GHC.Generics
 import           GHC.TypeLits
 
-data Card = Card { suit :: Suit, rank :: Rank } deriving (Eq, Ord)
+data Card = Card { suit :: Suit, rank :: Rank } deriving (Eq, Ord, Generic)
 
 instance Show Card where
     show c = show (suit c) ++ " " ++ show (rank c)
 
 instance Read Card where
     readPrec = Card <$> readPrec <*> readPrec
+
+instance ToJSON Card
+
+instance FromJSON Card
 
 type Cards = Set Card
 
@@ -111,12 +116,6 @@ playableCards var (c : cs) hand = case var of
     follows s = Set.filter ((== s) . suit) hand
     highest       = highestCard var lead (c :| cs)
     followerOrAll = if Set.null $ follows lead then hand else follows lead
-
-instance ToJSON Card where
-    toJSON c = object ["suit" .= suit c, "rank" .= rank c]
-
-instance FromJSON Card where
-    parseJSON = withObject "card" $ \o -> Card <$> o .: "suit" <*> o .: "rank"
 
 dealCards :: (RandomGen g, KnownNat n) => g -> (Vector n Cards, g)
 dealCards g = (v, g'')

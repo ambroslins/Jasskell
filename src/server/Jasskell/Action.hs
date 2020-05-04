@@ -1,21 +1,16 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Jasskell.Action where
 
 import           Data.Aeson
-import           Data.Foldable                  ( asum )
 import           Jasskell.Card
 import           Jasskell.GameID
 import           Jasskell.Variant
+import           GHC.Generics
 
 data Action = PlayCard Card
             | ChooseVariant Variant
             | Join GameID String
-            deriving (Show)
+            deriving (Show, Generic)
 
-instance FromJSON Action where
-    parseJSON = withObject "action" $ \o -> asum
-        [ PlayCard <$> o .: "playCard"
-        , ChooseVariant <$> o .: "chooseVariant"
-            -- TODO Join
-        ]
+instance FromJSON Action
