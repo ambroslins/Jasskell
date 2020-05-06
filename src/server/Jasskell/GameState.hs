@@ -1,9 +1,10 @@
 module Jasskell.GameState where
 
-import           Control.Concurrent
-import           Control.Monad
+import           Control.Concurrent.Async
 import           Data.Finite
-import           Data.Foldable                  ( toList )
+import           Data.Foldable                  ( toList
+                                                , asum
+                                                )
 import qualified Data.Set                      as Set
 import           Data.Vector.Sized              ( Vector
                                                 , index
@@ -28,23 +29,14 @@ data GameState n = GameState { users :: Vector n User
 
 playGame :: KnownNat n => GameState n -> IO (GameState n)
 playGame game = do
-    chan <- newChan
-    imapM_
-        (\i u ->
-            forkIO $ forever (UserAction i <$> getAction u >>= writeChan chan)
-        )
-        (users game)
-    let loop g = do
-            imapM_ (\i u -> putMessage u $ UpdateGameView $ toGameView i g)
-                   (users game)
-            putStrLn $ "turn" ++ show
-                (case currentRound g of
-                    Playing r -> Just $ currentPlayer r
-                    _         -> Nothing
-                )
-            event <- readChan chan
-            loop $ update event g
-    loop game
+    imapM_ (\i u -> putMessage u $ UpdateGameView $ toGameView i game)
+           (users game)
+    event <-
+        runConcurrently
+        $ asum
+        $ imap (\i u -> Concurrently $ UserAction i <$> getAction u)
+        $ users game
+    playGame $ update event game
 
 update :: KnownNat n => Event n -> GameState n -> GameState n
 update event game = case event of

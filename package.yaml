@@ -35,6 +35,7 @@ dependencies:
 - wai-middleware-static
 - scotty
 - stm
+- async
 
 library:
   source-dirs: src/server
