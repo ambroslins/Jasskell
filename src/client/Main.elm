@@ -187,7 +187,7 @@ update msg model =
 
         PlayCard c ->
             ( model
-            , WebSocket.send (Encode.object [ ( "playCard", Card.encode c ) ])
+            , WebSocket.send (Encode.object [ ( "tag", Encode.string "PlayCard" ), ( "contents", Card.encode c ) ])
             )
 
         Update r ->
@@ -195,8 +195,8 @@ update msg model =
                 Ok m ->
                     ( Game m, Cmd.none )
 
-                Err _ ->
-                    ( model, Cmd.none )
+                Err e ->
+                    Debug.log (Decode.errorToString e) ( model, Cmd.none )
 
         HomeMsg subMsg ->
             case model of
