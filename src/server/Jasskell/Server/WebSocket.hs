@@ -10,16 +10,15 @@ import           Network.Wai                    ( Middleware )
 import           Network.Wai.Handler.WebSockets ( websocketsOr )
 import           Network.WebSockets
 import           Jasskell.Message
-import           Jasskell.GameID
 import           Jasskell.User
 import           Jasskell.ServerState
 
 
-data JoinMessage = Join { gameID :: GameID, username :: String }
+data JoinMessage = Join { tableID :: TableID, username :: String }
 
 instance FromJSON JoinMessage where
     parseJSON =
-        withObject "join" $ \o -> Join <$> o .: "gameID" <*> o .: "username"
+        withObject "join" $ \o -> Join <$> o .: "tableID" <*> o .: "username"
 
 middleware :: ServerState -> Middleware
 middleware =
@@ -38,7 +37,7 @@ server state pending = do
             let get = readChan chan
             let put (UpdateGameView g) = sendTextData connection $ encode g
             let user = newUser get put $ username j
-            userJoin state (gameID j) user
+            userJoin state (tableID j) user
             forever $ do
                 action <- receiveData connection
                 maybe (return ()) (writeChan chan) (decode action)
