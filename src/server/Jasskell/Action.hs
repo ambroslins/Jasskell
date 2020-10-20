@@ -2,13 +2,14 @@
 
 module Jasskell.Action where
 
-import           Data.Aeson
-import           Jasskell.Card
-import           Jasskell.Variant
-import           GHC.Generics
+import Data.Aeson
+import GHC.Generics
+import Jasskell.Card
+import Jasskell.Variant
 
-data Action = PlayCard Card
-            | ChooseVariant Variant
-            deriving (Show, Generic)
+data Action
+  = PlayCard Card
+  | ChooseVariant Variant
+  deriving (Show, Generic)
 
 instance FromJSON Action

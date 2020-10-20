@@ -1,5 +1,5 @@
 module Jasskell.Message where
 
-import           Jasskell.GameView
+import Jasskell.GameView
 
 data Message = UpdateGameView GameView
