@@ -9,8 +9,8 @@ module Card
   )
 where
 
+import Card.Suit
 import Data.Set qualified as Set
-import Suit
 import Variant
 import Prelude hiding (compare)
 

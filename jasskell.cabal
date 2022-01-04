@@ -42,8 +42,8 @@ library
   hs-source-dirs:   src
   exposed-modules:  
     , Card
+    , Card.Suit
     , MyLib
-    , Suit
     , Variant
 
   -- Modules included in this library but not exported.

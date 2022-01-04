@@ -5,7 +5,7 @@ module Variant
   )
 where
 
-import Suit
+import Card.Suit
 
 data Variant
   = Trump Suit
