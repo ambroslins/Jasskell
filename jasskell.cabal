@@ -33,7 +33,9 @@ library
   import:           common
   hs-source-dirs:   src
   exposed-modules:  
+    , Card
     , MyLib
+    , Suit
 
   -- Modules included in this library but not exported.
   -- other-modules:
