@@ -69,4 +69,8 @@ test-suite jasskell-test
   import:           common
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
-  main-is:          MyLibTest.hs
+  main-is:          Spec.hs
+  build-tool-depends: hspec-discover:hspec-discover ^>=2.9.4
+  build-depends:
+    , jasskell
+    , hspec ^>=2.9.4
