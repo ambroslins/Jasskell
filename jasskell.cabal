@@ -71,6 +71,13 @@ test-suite jasskell-test
   hs-source-dirs:   test
   main-is:          Spec.hs
   build-tool-depends: hspec-discover:hspec-discover ^>=2.9.4
+  ghc-options:
+    -Wno-orphans
+
   build-depends:
     , jasskell
     , hspec ^>=2.9.4
+    , QuickCheck ^>=2.14.2
+  
+  other-modules:
+    , CardSpec
