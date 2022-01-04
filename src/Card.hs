@@ -1,4 +1,13 @@
-module Card where
+module Card
+  ( Card (..),
+    Suit (..),
+    Rank (..),
+    Deck,
+    deck,
+    value,
+    compare,
+  )
+where
 
 import Data.Set qualified as Set
 import Suit

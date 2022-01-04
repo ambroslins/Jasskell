@@ -1,4 +1,9 @@
-module Variant where
+module Variant
+  ( Variant (..),
+    Direction (..),
+    next,
+  )
+where
 
 import Suit
 
