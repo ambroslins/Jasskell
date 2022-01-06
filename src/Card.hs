@@ -2,7 +2,7 @@ module Card
   ( Card (..),
     Suit (..),
     Rank (..),
-    Deck,
+    Cards,
     deck,
     value,
     compare,
@@ -20,9 +20,9 @@ data Rank = Six | Seven | Eight | Nine | Ten | Under | Over | King | Ace
 data Card = Card {suit :: Suit, rank :: Rank}
   deriving (Eq, Ord, Show)
 
-type Deck = Set Card
+type Cards = Set Card
 
-deck :: Deck
+deck :: Cards
 deck = Set.fromList $ Card <$> universe <*> universe
 
 value :: Variant -> Card -> Int
