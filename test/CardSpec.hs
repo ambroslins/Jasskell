@@ -2,10 +2,16 @@ module CardSpec where
 
 import Card (Card (..), Rank (..), Suit (..))
 import Card qualified
+import Data.Set qualified as Set
 import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck
-  ( elements,
+  ( conjoin,
+    counterexample,
+    discard,
+    disjoin,
+    elements,
+    label,
     (=/=),
     (===),
     (==>),
@@ -14,6 +20,7 @@ import Test.QuickCheck.Arbitrary
   ( Arbitrary (arbitrary),
     arbitraryBoundedEnum,
   )
+import Test.QuickCheck.Modifiers (NonEmptyList (..))
 import Variant
 
 spec :: Spec
@@ -33,6 +40,36 @@ spec = do
     prop "is antisymmetric" $ \v l c1 c2 ->
       let comp = Card.compare v l
        in c1 /= c2 ==> comp c1 c2 =/= comp c2 c1
+  describe "status" $ do
+    prop "some hand card is playable" $ \v t (NonEmpty h) ->
+      disjoin $ map (\c -> Card.status v t (Set.fromList h) c == Card.Playable) h
+    prop "checks not in hand" $ \v t h c ->
+      Set.notMember c h ==> Card.status v t h c === Card.NotInHand
+    prop "holds invariants" $ \v t h c ->
+      case Card.status v t h c of
+        Card.Playable ->
+          label "Playable" $ Set.member c h
+        Card.FollowTrump trump ->
+          label "FollowTrump" $
+            conjoin
+              [ v === Trump trump,
+                suit c =/= trump,
+                fmap (suit . head) (nonEmpty t) === Just trump
+              ]
+        Card.FollowLead lead ->
+          label "FollowLead" $
+            conjoin
+              [ suit c =/= lead,
+                fmap (suit . head) (nonEmpty t) === Just lead
+              ]
+        Card.Undertrump highest ->
+          label "Undertrump" $
+            conjoin
+              [ counterexample (show (highest, t)) $ highest `elem` t,
+                v === Trump (suit highest),
+                fmap (suit . head) (nonEmpty t) =/= Just (suit highest)
+              ]
+        Card.NotInHand -> discard
 
 allVariants :: [Variant]
 allVariants =
