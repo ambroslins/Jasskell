@@ -88,10 +88,14 @@ status variant table hand card =
             check (FollowTrump trump) $
               suit card == trump || null (Set.delete puur trumps)
           | suit highest == trump ->
-            check (Undertrump highest) $
-              suit card /= trump
-                || comp card highest == GT
-                || (null highers && null (Set.difference hand trumps))
+            if suit card == trump
+              then
+                check (Undertrump highest) $
+                  comp card highest == GT
+                    || (null highers && null (Set.difference hand trumps))
+              else
+                check (FollowLead lead) $
+                  suit card == lead || null followers
           | otherwise ->
             check (FollowLead lead) $
               suit card `elem` [lead, trump] || null followers
