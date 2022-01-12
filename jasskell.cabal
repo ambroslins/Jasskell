@@ -43,7 +43,6 @@ library
   exposed-modules:  
     , Card
     , Card.Suit
-    , MyLib
     , Variant
 
   -- Modules included in this library but not exported.
