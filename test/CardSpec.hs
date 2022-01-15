@@ -1,6 +1,12 @@
 module CardSpec where
 
-import Card (Card (..), Rank (..), Suit (..))
+import Card
+  ( Card (..),
+    Rank (..),
+    Reason (..),
+    Status (..),
+    Suit (..),
+  )
 import Card qualified
 import Data.Set qualified as Set
 import Test.Hspec
@@ -91,87 +97,88 @@ spec = do
     prop "returns 'Playable' for some hand card" $ \v t (NonEmpty h) ->
       disjoin $ map (\c -> Card.status v t (Set.fromList h) c == Card.Playable) h
     prop "returns 'NotInHand' if the card is not in the hand" $ \v t h c ->
-      Set.notMember c h ==> Card.status v t h c === Card.NotInHand
+      Set.notMember c h ==> Card.status v t h c === Unplayable NotInHand
     prop "returns 'Playable' for a singleton hand" $ \v t c ->
       Card.status v t (Set.singleton c) c === Card.Playable
     prop "holds some invariants" $ \v t h c ->
       case Card.status v t h c of
-        Card.Playable ->
+        Playable ->
           label "Playable" $ Set.member c h
-        Card.FollowTrump trump ->
-          label "FollowTrump" $
-            conjoin
-              [ v === Trump trump,
-                suit c =/= trump,
-                fmap (suit . head) (nonEmpty t) === Just trump
-              ]
-        Card.FollowLead lead ->
-          label "FollowLead" $
-            conjoin
-              [ suit c =/= lead,
-                fmap (suit . head) (nonEmpty t) === Just lead
-              ]
-        Card.Undertrump highest ->
-          label "Undertrump" $
-            conjoin
-              [ counterexample (show (highest, t)) $ highest `elem` t,
-                v === Trump (suit highest),
-                fmap (suit . head) (nonEmpty t) =/= Just (suit highest)
-              ]
-        Card.NotInHand -> discard
+        Unplayable reason -> case reason of
+          FollowTrump trump ->
+            label "FollowTrump" $
+              conjoin
+                [ v === Trump trump,
+                  suit c =/= trump,
+                  fmap (suit . head) (nonEmpty t) === Just trump
+                ]
+          FollowLead lead ->
+            label "FollowLead" $
+              conjoin
+                [ suit c =/= lead,
+                  fmap (suit . head) (nonEmpty t) === Just lead
+                ]
+          Undertrump highest ->
+            label "Undertrump" $
+              conjoin
+                [ counterexample (show (highest, t)) $ highest `elem` t,
+                  v === Trump (suit highest),
+                  fmap (suit . head) (nonEmpty t) =/= Just (suit highest)
+                ]
+          NotInHand -> discard
     it "returns 'Playable' for a playable Card" $
       Card.status
         (Trump Bells)
         [Card Hearts Over, Card Acorns Seven]
         (Set.fromList [Card Bells Ten, Card Hearts King, Card Leaves Nine])
         (Card Hearts King)
-        `shouldBe` Card.Playable
+        `shouldBe` Playable
     it "returns 'FollowTrump' if card doesn't follow the trump" $
       Card.status
         (Trump Bells)
         [Card Bells Over, Card Acorns Seven]
         (Set.fromList [Card Bells Ten, Card Hearts King, Card Leaves Nine])
         (Card Hearts King)
-        `shouldBe` Card.FollowTrump Bells
+        `shouldBe` Unplayable (FollowTrump Bells)
     it "returns 'FollowLead' if card doesn't follow the lead" $ do
       Card.status
         (Trump Bells)
         [Card Leaves Over, Card Acorns Seven, Card Bells Over]
         (Set.fromList [Card Bells Ten, Card Hearts King, Card Leaves Nine])
         (Card Hearts King)
-        `shouldBe` Card.FollowLead Leaves
+        `shouldBe` Unplayable (FollowLead Leaves)
     it "returns 'Undertrump' if card would undertrump" $
       Card.status
         (Trump Bells)
         [Card Leaves Over, Card Acorns Seven, Card Bells Over]
         (Set.fromList [Card Bells Ten, Card Bells King, Card Hearts King, Card Leaves Nine])
         (Card Bells Ten)
-        `shouldBe` Card.Undertrump (Card Bells Over)
+        `shouldBe` Unplayable (Undertrump (Card Bells Over))
     it "returns 'Playable' if unable to follow trump" $
       Card.status
         (Trump Bells)
         [Card Bells Over, Card Acorns Seven]
         (Set.fromList [Card Acorns Ten, Card Leaves King, Card Hearts King])
         (Card Acorns Ten)
-        `shouldBe` Card.Playable
+        `shouldBe` Playable
     it "returns 'Playable' if unable to follow lead" $
       Card.status
         (Trump Bells)
         [Card Hearts Over, Card Acorns Seven, Card Bells Over]
         (Set.fromList [Card Acorns Ten, Card Leaves King, Card Bells Eight])
         (Card Acorns Ten)
-        `shouldBe` Card.Playable
+        `shouldBe` Playable
     it "returns 'Playable' if forced to undertrump" $
       Card.status
         (Trump Bells)
         [Card Hearts Over, Card Acorns Seven, Card Bells Over]
         (Set.fromList [Card Bells Ten, Card Bells Six])
         (Card Bells Ten)
-        `shouldBe` Card.Playable
+        `shouldBe` Playable
 
   describe "isPlayable" $ do
     prop "matches 'Card.status'" $ \v t h c ->
-      Card.isPlayable v t h c === (Card.status v t h c == Card.Playable)
+      Card.isPlayable v t h c === (Card.status v t h c == Playable)
 
 allVariants :: [Variant]
 allVariants =
