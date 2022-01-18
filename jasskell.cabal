@@ -54,6 +54,7 @@ library
     , Card
     , Card.Suit
     , Round
+    , Round.Record
     , Trick
     , Variant
 

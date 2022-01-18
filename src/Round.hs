@@ -2,7 +2,7 @@
 
 module Round
   ( Round (hands, leader, cards, tricks, variant),
-    Summary,
+    Record,
     Error (..),
     Result (..),
     playCard,
@@ -18,6 +18,8 @@ import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import GHC.TypeNats (Div, type (+))
 import Relude.Extra.Lens (over)
+import Round.Record (Record)
+import Round.Record qualified as Record
 import Trick (Trick)
 import Trick qualified
 import Variant (Variant)
@@ -33,8 +35,6 @@ data Round n = Round
   }
   deriving (Show)
 
-type Summary n = Vector (Div 36 n) (Trick n)
-
 data Error
   = NotYourTurn
   | CardUnplayable Card.Reason
@@ -42,7 +42,7 @@ data Error
 
 data Result n
   = Ok (Round n)
-  | Closed (Summary n)
+  | Closed (Record n)
   | Error Error
   deriving (Show)
 
@@ -62,7 +62,11 @@ playCard player card round
                 tricks = tricks round,
                 variant = variant round
               }
-        Just trick -> maybe (Ok round') Closed $ Vector.fromList $ reverse tricks'
+        Just trick ->
+          maybe
+            (Ok round')
+            (Closed . Record.make)
+            (Vector.fromList $ reverse tricks')
           where
             winner = Trick.winner trick
             tricks' = trick : tricks round
