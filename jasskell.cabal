@@ -53,9 +53,12 @@ library
   exposed-modules:  
     , Card
     , Card.Suit
+    , Game
     , Round
     , Round.Record
+    , Table
     , Trick
+    , User
     , Variant
 
   -- Modules included in this library but not exported.
