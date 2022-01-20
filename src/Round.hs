@@ -12,6 +12,7 @@ where
 
 import Card (Card, Cards)
 import Card qualified
+import Control.Monad.Except
 import Data.Finite (Finite, modulo)
 import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
@@ -41,32 +42,33 @@ data Error
   deriving (Show)
 
 data Result n
-  = Ok (Round n)
+  = Open (Round n)
   | Closed (Record n)
-  | Error Error
   deriving (Show)
 
-playCard :: JassNat n => Finite n -> Card -> Round n -> Result n
+playCard :: (MonadError Error m, JassNat n) => Finite n -> Card -> Round n -> m (Result n)
 playCard player card round
-  | player /= current round = Error NotYourTurn
+  | player /= current round = throwError NotYourTurn
   | otherwise = case Card.status (variant round) (cards round) (Vector.index (hands round) player) card of
-    Card.Unplayable reason -> Error (CardUnplayable reason)
+    Card.Unplayable reason -> throwError (CardUnplayable reason)
     Card.Playable ->
       case Trick.make (variant round) (leader round) cards' of
         Nothing ->
-          Ok $
-            Round
-              { hands = hands',
-                leader = leader round + 1,
-                cards = cards',
-                tricks = tricks round,
-                variant = variant round
-              }
+          pure $
+            Open $
+              Round
+                { hands = hands',
+                  leader = leader round + 1,
+                  cards = cards',
+                  tricks = tricks round,
+                  variant = variant round
+                }
         Just trick ->
-          maybe
-            (Ok round')
-            (Closed . Record.make)
-            (Vector.fromList $ reverse tricks')
+          pure $
+            maybe
+              (Open round')
+              (Closed . Record.make)
+              (Vector.fromList $ reverse tricks')
           where
             winner = Trick.winner trick
             tricks' = trick : tricks round
