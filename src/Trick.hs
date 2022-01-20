@@ -11,10 +11,10 @@ where
 
 import Card (Card)
 import Card qualified
-import Data.Finite
+import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
-import GHC.TypeNats (type (+))
+import JassNat (JassNat)
 import Variant (Variant)
 
 data Trick n = Trick
@@ -27,7 +27,7 @@ data Trick n = Trick
 make :: KnownNat n => Variant -> Finite n -> [Card] -> Maybe (Trick n)
 make var l cs = Trick var l . rotate (negate l) <$> Vector.fromList cs
 
-winner :: (KnownNat n, n ~ (m + 1)) => Trick n -> Finite n
+winner :: JassNat n => Trick n -> Finite n
 winner Trick {leader, cards, variant} = Vector.maxIndexBy (Card.compare variant lead) cards
   where
     lead = Card.suit $ Vector.index cards leader

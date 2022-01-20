@@ -25,14 +25,16 @@ common common
     -fplugin GHC.TypeLits.Normalise
 
   default-extensions:
-    , ImportQualifiedPost
+    , ConstraintKinds
     , DataKinds
+    , FlexibleContexts
+    , ImportQualifiedPost
     , LambdaCase
     , NamedFieldPuns
     , ScopedTypeVariables
+    , TypeApplications
     , TypeFamilies
     , TypeOperators
-    , TypeApplications
 
   build-depends:
     , base ^>=4.14.3.0
@@ -57,6 +59,7 @@ library
     , Round
     , Round.Record
     , Table
+    , JassNat
     , Trick
     , User
     , Variant

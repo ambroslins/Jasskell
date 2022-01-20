@@ -16,7 +16,7 @@ import Data.Finite (Finite, modulo)
 import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
-import GHC.TypeNats (Div, type (+))
+import JassNat (JassNat)
 import Relude.Extra.Lens (over)
 import Round.Record (Record)
 import Round.Record qualified as Record
@@ -46,7 +46,7 @@ data Result n
   | Error Error
   deriving (Show)
 
-playCard :: forall n m. (KnownNat n, n ~ (m + 1), KnownNat (Div 36 n)) => Finite n -> Card -> Round n -> Result n
+playCard :: JassNat n => Finite n -> Card -> Round n -> Result n
 playCard player card round
   | player /= current round = Error NotYourTurn
   | otherwise = case Card.status (variant round) (cards round) (Vector.index (hands round) player) card of
