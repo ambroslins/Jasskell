@@ -1,8 +1,5 @@
 module Trick
   ( Trick,
-    variant,
-    leader,
-    cards,
     make,
     winner,
     value,

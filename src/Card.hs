@@ -1,10 +1,12 @@
 module Card
-  ( Card (..),
+  ( Card (Card),
     Suit (..),
     Rank (..),
     Status (..),
     Reason (..),
     Cards,
+    rank,
+    suit,
     deck,
     value,
     compare,
@@ -25,13 +27,19 @@ data Rank = Six | Seven | Eight | Nine | Ten | Under | Over | King | Ace
 data Card = Card {suit :: Suit, rank :: Rank}
   deriving (Eq, Ord, Show)
 
+suit :: Card -> Suit
+suit card = card.suit
+
+rank :: Card -> Rank
+rank card = card.rank
+
 type Cards = Set Card
 
 deck :: Cards
 deck = Set.fromList $ Card <$> [minBound .. maxBound] <*> [minBound .. maxBound]
 
 value :: Variant -> Card -> Int
-value variant card = case rank card of
+value variant card = case card.rank of
   Six -> 0
   Seven -> 0
   Eight -> case variant of
@@ -45,7 +53,7 @@ value variant card = case rank card of
   King -> 4
   Ace -> 11
   where
-    isTrump = variant == Trump (suit card)
+    isTrump = variant == Trump card.suit
 
 compare :: Variant -> Suit -> Card -> Card -> Ordering
 compare variant lead = case variant of
@@ -90,20 +98,20 @@ status variant table hand card =
       (c : cs) -> case variant of
         Trump trump
           | lead == trump ->
-            check (FollowTrump trump) $
-              suit card == trump || Set.null (Set.delete puur trumps)
-          | suit highest == trump ->
-            if suit card == trump
-              then
-                check (Undertrump highest) $
-                  comp card highest == GT
-                    || (Set.null highers && Set.isSubsetOf hand trumps)
-              else
-                check (FollowLead lead) $
-                  suit card == lead || Set.null followers
+              check (FollowTrump trump) $
+                card.suit == trump || Set.null (Set.delete puur trumps)
+          | highest.suit == trump ->
+              if card.suit == trump
+                then
+                  check (Undertrump highest) $
+                    comp card highest == GT
+                      || (Set.null highers && Set.isSubsetOf hand trumps)
+                else
+                  check (FollowLead lead) $
+                    card.suit == lead || Set.null followers
           | otherwise ->
-            check (FollowLead lead) $
-              suit card `List.elem` [lead, trump] || Set.null followers
+              check (FollowLead lead) $
+                card.suit `List.elem` [lead, trump] || Set.null followers
           where
             trumps = Set.filter ((== trump) . suit) hand
             highest = maximumBy comp (c :| cs)
@@ -111,9 +119,9 @@ status variant table hand card =
             puur = Card trump Under
         _ ->
           check (FollowLead lead) $
-            suit card == lead || Set.null followers
+            card.suit == lead || Set.null followers
         where
-          lead = suit c
+          lead = c.suit
           followers = Set.filter ((== lead) . suit) hand
           comp = compare variant lead
           check r p = if p then Playable else Unplayable r

@@ -31,6 +31,9 @@ common common
     , ImportQualifiedPost
     , LambdaCase
     , NamedFieldPuns
+    , NoFieldSelectors
+    , DuplicateRecordFields
+    , OverloadedRecordDot
     , OverloadedStrings
     , ScopedTypeVariables
     , TypeApplications
@@ -38,13 +41,13 @@ common common
     , TypeOperators
 
   build-depends:
-    , base ^>=4.14.3.0
+    , base ^>= 4.16.0.0
     , vorspiel
-    , containers ^>=0.6.5.1
-    , finite-typelits ^>=0.1
+    , containers ^>= 0.6.5.1
+    , finite-typelits ^>= 0.1
     , vector-sized ^>= 1.5.0
-    , ghc-typelits-natnormalise ^>=0.7.6
-    , text
+    , ghc-typelits-natnormalise ^>= 0.7.6
+    , text ^>= 1.2.5.0
 
   mixins:
     , base hiding (Prelude)

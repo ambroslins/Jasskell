@@ -6,6 +6,7 @@ import Card
     Reason (..),
     Status (..),
     Suit (..),
+    suit,
   )
 import Card qualified
 import Data.Set qualified as Set
