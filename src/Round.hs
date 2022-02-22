@@ -11,17 +11,18 @@ where
 import Card (Card, Cards)
 import Card qualified
 import Data.Finite (Finite, modulo)
-import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
+import GHC.TypeLits (KnownNat)
 import JassNat (JassNat)
-import Relude.Extra.Lens (over)
+import Lens (over)
+import List qualified
 import Round.Record (Record)
+import Set qualified
 import Trick (Trick)
 import Trick qualified
 import Variant (Variant)
 import Variant qualified
-import Prelude hiding (round)
 
 data Round n = Round
   { hands :: Vector n Cards,
@@ -84,7 +85,7 @@ playCard card round@Round {hands, leader, phase} = case phase of
               }
     where
       player = current round
-      cards' = cards ++ [card]
+      cards' = toList $ List.snoc cards card
       hands' = over (Vector.ix player) (Set.delete card) hands
 
 chooseVariant :: JassNat n => Variant -> Round n -> Either Error (Round n)

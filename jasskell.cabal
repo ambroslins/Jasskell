@@ -31,6 +31,7 @@ common common
     , ImportQualifiedPost
     , LambdaCase
     , NamedFieldPuns
+    , OverloadedStrings
     , ScopedTypeVariables
     , TypeApplications
     , TypeFamilies
@@ -38,16 +39,17 @@ common common
 
   build-depends:
     , base ^>=4.14.3.0
-    , relude ^>=1.0.0.1
+    , vorspiel
     , containers ^>=0.6.5.1
     , finite-typelits ^>=0.1
     , vector-sized ^>= 1.5.0
     , ghc-typelits-natnormalise ^>=0.7.6
+    , text
 
   mixins:
     , base hiding (Prelude)
-    , relude (Relude as Prelude)
-    , relude
+    , vorspiel (Vorspiel as Prelude)
+    , vorspiel
 
 library
   import:           common

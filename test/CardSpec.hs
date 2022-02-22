@@ -9,6 +9,7 @@ import Card
   )
 import Card qualified
 import Data.Set qualified as Set
+import List qualified
 import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck
@@ -37,7 +38,7 @@ spec = do
   describe "value" $ do
     it "totals 152 for all cards" $
       forM_ allVariants $
-        \var -> sum (map (Card.value var) $ toList Card.deck) `shouldBe` 152
+        \var -> sum (List.map (Card.value var) $ toList Card.deck) `shouldBe` 152
     it "returns 20 for puur" $
       Card.value (Trump Bells) (Card Bells Under) `shouldBe` 20
     it "returns 14 for nell" $
@@ -54,7 +55,7 @@ spec = do
        in c1 /= c2 ==> comp c1 c2 =/= comp c2 c1
     prop "on variant 'Trump' matches 'TopDown' if no card is trump" $
       \t l c1 c2 ->
-        t `notElem` map suit [c1, c2]
+        t `List.notElem` List.map suit [c1, c2]
           ==> Card.compare (Trump t) l c1 c2 === Card.compare (Direction TopDown) l c1 c2
     prop "on variants 'Direction' and 'Slalom' match" $
       \d l c1 c2 ->
@@ -95,7 +96,7 @@ spec = do
 
   describe "status" $ do
     prop "returns 'Playable' for some hand card" $ \v t (NonEmpty h) ->
-      disjoin $ map (\c -> Card.status v t (Set.fromList h) c == Card.Playable) h
+      disjoin $ List.map (\c -> Card.status v t (Set.fromList h) c == Card.Playable) h
     prop "returns 'NotInHand' if the card is not in the hand" $ \v t h c ->
       Set.notMember c h ==> Card.status v t h c === Unplayable NotInHand
     prop "returns 'Playable' for a singleton hand" $ \v t c ->
@@ -121,7 +122,7 @@ spec = do
           Undertrump highest ->
             label "Undertrump" $
               conjoin
-                [ counterexample (show (highest, t)) $ highest `elem` t,
+                [ counterexample (show (highest, t)) $ highest `List.elem` t,
                   v === Trump (suit highest),
                   fmap (suit . head) (nonEmpty t) =/= Just (suit highest)
                 ]
@@ -182,8 +183,8 @@ spec = do
 
 allVariants :: [Variant]
 allVariants =
-  (Trump <$> universe)
-    ++ ([Direction, Slalom] <*> [TopDown, BottomUp])
+  (Trump <$> [minBound .. maxBound])
+    <> ([Direction, Slalom] <*> [TopDown, BottomUp])
 
 instance Arbitrary Rank where
   arbitrary = arbitraryBoundedEnum

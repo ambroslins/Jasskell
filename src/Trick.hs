@@ -14,6 +14,7 @@ import Card qualified
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
+import GHC.TypeLits (KnownNat)
 import JassNat (JassNat)
 import Variant (Variant)
 

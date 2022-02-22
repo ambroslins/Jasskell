@@ -1,0 +1,6 @@
+packages: jasskell.cabal
+
+source-repository-package
+  type: git
+  tag: origin/main
+  location: https://github.com/ambroslins/vorspiel.git

@@ -14,8 +14,8 @@ module Card
 where
 
 import Card.Suit
-import Data.Foldable (maximumBy)
-import Data.Set qualified as Set
+import List qualified
+import Set qualified
 import Variant
 import Prelude hiding (compare)
 
@@ -28,7 +28,7 @@ data Card = Card {suit :: Suit, rank :: Rank}
 type Cards = Set Card
 
 deck :: Cards
-deck = Set.fromList $ Card <$> universe <*> universe
+deck = Set.fromList $ Card <$> [minBound .. maxBound] <*> [minBound .. maxBound]
 
 value :: Variant -> Card -> Int
 value variant card = case rank card of
@@ -91,19 +91,19 @@ status variant table hand card =
         Trump trump
           | lead == trump ->
             check (FollowTrump trump) $
-              suit card == trump || null (Set.delete puur trumps)
+              suit card == trump || Set.null (Set.delete puur trumps)
           | suit highest == trump ->
             if suit card == trump
               then
                 check (Undertrump highest) $
                   comp card highest == GT
-                    || (null highers && null (Set.difference hand trumps))
+                    || (Set.null highers && Set.isSubsetOf hand trumps)
               else
                 check (FollowLead lead) $
-                  suit card == lead || null followers
+                  suit card == lead || Set.null followers
           | otherwise ->
             check (FollowLead lead) $
-              suit card `elem` [lead, trump] || null followers
+              suit card `List.elem` [lead, trump] || Set.null followers
           where
             trumps = Set.filter ((== trump) . suit) hand
             highest = maximumBy comp (c :| cs)
@@ -111,7 +111,7 @@ status variant table hand card =
             puur = Card trump Under
         _ ->
           check (FollowLead lead) $
-            suit card == lead || null followers
+            suit card == lead || Set.null followers
         where
           lead = suit c
           followers = Set.filter ((== lead) . suit) hand
