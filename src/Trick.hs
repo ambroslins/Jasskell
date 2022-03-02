@@ -1,37 +1,111 @@
 module Trick
-  ( Trick,
-    make,
+  ( Trick (..),
+    TrickPlaying,
+    TrickClosed,
+    variant,
+    leader,
+    current,
+    cards,
+    new,
+    next,
+    playCard,
     winner,
-    value,
+    points,
   )
 where
 
-import Card (Card)
+import Card (Card, Cards)
 import Card qualified
-import Data.Finite (Finite)
+import Data.Finite (Finite, modulo)
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import GHC.TypeLits (KnownNat)
 import JassNat (JassNat)
+import List qualified
 import Variant (Variant)
+import Variant qualified
 
-data Trick n = Trick
+data Trick n
+  = Playing (TrickPlaying n)
+  | Closed (TrickClosed n)
+  deriving (Eq, Show)
+
+data TrickState f n = TrickState
   { variant :: Variant,
     leader :: Finite n,
-    cards :: Vector n Card
+    cards :: f Card
   }
-  deriving (Show)
 
-make :: KnownNat n => Variant -> Finite n -> [Card] -> Maybe (Trick n)
-make var l cs = Trick var l . rotate (negate l) <$> Vector.fromList cs
+deriving instance Eq (f Card) => Eq (TrickState f n)
 
-winner :: JassNat n => Trick n -> Finite n
-winner Trick {leader, cards, variant} = Vector.maxIndexBy (Card.compare variant lead) cards
+deriving instance Show (f Card) => Show (TrickState f n)
+
+newtype TrickPlaying n = TrickPlaying (TrickState [] n)
+  deriving newtype (Eq, Show)
+
+newtype TrickClosed n = TrickClosed (TrickState (Vector n) n)
+  deriving newtype (Eq, Show)
+
+variant :: Trick n -> Variant
+variant = \case
+  Playing (TrickPlaying trick) -> trick.variant
+  Closed (TrickClosed trick) -> trick.variant
+
+leader :: Trick n -> Finite n
+leader = \case
+  Playing (TrickPlaying trick) -> trick.leader
+  Closed (TrickClosed trick) -> trick.leader
+
+current :: KnownNat n => TrickPlaying n -> Finite n
+current (TrickPlaying trick) = trick.leader + modulo (fromIntegral $ length trick.cards)
+
+cards :: KnownNat n => Trick n -> Vector n (Maybe Card)
+cards = \case
+  Playing (TrickPlaying trick) ->
+    Vector.accum
+      (const Just)
+      (Vector.replicate Nothing)
+      (List.zip [trick.leader ..] trick.cards)
+  Closed (TrickClosed trick) ->
+    Just <$> trick.cards
+
+new :: Variant -> Finite n -> TrickPlaying n
+new v l =
+  TrickPlaying $
+    TrickState
+      { variant = v,
+        leader = l,
+        cards = []
+      }
+
+next :: JassNat n => TrickClosed n -> TrickPlaying n
+next (TrickClosed trick) =
+  TrickPlaying $
+    TrickState
+      { variant = Variant.next trick.variant,
+        leader = winner (TrickClosed trick),
+        cards = []
+      }
+
+playCard :: KnownNat n => Cards -> Card -> TrickPlaying n -> Either Card.Reason (Trick n)
+playCard hand card (TrickPlaying trick) =
+  case Card.status trick.variant trick.cards hand card of
+    Card.Unplayable reason -> Left reason
+    Card.Playable -> pure $ case Vector.fromList cs of
+      Nothing -> Playing $ TrickPlaying trick {cards = cs}
+      Just vec ->
+        Closed $
+          TrickClosed trick {cards = rotate (negate trick.leader) vec}
   where
-    lead = Card.suit $ Vector.index cards leader
+    cs = List.snoc trick.cards card
 
-value :: Trick n -> Int
-value Trick {cards, variant} = sum $ Vector.map (Card.value variant) cards
+winner :: JassNat n => TrickClosed n -> Finite n
+winner (TrickClosed trick) = Vector.maxIndexBy (Card.compare trick.variant lead) trick.cards
+  where
+    lead = Card.suit $ Vector.index trick.cards trick.leader
+
+points :: TrickClosed n -> Int
+points (TrickClosed trick) = Vector.sum $ Vector.map (Card.value trick.variant) trick.cards
 
 rotate :: KnownNat n => Finite n -> Vector n a -> Vector n a
 rotate n v = Vector.generate (\i -> Vector.index v $ i + n)

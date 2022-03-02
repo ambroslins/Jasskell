@@ -2,5 +2,5 @@ packages: jasskell.cabal
 
 source-repository-package
   type: git
-  tag: origin/main
+  tag: 75572425d8959d6dc33b6dd4ae7ce481f37cfb59
   location: https://github.com/ambroslins/vorspiel.git
