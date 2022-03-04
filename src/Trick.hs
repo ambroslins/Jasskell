@@ -16,6 +16,7 @@ where
 
 import Card (Card, Cards)
 import Card qualified
+import Control.Monad.Except
 import Data.Finite (Finite, modulo)
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
@@ -87,10 +88,10 @@ next (TrickClosed trick) =
         cards = []
       }
 
-playCard :: KnownNat n => Cards -> Card -> TrickPlaying n -> Either Card.Reason (Trick n)
+playCard :: (MonadError Card.Reason m, KnownNat n) => Cards -> Card -> TrickPlaying n -> m (Trick n)
 playCard hand card (TrickPlaying trick) =
   case Card.status trick.variant trick.cards hand card of
-    Card.Unplayable reason -> Left reason
+    Card.Unplayable reason -> throwError reason
     Card.Playable -> pure $ case Vector.fromList cs of
       Nothing -> Playing $ TrickPlaying trick {cards = cs}
       Just vec ->

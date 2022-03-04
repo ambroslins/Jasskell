@@ -1,6 +1,8 @@
 module Round
   ( Round,
-    Record,
+    RoundStarting,
+    RoundPlaying,
+    RoundFinished,
     current,
     playCard,
     chooseVariant,
@@ -9,13 +11,13 @@ where
 
 import Card (Card, Cards)
 import Card qualified
+import Control.Monad.Except
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import GHC.TypeLits (Div, KnownNat)
 import JassNat (JassNat)
 import Lens (over)
-import Round.Record (Record)
 import Set qualified
 import Trick (TrickClosed, TrickPlaying)
 import Trick qualified
@@ -25,7 +27,7 @@ import Prelude hiding (round)
 data Round n
   = Starting (RoundStarting n)
   | Playing (RoundPlaying n)
-  | Finished (Vector (Div 36 n) (TrickClosed n))
+  | Finished (RoundFinished n)
   deriving (Show)
 
 data RoundStarting n = RoundStarting
@@ -41,10 +43,13 @@ data RoundPlaying n = RoundPlaying
   }
   deriving (Show)
 
+newtype RoundFinished n = RoundFinished (Vector (Div 36 n) (TrickClosed n))
+  deriving newtype (Eq, Show)
+
 current :: KnownNat n => RoundPlaying n -> Finite n
 current round = Trick.current round.trick
 
-playCard :: JassNat n => Card -> RoundPlaying n -> Either Card.Reason (Round n)
+playCard :: (MonadError Card.Reason m, JassNat n) => Card -> RoundPlaying n -> m (Round n)
 playCard card round =
   Trick.playCard hand card round.trick <&> \case
     Trick.Playing trick ->
@@ -65,7 +70,7 @@ playCard card round =
             )
        in maybe
             playing
-            (Finished . Vector.reverse)
+            (Finished . RoundFinished . Vector.reverse)
             (Vector.fromList tricks)
   where
     ix = current round

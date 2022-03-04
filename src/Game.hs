@@ -1,14 +1,16 @@
 module Game where
 
-import Round (Round)
-import Round qualified
+import Round (Round, RoundFinished)
 
 data Game n = Game
   { round :: Round n,
-    previousRounds :: [Round.Record n],
+    previousRounds :: [RoundFinished n],
     settings :: Settings
   }
   deriving (Show)
 
 data Settings = Settings
+  deriving (Show)
+
+data Error = Error
   deriving (Show)
