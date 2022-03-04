@@ -1,5 +1,5 @@
 module Round
-  ( Round,
+  ( Round (..),
     RoundStarting,
     RoundPlaying,
     RoundFinished,
