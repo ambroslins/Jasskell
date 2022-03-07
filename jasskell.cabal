@@ -58,7 +58,6 @@ library
     , Card.Suit
     , Game
     , Round
-    , Round.Record
     , Table
     , JassNat
     , Trick

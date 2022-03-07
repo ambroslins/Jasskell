@@ -5,15 +5,19 @@ import Card qualified
 import Control.Monad.Except
 import Data.Finite (Finite)
 import JassNat (JassNat)
-import Round (Round, RoundFinished)
 import Round qualified
 import Prelude hiding (round)
 
 data Game n = Game
-  { round :: Round n,
-    previousRounds :: [RoundFinished n],
+  { round :: SomeRound n,
+    previousRounds :: [Round.Finished n],
     settings :: Settings
   }
+  deriving (Show)
+
+data SomeRound n
+  = Starting (Round.Starting n)
+  | Playing (Round.Playing n)
   deriving (Show)
 
 data Settings = Settings
@@ -23,27 +27,24 @@ data Error
   = CardUnplayable Card.Reason
   | VariantNotDefined
   | VariantAlreadyDefined
-  | AlreadyFinished
   | NotYourTurn
   deriving (Show)
 
-update :: JassNat n => Finite n -> Action -> Game n -> Except Error (Game n)
-update player action game =
-  case action of
+update :: (MonadError Error m, JassNat n) => Finite n -> Action -> Game n -> m (Game n)
+update player action game = do
+  liftEither <=< runExceptT $ case action of
     PlayCard card -> case game.round of
-      Round.Starting _ -> throwError VariantNotDefined
-      Round.Finished _ -> throwError AlreadyFinished
-      Round.Playing round ->
+      Starting _ -> throwError VariantNotDefined
+      Playing round ->
         if player /= Round.current round
           then throwError NotYourTurn
           else
-            withExcept CardUnplayable $
-              updateRound <$> Round.playCard card round
+            withExceptT CardUnplayable $
+              updateRound . either Playing undefined <$> Round.playCard card round
     ChooseVariant variant -> case game.round of
-      Round.Playing _ -> throwError VariantAlreadyDefined
-      Round.Finished _ -> throwError AlreadyFinished
-      Round.Starting round ->
-        pure . updateRound . Round.Playing $
+      Playing _ -> throwError VariantAlreadyDefined
+      Starting round ->
+        pure . updateRound . Playing $
           Round.chooseVariant variant round
   where
     updateRound round = game {round = round}
