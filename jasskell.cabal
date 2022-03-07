@@ -43,6 +43,7 @@ common common
     , ghc-typelits-natnormalise ^>= 0.7.6
     , text ^>= 1.2.5.0
     , mtl ^>= 2.2.2
+    , free ^>= 5.1.7
 
   mixins:
     , base hiding (Prelude)
@@ -57,6 +58,7 @@ library
     , Card
     , Card.Suit
     , Game
+    , Jass
     , Round
     , Table
     , JassNat

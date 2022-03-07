@@ -1,78 +1,45 @@
 module Round
-  ( Starting,
-    Playing,
-    Finished,
-    current,
-    playCard,
-    chooseVariant,
+  ( Round,
+    play,
   )
 where
 
-import Card (Card, Cards)
-import Card qualified
+import Action
+import Card (Cards)
 import Control.Monad.Except
+import Control.Monad.State (MonadState, evalStateT, get)
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
-import GHC.TypeLits (Div, KnownNat)
-import JassNat (JassNat)
-import Lens (over)
-import Set qualified
+import GHC.TypeLits (Div)
+import Jass
+import Trick (Trick)
 import Trick qualified
 import Variant (Variant)
-import Prelude hiding (round)
+import Variant qualified
 
-data Starting n = Starting
-  { hands :: Vector n Cards,
-    leader :: Finite n
-  }
+newtype Round n = Round (Vector (Div 36 n) (Trick n))
   deriving (Show)
 
-data Playing n = Playing
-  { hands :: Vector n Cards,
-    trick :: Trick.Playing n,
-    tricks :: [Trick.Closed n]
-  }
-  deriving (Show)
+play :: MonadJass n m => Vector n Cards -> Finite n -> m (Round n)
+play hands leader = evalStateT (playRound leader) hands
 
-newtype Finished n = Finished (Vector (Div 36 n) (Trick.Closed n))
-  deriving newtype (Eq, Show)
-
-current :: KnownNat n => Playing n -> Finite n
-current round = Trick.current round.trick
-
-playCard :: (MonadError Card.Reason m, JassNat n) => Card -> Playing n -> m (Either (Playing n) (Finished n))
-playCard card round =
-  Trick.playCard hand card round.trick <&> \case
-    Left trickPlaying ->
-      Left
-        round
-          { hands = hands,
-            trick = trickPlaying
+playRound :: forall n m. (MonadJass n m, MonadState (Vector n Cards) m) => Finite n -> m (Round n)
+playRound roundLeader = do
+  hands <- get
+  let gameView ix =
+        GameView
+          { trick = Vector.replicate Nothing,
+            variant = Nothing,
+            hand = Vector.index hands ix
           }
-    Right trickClosed ->
-      let tricks = trickClosed : round.tricks
-          playing =
-            ( Left
-                round
-                  { hands = hands,
-                    trick = Trick.next trickClosed,
-                    tricks = tricks
-                  }
-            )
-       in maybe
-            playing
-            (Right . Finished . Vector.reverse)
-            (Vector.fromList tricks)
+  variant <- withPlayerAction gameView roundLeader $ \case
+    PlayCard _ -> throwError VariantNotDefined
+    ChooseVariant var -> pure var
+  playTricks [] variant roundLeader
   where
-    ix = current round
-    hand = Vector.index round.hands ix
-    hands = over (Vector.ix ix) (Set.delete card) round.hands
-
-chooseVariant :: Variant -> Starting n -> Playing n
-chooseVariant variant round =
-  Playing
-    { hands = round.hands,
-      trick = Trick.new variant round.leader,
-      tricks = []
-    }
+    playTricks :: [Trick n] -> Variant -> Finite n -> m (Round n)
+    playTricks tricks variant leader = maybe (go tricks variant leader) (pure . Round . Vector.reverse) $ Vector.fromList tricks
+    go tricks variant leader = do
+      trick <- Trick.play variant leader
+      playTricks (trick : tricks) (Variant.next variant) (Trick.winner trick)

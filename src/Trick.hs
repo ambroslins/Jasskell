@@ -1,83 +1,70 @@
 module Trick
-  ( Playing,
-    Closed,
-    current,
-    new,
-    next,
-    playCard,
+  ( Trick,
+    play,
     winner,
     points,
   )
 where
 
+import Action
 import Card (Card, Cards)
 import Card qualified
 import Control.Monad.Except
-import Data.Finite (Finite, modulo)
+import Control.Monad.State (MonadState, get, modify)
+import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import GHC.TypeLits (KnownNat)
+import Jass
 import JassNat (JassNat)
+import Lens (over)
 import List qualified
+import Set qualified
 import Variant (Variant)
-import Variant qualified
 
-data TrickState f n = TrickState
+data Trick n = Trick
   { variant :: Variant,
     leader :: Finite n,
-    cards :: f Card
+    cards :: Vector n Card
   }
+  deriving (Eq, Show)
 
-deriving instance Eq (f Card) => Eq (TrickState f n)
-
-deriving instance Show (f Card) => Show (TrickState f n)
-
-newtype Playing n = Playing (TrickState [] n)
-  deriving newtype (Eq, Show)
-
-newtype Closed n = Closed (TrickState (Vector n) n)
-  deriving newtype (Eq, Show)
-
-current :: KnownNat n => Playing n -> Finite n
-current (Playing trick) = trick.leader + modulo (fromIntegral $ length trick.cards)
-
-new :: Variant -> Finite n -> Playing n
-new v l =
-  Playing $
-    TrickState
-      { variant = v,
-        leader = l,
-        cards = []
-      }
-
-next :: JassNat n => Closed n -> Playing n
-next (Closed trick) =
-  Playing $
-    TrickState
-      { variant = Variant.next trick.variant,
-        leader = winner (Closed trick),
-        cards = []
-      }
-
-playCard :: (MonadError Card.Reason m, KnownNat n) => Cards -> Card -> Playing n -> m (Either (Playing n) (Closed n))
-playCard hand card (Playing trick) =
-  case Card.status trick.variant trick.cards hand card of
-    Card.Unplayable reason -> throwError reason
-    Card.Playable -> pure $ case Vector.fromList cs of
-      Nothing -> Left $ Playing trick {cards = cs}
-      Just vec ->
-        Right $
-          Closed trick {cards = rotate (negate trick.leader) vec}
+play :: (MonadJass n m, MonadState (Vector n Cards) m) => Variant -> Finite n -> m (Trick n)
+play variant leader = playCard []
   where
-    cs = List.snoc trick.cards card
+    playCard cards = maybe (go cards) (pure . close) $ Vector.fromList cards
+    close cards = Trick {variant, leader, cards = rotate (negate leader) cards}
+    go cards = do
+      hands <- get
+      let player = leader + fromIntegral (length cards)
+          hand = Vector.index hands player
+          gameView ix =
+            GameView
+              { trick =
+                  rotate ix $
+                    Vector.accum
+                      (const Just)
+                      (Vector.replicate Nothing)
+                      (List.zip [leader ..] cards),
+                variant = Just variant,
+                hand = Vector.index hands ix
+              }
+      card <- withPlayerAction gameView player $ \case
+        ChooseVariant _ -> throwError VariantAlreadyDefined
+        PlayCard c -> do
+          case Card.status variant cards hand c of
+            Card.Unplayable reason -> throwError $ CardUnplayable reason
+            Card.Playable -> pure c
+      modify (over (Vector.ix player) (Set.delete card))
+      playCard (List.snoc cards card)
 
-winner :: JassNat n => Closed n -> Finite n
-winner (Closed trick) = Vector.maxIndexBy (Card.compare trick.variant lead) trick.cards
+winner :: JassNat n => Trick n -> Finite n
+winner trick = Vector.maxIndexBy (Card.compare trick.variant lead) trick.cards
   where
     lead = Card.suit $ Vector.index trick.cards trick.leader
 
-points :: Closed n -> Int
-points (Closed trick) = Vector.sum $ Vector.map (Card.value trick.variant) trick.cards
+points :: Trick n -> Int
+points trick = Vector.sum $ Vector.map (Card.value trick.variant) trick.cards
 
 rotate :: KnownNat n => Finite n -> Vector n a -> Vector n a
 rotate n v = Vector.generate (\i -> Vector.index v $ i + n)
