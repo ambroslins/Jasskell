@@ -33,7 +33,7 @@ playRound roundLeader = do
             variant = Nothing,
             hand = Vector.index hands ix
           }
-  variant <- withPlayerAction gameView roundLeader $ \case
+  variant <- prompt roundLeader gameView $ \case
     PlayCard _ -> throwError VariantNotDefined
     ChooseVariant var -> pure var
   playTricks [] variant roundLeader

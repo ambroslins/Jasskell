@@ -49,7 +49,7 @@ play variant leader = playCard []
                 variant = Just variant,
                 hand = Vector.index hands ix
               }
-      card <- withPlayerAction gameView player $ \case
+      card <- prompt player gameView $ \case
         ChooseVariant _ -> throwError VariantAlreadyDefined
         PlayCard c -> do
           case Card.status variant cards hand c of

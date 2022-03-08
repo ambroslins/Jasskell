@@ -29,18 +29,8 @@ data Error
   deriving (Show)
 
 data Jass n next
-  = Prompt (Finite n -> GameView n) (Finite n) (Action -> next)
-  | ReportError (Finite n) (Error) next
-  deriving (Functor)
+  = forall a. Prompt (Finite n) (Finite n -> GameView n) (Action -> Except Error a) (a -> next)
+
+deriving instance Functor (Jass n)
 
 makeFree ''Jass
-
-withPlayerAction :: MonadFree (Jass n) m => (Finite n -> GameView n) -> Finite n -> (Action -> ExceptT Error m a) -> m a
-withPlayerAction view player m = do
-  action <- prompt view player
-  result <- runExceptT $ m action
-  case result of
-    Right a -> pure a
-    Left e -> do
-      reportError player e
-      withPlayerAction view player m
