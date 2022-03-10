@@ -6,7 +6,6 @@ module Trick
   )
 where
 
-import Action
 import Card (Card, Cards)
 import Card qualified
 import Control.Monad.Except
@@ -16,11 +15,11 @@ import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import GHC.TypeLits (KnownNat)
 import Jass
-import JassNat (JassNat)
 import Lens (over)
 import List qualified
 import Set qualified
 import Variant (Variant)
+import View qualified
 
 data Trick n = Trick
   { variant :: Variant,
@@ -38,23 +37,11 @@ play variant leader = playCard []
       hands <- get
       let player = leader + fromIntegral (length cards)
           hand = Vector.index hands player
-          gameView ix =
-            GameView
-              { trick =
-                  rotate ix $
-                    Vector.accum
-                      (const Just)
-                      (Vector.replicate Nothing)
-                      (List.zip [leader ..] cards),
-                variant = Just variant,
-                hand = Vector.index hands ix
-              }
-      card <- prompt player gameView $ \case
-        ChooseVariant _ -> throwError VariantAlreadyDefined
-        PlayCard c -> do
-          case Card.status variant cards hand c of
-            Card.Unplayable reason -> throwError $ CardUnplayable reason
-            Card.Playable -> pure c
+          view = View.playing leader variant hands cards
+      card <- promptCard player view $
+        \c -> case Card.status variant cards hand c of
+          Card.Unplayable reason -> throwError reason
+          Card.Playable -> pure c
       modify (over (Vector.ix player) (Set.delete card))
       playCard (List.snoc cards card)
 

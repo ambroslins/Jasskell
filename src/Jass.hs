@@ -2,35 +2,23 @@
 
 module Jass where
 
-import Action (Action)
-import Card (Card, Cards)
+import Card (Card)
 import Card qualified
 import Control.Monad.Except
 import Control.Monad.Free
 import Control.Monad.Free.TH (makeFree)
 import Data.Finite (Finite)
-import Data.Vector.Sized (Vector)
-import JassNat (JassNat)
+import GHC.TypeLits (Div, KnownNat, type (+), type (-))
 import Variant (Variant)
-
-data GameView n = GameView
-  { trick :: Vector n (Maybe Card),
-    variant :: Maybe Variant,
-    hand :: Cards
-  }
-  deriving (Show)
-
-type MonadJass n m = (JassNat n, MonadFree (Jass n) m)
-
-data Error
-  = CardUnplayable Card.Reason
-  | VariantAlreadyDefined
-  | VariantNotDefined
-  deriving (Show)
+import View (Declaring, Playing, View)
 
 data Jass n next
-  = forall a. Prompt (Finite n) (Finite n -> GameView n) (Action -> Except Error a) (a -> next)
-
-deriving instance Functor (Jass n)
+  = PromptCard (Finite n) (View Playing n) (Card -> Except Card.Reason Card) (Card -> next)
+  | PromptVariant (Finite n) (View Declaring n) (Variant -> Except () Variant) (Variant -> next)
+  deriving (Functor)
 
 makeFree ''Jass
+
+type JassNat n = (KnownNat n, KnownNat (Div 36 n), n ~ ((n - 1) + 1))
+
+type MonadJass n m = (JassNat n, MonadFree (Jass n) m)

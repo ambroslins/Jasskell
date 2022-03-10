@@ -4,9 +4,7 @@ module Round
   )
 where
 
-import Action
 import Card (Cards)
-import Control.Monad.Except
 import Control.Monad.State (MonadState, evalStateT, get)
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
@@ -17,6 +15,7 @@ import Trick (Trick)
 import Trick qualified
 import Variant (Variant)
 import Variant qualified
+import View qualified
 
 newtype Round n = Round (Vector (Div 36 n) (Trick n))
   deriving (Show)
@@ -27,15 +26,8 @@ play hands leader = evalStateT (playRound leader) hands
 playRound :: forall n m. (MonadJass n m, MonadState (Vector n Cards) m) => Finite n -> m (Round n)
 playRound roundLeader = do
   hands <- get
-  let gameView ix =
-        GameView
-          { trick = Vector.replicate Nothing,
-            variant = Nothing,
-            hand = Vector.index hands ix
-          }
-  variant <- prompt roundLeader gameView $ \case
-    PlayCard _ -> throwError VariantNotDefined
-    ChooseVariant var -> pure var
+  let view = View.declaring roundLeader hands
+  variant <- promptVariant roundLeader view pure
   playTricks [] variant roundLeader
   where
     playTricks :: [Trick n] -> Variant -> Finite n -> m (Round n)
