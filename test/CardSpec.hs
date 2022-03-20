@@ -3,23 +3,15 @@ module CardSpec where
 import Card
   ( Card (..),
     Rank (..),
-    Reason (..),
-    Status (..),
     Suit (..),
     suit,
   )
 import Card qualified
-import Data.Set qualified as Set
 import List qualified
 import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck
-  ( conjoin,
-    counterexample,
-    discard,
-    disjoin,
-    elements,
-    label,
+  ( elements,
     (=/=),
     (===),
     (==>),
@@ -28,7 +20,6 @@ import Test.QuickCheck.Arbitrary
   ( Arbitrary (arbitrary),
     arbitraryBoundedEnum,
   )
-import Test.QuickCheck.Modifiers (NonEmptyList (..))
 import Variant
 
 spec :: Spec
@@ -95,6 +86,7 @@ spec = do
           (Card Bells King, Card Hearts Seven)
         ]
 
+{-
   describe "status" $ do
     prop "returns 'Playable' for some hand card" $ \v t (NonEmpty h) ->
       disjoin $ List.map (\c -> Card.status v t (Set.fromList h) c == Card.Playable) h
@@ -181,6 +173,7 @@ spec = do
   describe "isPlayable" $ do
     prop "matches 'Card.status'" $ \v t h c ->
       Card.isPlayable v t h c === (Card.status v t h c == Playable)
+-}
 
 allVariants :: [Variant]
 allVariants =

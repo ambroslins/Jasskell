@@ -8,7 +8,6 @@ where
 
 import Card (Card, Cards)
 import Card qualified
-import Control.Monad.Except
 import Control.Monad.State (MonadState, get, modify)
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
@@ -35,14 +34,11 @@ play variant leader = playCard []
     close cards = Trick {variant, leader, cards = rotate (negate leader) cards}
     go cards = do
       hands <- get
-      let player = leader + fromIntegral (length cards)
-          hand = Vector.index hands player
-          view = View.playing leader variant hands cards
-      card <- promptCard player view $
-        \c -> case Card.status variant cards hand c of
-          Card.Unplayable reason -> throwError reason
-          Card.Playable -> pure c
-      modify (over (Vector.ix player) (Set.delete card))
+      let view = View.makePlaying leader variant hands cards
+          player = View.current $ view 0
+      playableCard <- promptCard view
+      let card = playableCard.card
+      modify $ over (Vector.ix player) (Set.delete card)
       playCard (List.snoc cards card)
 
 winner :: JassNat n => Trick n -> Finite n

@@ -26,8 +26,8 @@ play hands leader = evalStateT (playRound leader) hands
 playRound :: forall n m. (MonadJass n m, MonadState (Vector n Cards) m) => Finite n -> m (Round n)
 playRound roundLeader = do
   hands <- get
-  let view = View.declaring roundLeader hands
-  variant <- promptVariant roundLeader view pure
+  let view = View.makeDeclaring roundLeader hands
+  variant <- promptVariant view
   playTricks [] variant roundLeader
   where
     playTricks :: [Trick n] -> Variant -> Finite n -> m (Round n)

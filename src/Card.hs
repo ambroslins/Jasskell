@@ -2,7 +2,7 @@ module Card
   ( Card (Card),
     Suit (..),
     Rank (..),
-    Status (..),
+    Playable (card),
     Reason (..),
     Cards,
     rank,
@@ -10,8 +10,7 @@ module Card
     deck,
     value,
     compare,
-    status,
-    isPlayable,
+    validate,
   )
 where
 
@@ -77,24 +76,23 @@ compare variant lead = case variant of
            )
         <> comparing suit
 
-data Status
-  = Playable
-  | Unplayable Reason
-  deriving (Eq, Show)
+newtype Playable = Playable {card :: Card}
+  deriving (Eq, Ord, Show)
 
 data Reason
   = NotInHand
+  | NotYourTurn
   | FollowTrump Suit
   | FollowLead Suit
   | Undertrump Card
   deriving (Eq, Show)
 
-status :: Variant -> [Card] -> Cards -> Card -> Status
-status variant table hand card =
+validate :: Variant -> [Card] -> Cards -> Card -> Either Reason Playable
+validate variant table hand card =
   if Set.notMember card hand
-    then Unplayable NotInHand
+    then Left $ NotInHand
     else case table of
-      [] -> Playable
+      [] -> Right $ Playable card
       (c : cs) -> case variant of
         Trump trump
           | lead == trump ->
@@ -124,7 +122,4 @@ status variant table hand card =
           lead = c.suit
           followers = Set.filter ((== lead) . suit) hand
           comp = compare variant lead
-          check r p = if p then Playable else Unplayable r
-
-isPlayable :: Variant -> [Card] -> Cards -> Card -> Bool
-isPlayable variant table hand card = status variant table hand card == Playable
+          check r p = if p then Right $ Playable card else Left r
