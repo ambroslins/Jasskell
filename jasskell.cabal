@@ -27,6 +27,7 @@ common common
   default-extensions:
     , ConstraintKinds
     , DataKinds
+    , DeriveFunctor
     , FlexibleContexts
     , ImportQualifiedPost
     , LambdaCase
@@ -43,6 +44,8 @@ common common
     , finite-typelits ^>=0.1
     , vector-sized ^>= 1.5.0
     , ghc-typelits-natnormalise ^>=0.7.6
+    , mtl ^>= 2.2.2
+    , free ^>= 5.1.7
 
   mixins:
     , base hiding (Prelude)
@@ -59,7 +62,7 @@ library
     , Round
     , Round.Record
     , Table
-    , JassNat
+    , Jass
     , Trick
     , User
     , Variant
