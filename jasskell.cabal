@@ -45,6 +45,7 @@ common common
     , mtl ^>= 2.2.2
     , free ^>= 5.1.7
     , random ^>= 1.2.1
+    , stm ^>= 2.5
 
   mixins:
     , base hiding (Prelude)
