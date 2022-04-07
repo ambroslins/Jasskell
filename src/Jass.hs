@@ -7,12 +7,11 @@ import Control.Monad.Free (MonadFree, liftF)
 import Control.Monad.Free.TH (makeFree)
 import GHC.TypeLits (Div, type (+), type (-))
 import Variant (Variant)
-
-data View :: Nat -> Type
+import View (Phase (..), Views)
 
 data Jass n next
-  = PromptCard (View n) (Card -> next)
-  | PromptVariant (View n) (Variant -> next)
+  = PromptCard (Views 'Playing n) (Card -> next)
+  | PromptVariant (Views 'Declaring n) (Variant -> next)
   deriving (Functor)
 
 makeFree ''Jass
