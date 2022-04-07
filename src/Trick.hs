@@ -34,7 +34,7 @@ play variant leader = close <$> unfoldrM playCard []
     playCard cs = do
       hands <- get
       let current = leader + fromIntegral (length cs)
-          views = View.makePlaying hands leader variant
+          views = View.makePlaying hands leader variant cs
       card <- promptCard views
       modify $ over (Vector.ix current) (Set.delete card)
       pure (card, cs ++ [card])

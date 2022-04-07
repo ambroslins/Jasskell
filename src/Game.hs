@@ -1,7 +1,28 @@
 module Game where
 
+import Card (Suit (Bells))
+import Control.Monad.Free (Free, iter)
+import Data.Set qualified as Set
+import Jass (Jass (..), MonadJass, deal)
 import Round (Round)
-import Prelude hiding (round)
+import Round qualified
+import System.Random (RandomGen)
+import Variant (Variant (Trump))
+import View qualified
 
 newtype Game n = Game {rounds :: NonEmpty (Round n)}
   deriving (Show)
+
+play :: (MonadJass n m, RandomGen g) => g -> m (Game n)
+play = evalStateT $ do
+  hands <- state deal
+  r <- Round.play 0 hands
+  pure $ Game (r :| [])
+
+run :: KnownNat n => Free (Jass n) (Game n) -> Game n
+run = iter $ \case
+  PromptCard views next ->
+    let current = View.current (views 0)
+        hand = View.hand (views current)
+     in next (Set.elemAt 0 hand)
+  PromptVariant _ next -> next $ Trump Bells

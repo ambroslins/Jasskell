@@ -30,8 +30,11 @@ play leader = evalStateT $ do
 
 iterateM :: (KnownNat n, Monad m) => (a -> m a) -> a -> m (Vector n a)
 iterateM f = evalStateT $
-  Vector.replicateM $ do
-    x <- get
-    y <- lift (f x)
-    put y
-    pure y
+  Vector.generateM $ \i ->
+    if i == 0
+      then get
+      else do
+        x <- get
+        y <- lift (f x)
+        put y
+        pure y

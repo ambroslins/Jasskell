@@ -6,6 +6,7 @@ module View
     makeDeclaring,
     hand,
     leader,
+    current,
     variant,
   )
 where
@@ -31,21 +32,26 @@ data View phase n = View
 type Views phase n = Finite n -> View phase n
 
 data PhaseView :: Phase -> Nat -> Type where
-  PhasePlaying :: Variant -> PhaseView 'Playing n
+  PhasePlaying :: Variant -> [Card] -> PhaseView 'Playing n
   PhaseDeclaring :: PhaseView 'Declaring n
 
 deriving instance Show (PhaseView phase n)
 
+current :: KnownNat n => View phase n -> Finite n
+current View {leader, phase} = case phase of
+  PhasePlaying _ cs -> leader + fromIntegral (length cs)
+  PhaseDeclaring -> leader
+
 variant :: View 'Playing n -> Variant
 variant View {phase} = case phase of
-  PhasePlaying v -> v
+  PhasePlaying v _ -> v
 
-makePlaying :: KnownNat n => Vector n Cards -> Finite n -> Variant -> Views 'Playing n
-makePlaying hands l v i =
+makePlaying :: KnownNat n => Vector n Cards -> Finite n -> Variant -> [Card] -> Views 'Playing n
+makePlaying hands l v cs i =
   View
     { hand = Vector.index hands i,
       leader = l - i,
-      phase = PhasePlaying v
+      phase = PhasePlaying v cs
     }
 
 makeDeclaring :: KnownNat n => Vector n Cards -> Finite n -> Views 'Declaring n
