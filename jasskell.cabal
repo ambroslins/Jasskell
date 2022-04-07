@@ -48,6 +48,7 @@ common common
     , ghc-typelits-natnormalise ^>=0.7.6
     , mtl ^>= 2.2.2
     , free ^>= 5.1.7
+    , random ^>= 1.2.1
 
   mixins:
     , base hiding (Prelude)
