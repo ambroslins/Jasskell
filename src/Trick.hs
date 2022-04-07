@@ -1,20 +1,22 @@
 module Trick
   ( Trick,
+    play,
     variant,
     leader,
     cards,
-    make,
     winner,
-    value,
+    points,
   )
 where
 
-import Card (Card)
+import Card (Card, Cards)
 import Card qualified
 import Data.Finite (Finite)
+import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
-import JassNat (JassNat)
+import Jass (JassNat, MonadJass, promptCard)
+import Relude.Extra.Lens (over)
 import Variant (Variant)
 
 data Trick n = Trick
@@ -22,18 +24,35 @@ data Trick n = Trick
     leader :: Finite n,
     cards :: Vector n Card
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
-make :: KnownNat n => Variant -> Finite n -> [Card] -> Maybe (Trick n)
-make var l cs = Trick var l . rotate (negate l) <$> Vector.fromList cs
+play :: (MonadJass n m, MonadState (Vector n Cards) m) => Variant -> Finite n -> m (Trick n)
+play variant leader = close <$> unfoldrM playCard []
+  where
+    close cs = Trick {variant, leader, cards = rotate (negate leader) cs}
+    playCard cs = do
+      let current = leader + fromIntegral (length cs)
+          view = undefined
+      card <- promptCard view
+      modify $ over (Vector.ix current) (Set.delete card)
+      pure (card, cs ++ [card])
 
 winner :: JassNat n => Trick n -> Finite n
 winner Trick {leader, cards, variant} = Vector.maxIndexBy (Card.compare variant lead) cards
   where
     lead = Card.suit $ Vector.index cards leader
 
-value :: Trick n -> Int
-value Trick {cards, variant} = sum $ Vector.map (Card.value variant) cards
+points :: Trick n -> Int
+points Trick {cards, variant} = sum $ Vector.map (Card.value variant) cards
 
 rotate :: KnownNat n => Finite n -> Vector n a -> Vector n a
 rotate n v = Vector.generate (\i -> Vector.index v $ i + n)
+
+unfoldrM :: (KnownNat n, Monad m) => (b -> m (a, b)) -> b -> m (Vector n a)
+unfoldrM f =
+  evalStateT $
+    Vector.replicateM $ do
+      x <- get
+      (y, z) <- lift (f x)
+      put z
+      pure y
