@@ -11,6 +11,7 @@ where
 
 import Card (Card, Cards)
 import Card qualified
+import Card.Valid qualified as Card
 import Data.Finite (Finite)
 import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
@@ -35,7 +36,7 @@ play variant leader = close <$> unfoldrM playCard []
       hands <- get
       let current = leader + fromIntegral (length cs)
           views = View.makePlaying hands leader variant cs
-      card <- promptCard views
+      card <- Card.unvalidate <$> promptCard views
       modify $ over (Vector.ix current) (Set.delete card)
       pure (card, cs ++ [card])
 

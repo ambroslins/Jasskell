@@ -7,11 +7,12 @@ module View
     hand,
     leader,
     current,
+    table,
     variant,
   )
 where
 
-import Card
+import Card (Card, Cards)
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
@@ -45,6 +46,10 @@ current View {leader, phase} = case phase of
 variant :: View 'Playing n -> Variant
 variant View {phase} = case phase of
   PhasePlaying v _ -> v
+
+table :: View 'Playing n -> [Card]
+table View {phase} = case phase of
+  PhasePlaying _ cs -> cs
 
 makePlaying :: KnownNat n => Vector n Cards -> Finite n -> Variant -> [Card] -> Views 'Playing n
 makePlaying hands l v cs i =

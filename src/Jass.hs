@@ -3,6 +3,7 @@
 module Jass where
 
 import Card (Card (..), Cards, Rank (..), Suit (..), deck)
+import Card.Valid (ValidCard)
 import Control.Exception (assert)
 import Control.Monad.Free (MonadFree, liftF)
 import Control.Monad.Free.TH (makeFree)
@@ -18,7 +19,7 @@ import Variant (Variant)
 import View (Phase (..), Views)
 
 data Jass n next
-  = PromptCard (Views 'Playing n) (Card -> next)
+  = PromptCard (Views 'Playing n) (ValidCard -> next)
   | PromptVariant (Views 'Declaring n) (Variant -> next)
   deriving (Functor)
 

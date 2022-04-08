@@ -2,19 +2,14 @@ module Card
   ( Card (..),
     Suit (..),
     Rank (..),
-    Status (..),
-    Reason (..),
     Cards,
     deck,
     value,
     compare,
-    status,
-    isPlayable,
   )
 where
 
 import Card.Suit
-import Data.Foldable (maximumBy)
 import Data.Set qualified as Set
 import Variant
 import Prelude hiding (compare)
@@ -68,55 +63,3 @@ compare variant lead = case variant of
                BottomUp -> comparing (Down . rank)
            )
         <> comparing suit
-
-data Status
-  = Playable
-  | Unplayable Reason
-  deriving (Eq, Show)
-
-data Reason
-  = NotInHand
-  | FollowTrump Suit
-  | FollowLead Suit
-  | Undertrump Card
-  deriving (Eq, Show)
-
-status :: Variant -> [Card] -> Cards -> Card -> Status
-status variant table hand card =
-  if Set.notMember card hand
-    then Unplayable NotInHand
-    else case table of
-      [] -> Playable
-      (c : cs) -> case variant of
-        Trump trump
-          | lead == trump ->
-            check (FollowTrump trump) $
-              suit card == trump || null (Set.delete puur trumps)
-          | suit highest == trump ->
-            if suit card == trump
-              then
-                check (Undertrump highest) $
-                  comp card highest == GT
-                    || (null highers && null (Set.difference hand trumps))
-              else
-                check (FollowLead lead) $
-                  suit card == lead || null followers
-          | otherwise ->
-            check (FollowLead lead) $
-              suit card `elem` [lead, trump] || null followers
-          where
-            trumps = Set.filter ((== trump) . suit) hand
-            highest = maximumBy comp (c :| cs)
-            highers = Set.filter (\x -> comp x highest == GT) hand
-            puur = Card trump Under
-        _ ->
-          check (FollowLead lead) $
-            suit card == lead || null followers
-        where
-          lead = suit c
-          followers = Set.filter ((== lead) . suit) hand
-          comp = compare variant lead
-          check r p = if p then Playable else Unplayable r
-
-isPlayable :: Variant -> [Card] -> Cards -> Card -> Bool
-isPlayable variant table hand card = status variant table hand card == Playable

@@ -1,7 +1,8 @@
 module Game where
 
 import Card (Suit (Bells))
-import Control.Monad.Free (Free, iter)
+import Card.Valid qualified as Card
+import Control.Monad.Free (Free, iterM)
 import Data.Set qualified as Set
 import Jass (Jass (..), MonadJass, deal)
 import Round (Round)
@@ -19,10 +20,10 @@ play = evalStateT $ do
   r <- Round.play 0 hands
   pure $ Game (r :| [])
 
-run :: KnownNat n => Free (Jass n) (Game n) -> Game n
-run = iter $ \case
+run :: KnownNat n => Free (Jass n) (Game n) -> IO (Game n)
+run = iterM $ \case
   PromptCard views next ->
     let current = View.current (views 0)
-        hand = View.hand (views current)
-     in next (Set.elemAt 0 hand)
+        valids = Card.valids $ views current
+     in next (Set.elemAt 0 valids)
   PromptVariant _ next -> next $ Trump Bells
