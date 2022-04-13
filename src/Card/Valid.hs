@@ -1,5 +1,6 @@
 module Card.Valid
   ( ValidCard,
+    Reason (..),
     unvalidate,
     validate,
     valids,
