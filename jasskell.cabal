@@ -22,6 +22,11 @@ common common
   default-language: Haskell2010
   ghc-options:
     -Wall
+    -Wextra
+    -Wcompat
+    -Wincomplete-record-updates
+    -Wincomplete-uni-patterns
+    -Wredundant-constraints
     -fplugin GHC.TypeLits.Normalise
 
   default-extensions:
