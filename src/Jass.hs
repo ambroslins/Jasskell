@@ -16,11 +16,11 @@ import Data.Vector.Sized qualified as Vector
 import GHC.TypeLits (Div, type (+), type (-))
 import System.Random (RandomGen, uniformR)
 import Variant (Variant)
-import View (Phase (..), Views)
+import View (Declaring, Playing, Views)
 
 data Jass n next
-  = PromptCard (Views 'Playing n) (ValidCard -> next)
-  | PromptVariant (Views 'Declaring n) (Variant -> next)
+  = PromptCard (Views Playing n) (ValidCard -> next)
+  | PromptVariant (Views Declaring n) (Variant -> next)
   deriving (Functor)
 
 makeFree ''Jass

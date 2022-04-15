@@ -9,7 +9,7 @@ import Round (Round)
 import Round qualified
 import System.Random (RandomGen)
 import Variant (Variant (Trump))
-import View qualified
+import View.Playing qualified
 
 newtype Game n = Game {rounds :: NonEmpty (Round n)}
   deriving (Show)
@@ -23,7 +23,7 @@ play = evalStateT $ do
 run :: KnownNat n => Free (Jass n) (Game n) -> IO (Game n)
 run = iterM $ \case
   PromptCard views next ->
-    let current = View.current (views 0)
+    let current = View.Playing.current (views 0)
         valids = Card.valids $ views current
      in next (Set.elemAt 0 valids)
   PromptVariant _ next -> next $ Trump Bells

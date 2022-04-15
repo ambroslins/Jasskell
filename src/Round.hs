@@ -14,7 +14,7 @@ import Jass (MonadJass, promptVariant)
 import Trick (Trick)
 import Trick qualified
 import Variant qualified
-import View qualified
+import View.Declaring qualified
 
 newtype Round n = Round {tricks :: Vector (Div 36 n) (Trick n)}
   deriving (Show)
@@ -22,7 +22,7 @@ newtype Round n = Round {tricks :: Vector (Div 36 n) (Trick n)}
 play :: (MonadJass n m) => Finite n -> Vector n Cards -> m (Round n)
 play leader = evalStateT $ do
   hands <- get
-  let views = View.makeDeclaring hands leader
+  let views = View.Declaring.make hands leader
   variant <- promptVariant views
   firstTrick <- Trick.play variant leader
   let playTrick t = Trick.play (Variant.next $ Trick.variant t) (Trick.winner t)

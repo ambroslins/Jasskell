@@ -20,7 +20,7 @@ import Data.Vector.Sized.Extra qualified as Vector
 import Jass (JassNat, MonadJass, promptCard)
 import Relude.Extra.Lens (over)
 import Variant (Variant)
-import View qualified
+import View.Playing qualified
 
 data Trick n = Trick
   { variant :: Variant,
@@ -36,7 +36,7 @@ play variant leader = close <$> Vector.unfoldrM playCard []
     playCard cs = do
       hands <- get
       let current = leader + fromIntegral (length cs)
-          views = View.makePlaying hands leader variant cs
+          views = View.Playing.make hands leader variant cs
       card <- Card.unvalidate <$> promptCard views
       modify $ over (Vector.ix current) (Set.delete card)
       pure (card, cs ++ [card])

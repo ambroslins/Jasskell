@@ -12,8 +12,8 @@ import Card qualified
 import Data.Foldable (maximumBy)
 import Data.Set qualified as Set
 import Variant (Variant (Trump))
-import View (Phase (..), View)
 import View qualified
+import View.Playing qualified
 
 newtype ValidCard = ValidCard {unvalidate :: Card}
   deriving (Eq, Ord, Show)
@@ -26,13 +26,13 @@ data Reason
   | Undertrump Card
   deriving (Eq, Show)
 
-validate :: KnownNat n => View 'Playing n -> Card -> Either Reason ValidCard
+validate :: KnownNat n => View.Playing n -> Card -> Either Reason ValidCard
 validate view card
-  | View.current view /= 0 = Left NotYourTurn
-  | Set.notMember card (View.hand view) = Left NotInHand
-  | otherwise = case View.table view of
+  | View.Playing.current view /= 0 = Left NotYourTurn
+  | Set.notMember card (View.Playing.hand view) = Left NotInHand
+  | otherwise = case View.Playing.table view of
     [] -> pure $ ValidCard card
-    (c : cs) -> case View.variant view of
+    (c : cs) -> case View.Playing.variant view of
       Trump trump
         | lead == trump ->
           check (FollowTrump trump) $
@@ -58,11 +58,11 @@ validate view card
         check (FollowLead lead) $
           suit card == lead || null followers
       where
-        hand = View.hand view
+        hand = View.Playing.hand view
         lead = suit c
         followers = Set.filter ((== lead) . suit) hand
-        comp = Card.compare (View.variant view) lead
+        comp = Card.compare (View.Playing.variant view) lead
         check r p = if p then pure (ValidCard card) else Left r
 
-valids :: KnownNat n => View 'Playing n -> Set ValidCard
-valids view = Set.fromList . rights . map (validate view) . Set.toList $ View.hand view
+valids :: KnownNat n => View.Playing n -> Set ValidCard
+valids view = Set.fromList . rights . map (validate view) . Set.toList $ View.Playing.hand view
