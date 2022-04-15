@@ -8,7 +8,7 @@ where
 import Card (Cards)
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
-import Data.Vector.Sized qualified as Vector
+import Data.Vector.Sized.Extra qualified as Vector
 import GHC.TypeNats (Div)
 import Jass (MonadJass, promptVariant)
 import Trick (Trick)
@@ -26,15 +26,4 @@ play leader = evalStateT $ do
   variant <- promptVariant views
   firstTrick <- Trick.play variant leader
   let playTrick t = Trick.play (Variant.next $ Trick.variant t) (Trick.winner t)
-  Round <$> iterateM playTrick firstTrick
-
-iterateM :: (KnownNat n, Monad m) => (a -> m a) -> a -> m (Vector n a)
-iterateM f = evalStateT $
-  Vector.generateM $ \i ->
-    if i == 0
-      then get
-      else do
-        x <- get
-        y <- lift (f x)
-        put y
-        pure y
+  Round <$> Vector.iterateM playTrick firstTrick

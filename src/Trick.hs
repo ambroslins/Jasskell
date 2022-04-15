@@ -16,6 +16,7 @@ import Data.Finite (Finite)
 import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
+import Data.Vector.Sized.Extra qualified as Vector
 import Jass (JassNat, MonadJass, promptCard)
 import Relude.Extra.Lens (over)
 import Variant (Variant)
@@ -29,9 +30,9 @@ data Trick n = Trick
   deriving (Eq, Show)
 
 play :: (MonadJass n m, MonadState (Vector n Cards) m) => Variant -> Finite n -> m (Trick n)
-play variant leader = close <$> unfoldrM playCard []
+play variant leader = close <$> Vector.unfoldrM playCard []
   where
-    close cs = Trick {variant, leader, cards = rotate (negate leader) cs}
+    close cs = Trick {variant, leader, cards = Vector.rotate (negate leader) cs}
     playCard cs = do
       hands <- get
       let current = leader + fromIntegral (length cs)
@@ -47,15 +48,3 @@ winner Trick {leader, cards, variant} = Vector.maxIndexBy (Card.compare variant 
 
 points :: Trick n -> Int
 points Trick {cards, variant} = sum $ Vector.map (Card.value variant) cards
-
-rotate :: KnownNat n => Finite n -> Vector n a -> Vector n a
-rotate n v = Vector.generate (\i -> Vector.index v $ i + n)
-
-unfoldrM :: (KnownNat n, Monad m) => (b -> m (a, b)) -> b -> m (Vector n a)
-unfoldrM f =
-  evalStateT $
-    Vector.replicateM $ do
-      x <- get
-      (y, z) <- lift (f x)
-      put z
-      pure y
