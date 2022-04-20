@@ -70,6 +70,7 @@ library
     , Card.Suit
     , Card.Valid
     , Game
+    , GameState
     , Round
     , Round.Record
     , Table
