@@ -68,7 +68,6 @@ library
     , Action
     , Card
     , Card.Suit
-    , Card.Valid
     , Game
     , GameState
     , Round

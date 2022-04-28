@@ -1,7 +1,6 @@
 module Game where
 
 import Card (Suit (Bells))
-import Card.Valid qualified as Card
 import Control.Monad.Free (Free, iterM)
 import Data.Set qualified as Set
 import Jass (Jass (..), MonadJass, deal)
@@ -24,6 +23,6 @@ run :: KnownNat n => Free (Jass n) (Game n) -> IO (Game n)
 run = iterM $ \case
   PromptCard views next ->
     let current = View.Playing.current (views 0)
-        valids = Card.valids $ views current
+        valids = View.Playing.playableCards $ views current
      in next (Set.elemAt 0 valids)
   PromptVariant _ next -> next $ Trump Bells

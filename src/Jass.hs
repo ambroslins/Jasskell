@@ -3,7 +3,6 @@
 module Jass where
 
 import Card (Card (..), Cards, Rank (..), Suit (..), deck)
-import Card.Valid (ValidCard)
 import Control.Exception (assert)
 import Control.Monad.Free (MonadFree, liftF)
 import Control.Monad.Free.TH (makeFree)
@@ -16,10 +15,10 @@ import Data.Vector.Sized qualified as Vector
 import GHC.TypeLits (Div, type (+), type (-))
 import System.Random (RandomGen, uniformR)
 import Variant (Variant)
-import View (Declaring, Playing, Views)
+import View (Declaring, PlayableCard, Playing, Views)
 
 data Jass n next
-  = PromptCard (Views Playing n) (ValidCard -> next)
+  = PromptCard (Views Playing n) (PlayableCard -> next)
   | PromptVariant (Views Declaring n) (Variant -> next)
   deriving (Functor)
 
