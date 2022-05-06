@@ -3,6 +3,7 @@ module View
     Declaring,
     Playing,
     PlayableCard,
+    SomeView (..),
   )
 where
 
@@ -11,3 +12,8 @@ import View.Declaring (Declaring)
 import View.Playing (PlayableCard, Playing)
 
 type Views view n = Finite n -> view n
+
+data SomeView n
+  = ViewPlaying (Playing n)
+  | ViewDeclaring (Declaring n)
+  deriving (Show)

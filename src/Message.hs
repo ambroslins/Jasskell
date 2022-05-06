@@ -1,8 +1,9 @@
 module Message where
 
+import Game (Game)
 import View qualified
 
 data Message n
-  = UpdateViewPlaying (View.Playing n)
-  | UpdateViewDeclaring (View.Declaring n)
+  = UpdateView (View.SomeView n)
+  | GameOver (Game n)
   deriving (Show)

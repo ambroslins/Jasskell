@@ -7,6 +7,7 @@ import Data.Finite (Finite)
 import Game (Game)
 import Jass (Jass (..))
 import Variant (Variant)
+import View (SomeView (..))
 import View.Playing qualified
 
 type GameState n = Free (Jass n) (Game n)
@@ -18,7 +19,12 @@ data Error
   | CardUnplayable View.Playing.Reason
   deriving (Show)
 
-withActiveGame :: MonadError Error m => (Jass n (Free (Jass n) (Game n)) -> m (GameState n)) -> GameState n -> m (GameState n)
+views :: Jass n a -> Finite n -> SomeView n
+views = \case
+  PromptCard view _ -> ViewPlaying . view
+  PromptVariant view _ -> ViewDeclaring . view
+
+withActiveGame :: MonadError Error m => (Jass n (GameState n) -> m (GameState n)) -> GameState n -> m (GameState n)
 withActiveGame f = \case
   Pure _ -> throwError GameAlreadyOver
   Free g -> f g
@@ -26,7 +32,7 @@ withActiveGame f = \case
 playCard :: (MonadError Error m, KnownNat n) => Finite n -> Card -> GameState n -> m (GameState n)
 playCard player card = withActiveGame $ \case
   PromptVariant _ _ -> throwError VariantNotDefined
-  PromptCard views play -> case View.Playing.validateCard (views player) card of
+  PromptCard vs play -> case View.Playing.validateCard (vs player) card of
     Left reason -> throwError $ CardUnplayable reason
     Right validCard -> pure $ play validCard
 
