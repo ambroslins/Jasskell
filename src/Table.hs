@@ -36,6 +36,7 @@ join username index t@(Table table) =
       | isJust $ Vector.index users index -> pure Nothing
       | otherwise -> do
         (user, getMsg) <- User.make username
+        messageUsers (\i -> UserJoined username (i - index)) t
         writeTVar table $ Waiting $ set (Vector.ix index) (Just user) users
         pure $
           pure $
@@ -46,18 +47,19 @@ join username index t@(Table table) =
     Playing _ _ -> pure Nothing
 
 update :: JassNat n => Table n -> Finite n -> Action -> STM (Either Error ())
-update (Table table) player action = do
+update t@(Table table) player action = do
   tableState <- readTVar table
   case runExcept $ updateState player action tableState of
     Left e -> pure $ throwError e
     Right (ts, messages) -> do
       writeTVar table ts
-      pure <$> messageUsers messages ts
+      pure <$> messageUsers messages t
 
-messageUsers :: (Finite n -> Message n) -> TableState n -> STM ()
-messageUsers messages = \case
-  Waiting users -> Vector.imapM_ (maybe pass . messageUser) users
-  Playing users _ -> Vector.imapM_ messageUser users
+messageUsers :: (Finite n -> Message n) -> Table n -> STM ()
+messageUsers messages (Table table) =
+  readTVar table >>= \case
+    Waiting users -> Vector.imapM_ (maybe pass . messageUser) users
+    Playing users _ -> Vector.imapM_ messageUser users
   where
     messageUser i user = User.sendMessage user (messages i)
 
