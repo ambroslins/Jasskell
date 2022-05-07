@@ -1,4 +1,4 @@
-module View.Declaring
+module Jasskell.View.Declaring
   ( Declaring,
     hand,
     eldest,
@@ -6,10 +6,10 @@ module View.Declaring
   )
 where
 
-import Card (Cards)
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
+import Jasskell.Card (Cards)
 
 data Declaring n = Declaring
   { hand :: Cards,

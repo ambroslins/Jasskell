@@ -1,4 +1,4 @@
-module Trick
+module Jasskell.Trick
   ( Trick,
     play,
     variant,
@@ -9,17 +9,17 @@ module Trick
   )
 where
 
-import Card (Card, Cards)
-import Card qualified
 import Data.Finite (Finite)
 import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import Data.Vector.Sized.Extra qualified as Vector
-import Jass (JassNat, MonadJass, promptCard)
+import Jasskell.Card (Card, Cards)
+import Jasskell.Card qualified as Card
+import Jasskell.Jass (JassNat, MonadJass, promptCard)
+import Jasskell.Variant (Variant)
+import Jasskell.View.Playing qualified as View.Playing
 import Relude.Extra.Lens (over)
-import Variant (Variant)
-import View.Playing qualified
 
 data Trick n = Trick
   { variant :: Variant,

@@ -1,20 +1,20 @@
-module Round
+module Jasskell.Round
   ( Round,
     tricks,
     play,
   )
 where
 
-import Card (Cards)
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized.Extra qualified as Vector
 import GHC.TypeNats (Div)
-import Jass (MonadJass, promptVariant)
-import Trick (Trick)
-import Trick qualified
-import Variant qualified
-import View.Declaring qualified
+import Jasskell.Card (Cards)
+import Jasskell.Jass (MonadJass, promptVariant)
+import Jasskell.Trick (Trick)
+import Jasskell.Trick qualified as Trick
+import Jasskell.Variant qualified as Variant
+import Jasskell.View.Declaring qualified as View.Declaring
 
 newtype Round n = Round {tricks :: Vector (Div 36 n) (Trick n)}
   deriving (Show)

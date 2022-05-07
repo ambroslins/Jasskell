@@ -1,8 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Jass where
+module Jasskell.Jass where
 
-import Card (Card (..), Cards, Rank (..), Suit (..), deck)
 import Control.Exception (assert)
 import Control.Monad.Free (MonadFree, liftF)
 import Control.Monad.Free.TH (makeFree)
@@ -13,9 +12,10 @@ import Data.Vector.Mutable.Sized qualified as Vector.Mutable
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import GHC.TypeLits (Div, type (+), type (-))
+import Jasskell.Card (Card (..), Cards, Rank (..), Suit (..), deck)
+import Jasskell.Variant (Variant)
+import Jasskell.View (Declaring, PlayableCard, Playing, Views)
 import System.Random (RandomGen, uniformR)
-import Variant (Variant)
-import View (Declaring, PlayableCard, Playing, Views)
 
 data Jass n next
   = PromptCard (Views Playing n) (PlayableCard -> next)

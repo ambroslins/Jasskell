@@ -99,20 +99,20 @@ library
 
   -- Modules exported by the library.
   exposed-modules:
-    , Card
-    , Card.Suit
-    , Game
-    , Jass
-    , Round
-    , Trick
-    , Variant
-    , View
-    , View.Declaring
-    , View.Playing
+    , Jasskell.Card
+    , Jasskell.Game
+    , Jasskell.Jass
+    , Jasskell.Round
+    , Jasskell.Trick
+    , Jasskell.Variant
+    , Jasskell.View
+    , Jasskell.View.Declaring
+    , Jasskell.View.Playing
 
   -- Modules included in this library but not exported.
   other-modules:
     , Data.Vector.Sized.Extra
+    , Jasskell.Card.Suit
 
 test-suite jasskell-core-test
   import:           common

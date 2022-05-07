@@ -1,4 +1,4 @@
-module View.Playing
+module Jasskell.View.Playing
   ( Playing,
     hand,
     variant,
@@ -14,14 +14,14 @@ module View.Playing
   )
 where
 
-import Card (Card, Cards, Suit)
-import Card qualified
 import Data.Finite (Finite)
 import Data.Foldable (maximumBy)
 import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
-import Variant (Variant (..))
+import Jasskell.Card (Card, Cards, Suit)
+import Jasskell.Card qualified as Card
+import Jasskell.Variant (Variant (..))
 
 data Playing n = Playing
   { hand :: Cards,
@@ -92,4 +92,4 @@ validateCard view@Playing {hand, variant, table} card
         check r p = if p then pure (PlayableCard card) else Left r
 
 playableCards :: KnownNat n => Playing n -> Set PlayableCard
-playableCards view = Set.fromList . rights . map (validateCard view) . Set.toList $ View.Playing.hand view
+playableCards view = Set.fromList . rights . map (validateCard view) . Set.toList $ hand view
