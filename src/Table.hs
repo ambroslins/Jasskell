@@ -4,8 +4,6 @@ import Action (Action (..))
 import Control.Monad.Except (Except, MonadError (..), runExcept)
 import Control.Monad.Free (Free (..))
 import Data.Finite (Finite)
-import Data.UUID (UUID)
-import Data.UUID.V4 qualified as UUID
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import GameState (GameState)
@@ -13,14 +11,13 @@ import GameState qualified
 import Jass (JassNat)
 import Message (Message (..))
 import Relude.Extra.Lens (set)
+import TableID (TableID)
+import TableID qualified
 import User (User)
 import User qualified
 import Prelude hiding (join)
 
 newtype Table n = Table (TVar (TableState n))
-
-newtype TableID = TableID UUID
-  deriving newtype (Eq, Ord, Hashable)
 
 data TableState n
   = Waiting (Vector n (Maybe (User n)))
@@ -28,9 +25,9 @@ data TableState n
 
 new :: KnownNat n => IO (TableID, Table n)
 new = do
-  table <- newTVarIO (Waiting $ Vector.replicate Nothing)
-  uuid <- UUID.nextRandom
-  pure (TableID uuid, Table table)
+  table <- Table <$> newTVarIO (Waiting $ Vector.replicate Nothing)
+  tableID <- TableID.new
+  pure (tableID, table)
 
 data Connection n = Connection
   { putAction :: Action -> STM (Either Error ()),

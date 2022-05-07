@@ -33,6 +33,7 @@ common common
     , ConstraintKinds
     , DataKinds
     , DeriveFunctor
+    , DeriveGeneric
     , DerivingStrategies
     , FlexibleContexts
     , GADTs
@@ -40,6 +41,7 @@ common common
     , ImportQualifiedPost
     , LambdaCase
     , NamedFieldPuns
+    , OverloadedStrings
     , ScopedTypeVariables
     , StandaloneDeriving 
     , TypeApplications
@@ -80,6 +82,7 @@ library
     , Round.Record
     , ServerState
     , Table
+    , TableID
     , Trick
     , User
     , Variant
