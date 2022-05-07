@@ -1,14 +1,14 @@
-module GameState where
+module Jasskell.Server.GameState where
 
-import Card (Card)
 import Control.Monad.Except (MonadError (..))
 import Control.Monad.Free (Free (..))
 import Data.Finite (Finite)
-import Game (Game)
-import Jass (Jass (..))
-import Variant (Variant)
-import View (SomeView (..))
-import View.Playing qualified
+import Jasskell.Card (Card)
+import Jasskell.Game (Game)
+import Jasskell.Jass (Jass (..))
+import Jasskell.Variant (Variant)
+import Jasskell.View (SomeView (..))
+import Jasskell.View.Playing qualified as View.Playing
 
 type GameState n = Free (Jass n) (Game n)
 

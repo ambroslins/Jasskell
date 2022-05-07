@@ -1,20 +1,20 @@
-module Table where
+module Jasskell.Server.Table where
 
-import Action (Action (..))
 import Control.Monad.Except (Except, MonadError (..), runExcept)
 import Control.Monad.Free (Free (..))
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
-import GameState (GameState)
-import GameState qualified
-import Jass (JassNat)
-import Message (Message (..))
+import Jasskell.Jass (JassNat)
+import Jasskell.Server.Action (Action (..))
+import Jasskell.Server.GameState (GameState)
+import Jasskell.Server.GameState qualified as GameState
+import Jasskell.Server.Message (Message (..))
+import Jasskell.Server.TableID (TableID)
+import Jasskell.Server.TableID qualified as TableID
+import Jasskell.Server.User (User)
+import Jasskell.Server.User qualified as User
 import Relude.Extra.Lens (set)
-import TableID (TableID)
-import TableID qualified
-import User (User)
-import User qualified
 import Prelude hiding (join)
 
 newtype Table n = Table (TVar (TableState n))

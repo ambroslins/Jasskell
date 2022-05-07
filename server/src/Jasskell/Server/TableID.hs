@@ -1,4 +1,4 @@
-module TableID
+module Jasskell.Server.TableID
   ( TableID,
     new,
     toText,

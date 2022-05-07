@@ -39,63 +39,114 @@ maintainer:         ambros.lins@gmail.com
 
 -- A copyright notice.
 -- copyright:
-category:           Web
+category:           Game, Web
 
 -- Extra files to be distributed with the package, such as examples or a README.
 extra-source-files: CHANGELOG.md
 
+common common
+  default-language: Haskell2010
+  ghc-options:
+    -Wall
+    -Wextra
+    -Wcompat
+    -Wincomplete-record-updates
+    -Wincomplete-uni-patterns
+    -Wredundant-constraints
+    -fplugin GHC.TypeLits.Normalise
+
+  default-extensions:
+    , ConstraintKinds
+    , DataKinds
+    , DeriveFunctor
+    , DeriveGeneric
+    , DerivingStrategies
+    , FlexibleContexts
+    , GADTs
+    , GeneralizedNewtypeDeriving
+    , ImportQualifiedPost
+    , LambdaCase
+    , NamedFieldPuns
+    , OverloadedStrings
+    , ScopedTypeVariables
+    , StandaloneDeriving 
+    , TypeApplications
+    , TypeFamilies
+    , TypeOperators
+
+  build-depends:
+    , base ^>=4.14.3.0
+    , jasskell-core
+    , relude ^>=1.0.0.1
+    , containers ^>= 0.6.5.1
+    , unordered-containers ^>= 0.2.19.1
+    , finite-typelits ^>=0.1
+    , vector-sized ^>= 1.5.0
+    , ghc-typelits-natnormalise ^>=0.7.6
+    , mtl ^>= 2.2.2
+    , free ^>= 5.1.7
+    , random ^>= 1.2.1
+    , stm ^>= 2.5.0.2
+    , uuid ^>= 1.3.15
+
+  mixins:
+    , base hiding (Prelude)
+    , relude (Relude as Prelude)
+    , relude
+
 library
-    -- Modules exported by the library.
-    exposed-modules:  MyLib
+  import:           common
 
-    -- Modules included in this library but not exported.
-    -- other-modules:
+  -- Directories containing source files.
+  hs-source-dirs:   src
 
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
+  -- Modules exported by the library.
+  exposed-modules:
+    , Jasskell.Server.Action
+    , Jasskell.Server.GameState
+    , Jasskell.Server.Message
+    , Jasskell.Server.ServerState
+    , Jasskell.Server.Table
+    , Jasskell.Server.TableID
+    , Jasskell.Server.User
 
-    -- Other library packages from which modules are imported.
-    build-depends:    base ^>=4.14.3.0
+  -- Modules included in this library but not exported.
+  -- other-modules:
 
-    -- Directories containing source files.
-    hs-source-dirs:   src
+  -- LANGUAGE extensions used by modules in this package.
+  -- other-extensions:
 
-    -- Base language which the package is written in.
-    default-language: Haskell2010
+  -- Other library packages from which modules are imported.
 
 executable jasskell-server
-    -- .hs or .lhs file containing the Main module.
-    main-is:          Main.hs
+  import:           common
 
-    -- Modules included in this executable, other than Main.
-    -- other-modules:
+  -- Directories containing source files.
+  hs-source-dirs:   app
 
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
+  -- .hs or .lhs file containing the Main module.
+  main-is:          Main.hs
 
-    -- Other library packages from which modules are imported.
-    build-depends:
-        base ^>=4.14.3.0,
-        jasskell-server
+  -- Modules included in this executable, other than Main.
+  -- other-modules:
 
-    -- Directories containing source files.
-    hs-source-dirs:   app
+  -- LANGUAGE extensions used by modules in this package.
+  -- other-extensions:
 
-    -- Base language which the package is written in.
-    default-language: Haskell2010
+  -- Other library packages from which modules are imported.
+  build-depends:    jasskell-server
 
 test-suite jasskell-server-test
-    -- Base language which the package is written in.
-    default-language: Haskell2010
+  import:           common
+  -- The interface type and version of the test suite.
+  type:             exitcode-stdio-1.0
 
-    -- The interface type and version of the test suite.
-    type:             exitcode-stdio-1.0
+  -- Directories containing source files.
+  hs-source-dirs:   test
 
-    -- Directories containing source files.
-    hs-source-dirs:   test
+  -- The entrypoint to the test suite.
+  main-is:          MyLibTest.hs
 
-    -- The entrypoint to the test suite.
-    main-is:          MyLibTest.hs
-
-    -- Test dependencies.
-    build-depends:    base ^>=4.14.3.0
+  -- Test dependencies.
+  build-depends:
+    , jasskell-server

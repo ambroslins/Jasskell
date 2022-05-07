@@ -1,8 +1,8 @@
-module Message where
+module Jasskell.Server.Message where
 
 import Data.Finite (Finite)
-import Game (Game)
-import View qualified
+import Jasskell.Game (Game)
+import Jasskell.View qualified as View
 
 data Message n
   = UpdateView (View.SomeView n)

@@ -1,11 +1,11 @@
-module ServerState where
+module Jasskell.Server.ServerState where
 
 import Control.Concurrent.STM.TVar (modifyTVar)
 import Data.HashMap.Strict qualified as HashMap
-import Jass (JassNat)
-import Table (Table)
-import Table qualified
-import TableID (TableID)
+import Jasskell.Jass (JassNat)
+import Jasskell.Server.Table (Table)
+import Jasskell.Server.Table qualified as Table
+import Jasskell.Server.TableID (TableID)
 
 data SomeTable = forall n. JassNat n => SomeTable (Table n)
 
