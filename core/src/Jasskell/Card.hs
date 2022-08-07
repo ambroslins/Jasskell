@@ -1,4 +1,4 @@
-module Card
+module Jasskell.Card
   ( Card (..),
     Suit (..),
     Rank (..),
@@ -9,9 +9,9 @@ module Card
   )
 where
 
-import Card.Suit
 import Data.Set qualified as Set
-import Variant
+import Jasskell.Card.Suit (Suit (..))
+import Jasskell.Variant (Direction (..), Variant (..))
 import Prelude hiding (compare)
 
 data Rank = Six | Seven | Eight | Nine | Ten | Under | Over | King | Ace

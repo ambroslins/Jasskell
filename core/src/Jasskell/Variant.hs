@@ -1,11 +1,11 @@
-module Variant
+module Jasskell.Variant
   ( Variant (..),
     Direction (..),
     next,
   )
 where
 
-import Card.Suit
+import Jasskell.Card.Suit (Suit)
 
 data Variant
   = Trump Suit

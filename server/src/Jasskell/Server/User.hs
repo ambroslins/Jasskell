@@ -1,4 +1,4 @@
-module User
+module Jasskell.Server.User
   ( User,
     name,
     sendMessage,
@@ -7,7 +7,7 @@ module User
 where
 
 import Control.Concurrent.STM (retry)
-import Message (Message)
+import Jasskell.Server.Message (Message)
 
 data User n = User
   { name :: Text,

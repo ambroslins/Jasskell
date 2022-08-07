@@ -1,11 +1,12 @@
 module CardSpec where
 
-import Card
+import Jasskell.Card
   ( Card (..),
     Rank (..),
     Suit (..),
   )
-import Card qualified
+import Jasskell.Card qualified as Card
+import Jasskell.Variant (Direction (..), Variant (..))
 import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck
@@ -18,7 +19,6 @@ import Test.QuickCheck.Arbitrary
   ( Arbitrary (arbitrary),
     arbitraryBoundedEnum,
   )
-import Variant
 
 spec :: Spec
 spec = do

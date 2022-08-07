@@ -1,0 +1,7 @@
+cradle:
+  cabal:
+    - path: "src"
+      component: "lib:jasskell-core"
+
+    - path: "test"
+      component: "jasskell-core:test:jasskell-core-test"

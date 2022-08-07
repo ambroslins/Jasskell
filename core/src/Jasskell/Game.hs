@@ -1,14 +1,14 @@
-module Game where
+module Jasskell.Game where
 
-import Card (Suit (Bells))
 import Control.Monad.Free (Free, iterM)
 import Data.Set qualified as Set
-import Jass (Jass (..), MonadJass, deal)
-import Round (Round)
-import Round qualified
+import Jasskell.Card (Suit (Bells))
+import Jasskell.Jass (Jass (..), MonadJass, deal)
+import Jasskell.Round (Round)
+import Jasskell.Round qualified as Round
+import Jasskell.Variant (Variant (Trump))
+import Jasskell.View.Playing qualified as View.Playing
 import System.Random (RandomGen)
-import Variant (Variant (Trump))
-import View.Playing qualified
 
 newtype Game n = Game {rounds :: NonEmpty (Round n)}
   deriving (Show)
