@@ -2,6 +2,7 @@ module Data.Vector.Sized.Extra
   ( rotate,
     unfoldrM,
     iterateM,
+    constructM,
   )
 where
 
@@ -22,5 +23,24 @@ unfoldrM f =
       put z
       pure y
 
-iterateM :: forall n a m. (KnownNat n, Monad m) => (a -> m a) -> a -> m (Vector n a)
+iterateM ::
+  forall n a m.
+  (KnownNat n, Monad m) =>
+  (a -> m a) ->
+  a ->
+  m (Vector n a)
 iterateM f = unfoldrM (fmapToSnd f) . pure
+
+-- TODO: This implementation is inefficient
+constructM ::
+  forall n a m.
+  Monad m =>
+  (forall i. KnownNat i => Vector i a -> m a) ->
+  m (Vector n a)
+constructM f = go Vector.empty
+  where
+    go :: forall i. KnownNat i => Vector i a -> m (Vector n a)
+    go v = do
+      x <- f v
+      let u = Vector.snoc v x
+      Vector.knownLength u (go u)
