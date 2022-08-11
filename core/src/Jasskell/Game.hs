@@ -19,10 +19,10 @@ play = evalStateT $ do
   r <- Round.play 0 hands
   pure $ Game (r :| [])
 
-run :: KnownNat n => Free (Jass n) (Game n) -> IO (Game n)
-run = iterM $ \case
-  PromptCard views next ->
-    let current = View.Playing.current (views 0)
-        valids = View.Playing.playableCards $ views current
-     in next (Set.elemAt 0 valids)
-  PromptVariant _ next -> next $ Trump Bells
+-- run :: KnownNat n => Free (Jass n) (Game n) -> IO (Game n)
+-- run = iterM $ \case
+--   PromptCard views next ->
+--     let current = View.Playing.current (views 0)
+--         valids = View.Playing.playableCards $ views current
+--      in next (Set.elemAt 0 valids)
+--   PromptVariant _ next -> next $ Trump Bells
