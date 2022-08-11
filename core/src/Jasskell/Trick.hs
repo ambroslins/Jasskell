@@ -18,7 +18,7 @@ import Jasskell.Card (Card, Cards)
 import Jasskell.Card qualified as Card
 import Jasskell.Jass (JassNat, MonadJass, promptCard)
 import Jasskell.Variant (Variant)
-import Jasskell.View.Playing qualified as View.Playing
+import Jasskell.View qualified as View
 import Relude.Extra.Lens (over)
 
 data Trick n = Trick
@@ -35,8 +35,9 @@ play variant leader = close <$> Vector.unfoldrM playCard []
     playCard cs = do
       hands <- get
       let current = leader + fromIntegral (length cs)
-          views = View.Playing.make hands leader variant cs
-      card <- View.Playing.unvalidateCard <$> promptCard views
+          Just table = Vector.fromListN $ map Just cs ++ repeat Nothing
+          views = View.makePlaying hands variant (Vector.rotate leader table) leader
+      card <- promptCard views
       modify $ over (Vector.ix current) (Set.delete card)
       pure (card, cs ++ [card])
 
