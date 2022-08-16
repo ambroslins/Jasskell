@@ -14,12 +14,12 @@ import Data.Vector.Sized qualified as Vector
 import GHC.TypeLits (Div, type (+), type (-))
 import Jasskell.Card (Card (..), Cards, Rank (..), Suit (..), deck)
 import Jasskell.Variant (Variant)
-import Jasskell.View (Declaring, PlayableCard, Playing, Views)
+import Jasskell.View.Absolute qualified as Absolute
 import System.Random (RandomGen, uniformR)
 
 data Jass n next
-  = PromptCard (Views Playing n) (PlayableCard -> next)
-  | PromptVariant (Views Declaring n) (Variant -> next)
+  = PromptCard (Finite n) (Absolute.View n) (Card -> next)
+  | PromptVariant (Finite n) (Absolute.View n) (Variant -> next)
   deriving (Functor)
 
 makeFree ''Jass

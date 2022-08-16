@@ -106,9 +106,8 @@ library
     , Jasskell.Round
     , Jasskell.Trick
     , Jasskell.Variant
-    , Jasskell.View
-    , Jasskell.View.Declaring
-    , Jasskell.View.Playing
+    , Jasskell.View.Absolute
+    , Jasskell.View.Relative
 
   -- Modules included in this library but not exported.
   other-modules:
