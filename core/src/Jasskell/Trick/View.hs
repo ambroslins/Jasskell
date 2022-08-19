@@ -1,7 +1,4 @@
-module Jasskell.View.Absolute
-  ( View (..),
-  )
-where
+module Jasskell.Trick.View (View (..)) where
 
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
@@ -10,8 +7,8 @@ import Jasskell.Variant (Variant)
 
 data View n = MakeView
   { hands :: Vector n Cards,
-    cards :: Vector n (Maybe Card),
-    variant :: Maybe Variant,
-    leader :: Finite n
+    table :: Vector n (Maybe Card),
+    leader :: Finite n,
+    variant :: Variant
   }
   deriving (Eq, Show)

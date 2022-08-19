@@ -1,5 +1,6 @@
 module Data.Vector.Sized.Extra
   ( rotate,
+    notEmpty,
     unfoldrM,
     iterateM,
     constructM,
@@ -19,6 +20,12 @@ import Unsafe.Coerce (unsafeCoerce)
 
 rotate :: KnownNat n => Finite n -> Vector n a -> Vector n a
 rotate n v = Vector.generate (\i -> Vector.index v $ i + n)
+
+notEmpty :: KnownNat n => Vector n a -> Maybe (n :~: (m + 1))
+notEmpty v =
+  if Vector.length v == 0
+    then Nothing
+    else Just $ unsafeCoerce Refl
 
 unfoldrM :: (KnownNat n, Monad m) => (b -> m (a, b)) -> b -> m (Vector n a)
 unfoldrM f =

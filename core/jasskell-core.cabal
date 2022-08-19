@@ -102,12 +102,14 @@ library
   exposed-modules:
     , Jasskell.Card
     , Jasskell.Game
+    , Jasskell.Game.View
     , Jasskell.Jass
+    , Jasskell.Prompt
     , Jasskell.Round
+    , Jasskell.Round.View
     , Jasskell.Trick
+    , Jasskell.Trick.View
     , Jasskell.Variant
-    , Jasskell.View.Absolute
-    , Jasskell.View.Relative
 
   -- Modules included in this library but not exported.
   other-modules:

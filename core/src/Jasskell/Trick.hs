@@ -9,16 +9,20 @@ module Jasskell.Trick
   )
 where
 
+import Control.Monad.Free (MonadFree)
 import Data.Finite (Finite)
 import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import Data.Vector.Sized.Extra qualified as Vector
+import GHC.TypeNats (type (+))
 import Jasskell.Card (Card, Cards)
 import Jasskell.Card qualified as Card
-import Jasskell.Jass (JassNat, MonadJass, promptCard)
+import Jasskell.Prompt (Prompt)
+import Jasskell.Prompt qualified as Prompt
+import Jasskell.Trick.View (View)
+import Jasskell.Trick.View qualified as View
 import Jasskell.Variant (Variant)
-import Jasskell.View.Absolute qualified as View.Absolute
 import Relude.Extra.Lens (over)
 
 data Trick n = Trick
@@ -30,7 +34,7 @@ data Trick n = Trick
 
 play ::
   forall n m.
-  (MonadJass n m, MonadState (Vector n Cards) m) =>
+  (KnownNat n, MonadFree (Prompt (View n)) m, MonadState (Vector n Cards) m) =>
   Variant ->
   Finite n ->
   m (Trick n)
@@ -47,17 +51,18 @@ play variant leader = close <$> Vector.constructM playCard
                 (\case [] -> (Nothing, []); c : cs -> (Just c, cs))
                 (Vector.toList table)
           view =
-            View.Absolute.MakeView
-              { View.Absolute.hands = hands,
-                View.Absolute.cards = cards,
-                View.Absolute.variant = Just variant,
-                View.Absolute.leader = leader
+            View.MakeView
+              { View.hands = hands,
+                View.table = cards,
+                View.leader = leader,
+                View.variant = variant
               }
-      card <- promptCard current view
+
+      card <- Prompt.card view
       modify $ over (Vector.ix current) (Set.delete card)
       pure card
 
-winner :: JassNat n => Trick n -> Finite n
+winner :: n ~ (m + 1) => Trick n -> Finite n
 winner Trick {leader, cards, variant} =
   Vector.maxIndexBy (Card.compare variant lead) cards
   where
