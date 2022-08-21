@@ -14,11 +14,10 @@ import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import Data.Vector.Sized.Extra qualified as Vector
+import GHC.TypeNats (type (+))
 import Jasskell.Card (Card, Cards)
 import Jasskell.Card qualified as Card
-import Jasskell.Jass (JassNat, MonadJass, promptCard)
 import Jasskell.Variant (Variant)
-import Jasskell.View.Absolute qualified as View.Absolute
 import Relude.Extra.Lens (over)
 
 data Trick n = Trick
@@ -30,34 +29,22 @@ data Trick n = Trick
 
 play ::
   forall n m.
-  (MonadJass n m, MonadState (Vector n Cards) m) =>
+  (KnownNat n, MonadState (Vector n Cards) m) =>
+  ([Card] -> Finite n -> m Card) ->
   Variant ->
   Finite n ->
   m (Trick n)
-play variant leader = close <$> Vector.constructM playCard
+play promptCard variant leader = close <$> Vector.constructM playCard
   where
     close cs = Trick {variant, leader, cards = Vector.rotate (negate leader) cs}
     playCard :: forall i. KnownNat i => Vector i Card -> m Card
-    playCard table = do
-      hands <- get
-      let current = leader + fromIntegral (Vector.length table)
-          cards =
-            Vector.rotate (negate leader) $
-              Vector.unfoldrN
-                (\case [] -> (Nothing, []); c : cs -> (Just c, cs))
-                (Vector.toList table)
-          view =
-            View.Absolute.MakeView
-              { View.Absolute.hands = hands,
-                View.Absolute.cards = cards,
-                View.Absolute.variant = Just variant,
-                View.Absolute.leader = leader
-              }
-      card <- promptCard current view
+    playCard cards = do
+      let current = leader + fromIntegral (Vector.length cards)
+      card <- promptCard (Vector.toList cards) current
       modify $ over (Vector.ix current) (Set.delete card)
       pure card
 
-winner :: JassNat n => Trick n -> Finite n
+winner :: n ~ (m + 1) => Trick n -> Finite n
 winner Trick {leader, cards, variant} =
   Vector.maxIndexBy (Card.compare variant lead) cards
   where
