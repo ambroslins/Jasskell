@@ -9,6 +9,7 @@ module Jasskell.Trick
   )
 where
 
+import Control.Monad.Except (MonadError (throwError), runExcept)
 import Data.Finite (Finite)
 import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
@@ -18,7 +19,7 @@ import GHC.TypeNats (type (+))
 import Jasskell.Card (Card, Cards)
 import Jasskell.Card qualified as Card
 import Jasskell.Variant (Variant)
-import Relude.Extra.Lens (over)
+import Relude.Extra.Lens qualified as Lens
 
 data Trick n = Trick
   { variant :: Variant,
@@ -29,7 +30,7 @@ data Trick n = Trick
 
 play ::
   forall n m.
-  (KnownNat n, MonadState (Vector n Cards) m) =>
+  (KnownNat n, MonadState (Vector n Cards) m, MonadError Card.Reason m) =>
   ([Card] -> Finite n -> m Card) ->
   Variant ->
   Finite n ->
@@ -40,9 +41,14 @@ play promptCard variant leader = close <$> Vector.constructM playCard
     playCard :: forall i. KnownNat i => Vector i Card -> m Card
     playCard cards = do
       let current = leader + fromIntegral (Vector.length cards)
-      card <- promptCard (Vector.toList cards) current
-      modify $ over (Vector.ix current) (Set.delete card)
-      pure card
+          cardList = Vector.toList cards
+      hand <- gets (`Vector.index` current)
+      card <- promptCard cardList current
+      case runExcept $ Card.playable variant cardList hand card of
+        Left reason -> throwError reason
+        Right newHand -> do
+          modify $ Lens.set (Vector.ix current) newHand
+          pure card
 
 winner :: n ~ (m + 1) => Trick n -> Finite n
 winner Trick {leader, cards, variant} =

@@ -6,6 +6,7 @@ module Jasskell.Round
   )
 where
 
+import Control.Monad.Except (MonadError)
 import Data.Finite (Finite)
 import Data.Type.Equality ((:~:) (Refl))
 import Data.Vector.Sized (Vector)
@@ -13,6 +14,7 @@ import Data.Vector.Sized qualified as Vector
 import Data.Vector.Sized.Extra qualified as Vector
 import GHC.TypeNats (Div)
 import Jasskell.Card (Card, Cards)
+import Jasskell.Card qualified as Card
 import Jasskell.Jass (JassNat)
 import Jasskell.Round.View (View (MakeView))
 import Jasskell.Round.View qualified as View
@@ -26,7 +28,7 @@ newtype Round n = Round {tricks :: Vector (Div 36 n) (Trick n)}
 
 play ::
   forall n m.
-  (JassNat n, Monad m) =>
+  (JassNat n, MonadError Card.Reason m) =>
   (View n -> Finite n -> m Card) ->
   Variant ->
   Finite n ->

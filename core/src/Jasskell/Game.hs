@@ -1,9 +1,11 @@
 module Jasskell.Game where
 
+import Control.Monad.Except (MonadError)
 import Control.Monad.Free (MonadFree)
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
 import Jasskell.Card (Cards, Suit (Bells))
+import Jasskell.Card qualified as Card
 import Jasskell.Game.View (View)
 import Jasskell.Game.View qualified as View
 import Jasskell.Jass (JassNat, deal)
@@ -19,7 +21,7 @@ newtype Game n = Game {rounds :: [Round n]}
 
 play ::
   forall n m g.
-  (JassNat n, MonadFree (Prompt (View n)) m, RandomGen g) =>
+  (JassNat n, MonadFree (Prompt (View n)) m, MonadError Card.Reason m, RandomGen g) =>
   g ->
   m (Game n)
 play = evalStateT $ go [] 0
