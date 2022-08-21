@@ -6,10 +6,16 @@ module Data.Vector.Sized.Extra
   )
 where
 
+import Control.Monad.ST (runST)
 import Data.Finite (Finite)
+import Data.Finite qualified as Finite
+import Data.Type.Equality (type (:~:) (Refl))
+import Data.Vector.Mutable.Sized qualified as Vector.Mutable
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
+import GHC.TypeNats (type (+))
 import Relude.Extra (fmapToSnd)
+import Unsafe.Coerce (unsafeCoerce)
 
 rotate :: KnownNat n => Finite n -> Vector n a -> Vector n a
 rotate n v = Vector.generate (\i -> Vector.index v $ i + n)
@@ -31,16 +37,22 @@ iterateM ::
   m (Vector n a)
 iterateM f = unfoldrM (fmapToSnd f) . pure
 
--- TODO: This implementation is inefficient
 constructM ::
   forall n a m.
-  Monad m =>
+  (KnownNat n, Monad m) =>
   (forall i. KnownNat i => Vector i a -> m a) ->
   m (Vector n a)
-constructM f = go Vector.empty
+constructM f = foldlM go nil Finite.finites
   where
-    go :: forall i. KnownNat i => Vector i a -> m (Vector n a)
-    go v = do
-      x <- f v
-      let u = Vector.snoc v x
-      Vector.knownLength u (go u)
+    nil = runST $ Vector.Mutable.new @n >>= Vector.unsafeFreeze
+    go :: Vector n a -> Finite n -> m (Vector n a)
+    go v i = case someNatVal $ fromIntegral i of
+      SomeNat (Proxy :: Proxy i) ->
+        case unsafeCoerce Refl :: (i + j + 1) :~: n of
+          Refl -> do
+            x <- f $ Vector.take @i v
+            pure $
+              runST $ do
+                mut <- Vector.unsafeThaw v
+                Vector.Mutable.write mut i x
+                Vector.unsafeFreeze mut
