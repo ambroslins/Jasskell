@@ -9,9 +9,8 @@ module Jasskell.Trick
   )
 where
 
-import Control.Monad.Except (MonadError (throwError), runExcept)
+import Control.Monad.Except (MonadError)
 import Data.Finite (Finite)
-import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import Data.Vector.Sized.Extra qualified as Vector
@@ -44,11 +43,9 @@ play promptCard variant leader = close <$> Vector.constructM playCard
           cardList = Vector.toList cards
       hand <- gets (`Vector.index` current)
       card <- promptCard cardList current
-      case runExcept $ Card.playable variant cardList hand card of
-        Left reason -> throwError reason
-        Right newHand -> do
-          modify $ Lens.set (Vector.ix current) newHand
-          pure card
+      newHand <- Card.playable variant cardList hand card
+      modify $ Lens.set (Vector.ix current) newHand
+      pure card
 
 winner :: n ~ (m + 1) => Trick n -> Finite n
 winner Trick {leader, cards, variant} =
