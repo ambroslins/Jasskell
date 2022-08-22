@@ -6,6 +6,7 @@ module Jasskell.Trick
     cards,
     winner,
     points,
+    rotate,
   )
 where
 
@@ -55,3 +56,10 @@ winner Trick {leader, cards, variant} =
 
 points :: Trick n -> Int
 points Trick {cards, variant} = sum $ Vector.map (Card.value variant) cards
+
+rotate :: KnownNat n => Finite n -> Trick n -> Trick n
+rotate i trick =
+  trick
+    { leader = leader trick - i,
+      cards = Vector.rotate i $ cards trick
+    }

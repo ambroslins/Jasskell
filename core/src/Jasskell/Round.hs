@@ -3,6 +3,7 @@ module Jasskell.Round
     View (MakeView),
     tricks,
     play,
+    rotate,
   )
 where
 
@@ -61,3 +62,6 @@ play promptCard variant leader =
                     View.cards = cards
                   }
           lift $ promptCard view current
+
+rotate :: KnownNat n => Finite n -> Round n -> Round n
+rotate i = coerce $ Vector.map (Trick.rotate i)

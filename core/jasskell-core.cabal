@@ -110,7 +110,9 @@ library
     , Jasskell.Trick
     , Jasskell.Variant
     , Jasskell.View.Absolute
+    , Jasskell.View.Playing
     , Jasskell.View.Relative
+    , Jasskell.Views
 
   -- Modules included in this library but not exported.
   other-modules:
