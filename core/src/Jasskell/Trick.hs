@@ -31,7 +31,7 @@ data Trick n = Trick
 play ::
   forall n m.
   (KnownNat n, MonadState (Vector n Cards) m, MonadError Card.Reason m) =>
-  ([Card] -> Finite n -> m Card) ->
+  (Finite n -> [Card] -> m Card) ->
   Variant ->
   Finite n ->
   m (Trick n)
@@ -43,7 +43,7 @@ play promptCard variant leader = close <$> Vector.constructM playCard
       let current = leader + fromIntegral (Vector.length cards)
           cardList = Vector.toList cards
       hand <- gets (`Vector.index` current)
-      card <- promptCard cardList current
+      card <- promptCard current cardList
       newHand <- Card.playable variant cardList hand card
       modify $ Lens.set (Vector.ix current) newHand
       pure card

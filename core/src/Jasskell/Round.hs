@@ -30,7 +30,7 @@ newtype Round n = Round {tricks :: Vector (Div 36 n) (Trick n)}
 play ::
   forall n m.
   (JassNat n, MonadError Card.Reason m) =>
-  (View n -> Finite n -> m Card) ->
+  (Finite n -> View n -> m Card) ->
   Variant ->
   Finite n ->
   Vector n Cards ->
@@ -50,8 +50,8 @@ play promptCard variant leader =
           Just Refl ->
             let t = Vector.last ts
              in (Variant.next $ Trick.variant t, Trick.winner t)
-        prompt :: [Card] -> Finite n -> StateT (Vector n Cards) m Card
-        prompt cards current = do
+        prompt :: Finite n -> [Card] -> StateT (Vector n Cards) m Card
+        prompt current cards = do
           hs <- get
           let view =
                 MakeView
@@ -61,7 +61,7 @@ play promptCard variant leader =
                     View.leader = l,
                     View.cards = cards
                   }
-          lift $ promptCard view current
+          lift $ promptCard current view
 
 rotate :: KnownNat n => Finite n -> Round n -> Round n
 rotate i = coerce $ Vector.map (Trick.rotate i)

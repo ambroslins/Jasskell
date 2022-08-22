@@ -84,7 +84,6 @@ common common
     , vector-sized ^>= 1.5.0
     , ghc-typelits-natnormalise ^>= 0.7.6
     , mtl ^>= 2.2.2
-    , free ^>= 5.1.7
     , random ^>= 1.2.1
 
   mixins:
@@ -103,15 +102,13 @@ library
     , Jasskell.Card
     , Jasskell.Game
     , Jasskell.Game.View
+    , Jasskell.Interface
     , Jasskell.Jass
-    , Jasskell.Prompt
     , Jasskell.Round
     , Jasskell.Round.View
     , Jasskell.Trick
     , Jasskell.Variant
-    , Jasskell.View.Absolute
     , Jasskell.View.Playing
-    , Jasskell.View.Relative
     , Jasskell.Views
 
   -- Modules included in this library but not exported.
