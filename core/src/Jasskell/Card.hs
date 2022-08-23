@@ -6,7 +6,7 @@ module Jasskell.Card
     deck,
     value,
     compare,
-    Reason (..),
+    BadCard (..),
     playable,
   )
 where
@@ -68,18 +68,17 @@ compare variant lead = case variant of
            )
         <> comparing suit
 
-data Reason
+data BadCard
   = NotInHand
   | FollowTrump Suit
   | FollowLead Suit
   | Undertrump Card
   deriving (Eq, Show)
 
-playable ::
-  forall m. MonadError Reason m => Variant -> [Card] -> Cards -> Card -> m Cards
+playable :: Variant -> [Card] -> Cards -> Card -> Either BadCard Cards
 playable variant table hand card = Set.alterF check card hand
   where
-    check :: Bool -> m Bool
+    check :: Bool -> Either BadCard Bool
     check hasCard = do
       unless hasCard $ throwError NotInHand
       case table of

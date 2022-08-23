@@ -108,6 +108,7 @@ library
     , Jasskell.Round
     , Jasskell.Round.View
     , Jasskell.Trick
+    , Jasskell.Trick.View
     , Jasskell.Variant
     , Jasskell.View.Declaring
     , Jasskell.View.Playing

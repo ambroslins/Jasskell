@@ -11,7 +11,8 @@ import Jasskell.Views qualified as Views
 data Declaring n = Declaring
   { hand :: Cards,
     rounds :: [Round n],
-    eldest :: Finite n
+    eldest :: Finite n,
+    nominators :: NonEmpty (Finite n)
   }
   deriving (Eq, Show)
 
@@ -20,10 +21,12 @@ make ::
   Vector n Cards ->
   [Round n] ->
   Finite n ->
+  NonEmpty (Finite n) ->
   Views.Views Declaring n
-make hands rs e = Views.make $ \player ->
+make hands rs e ns = Views.make $ \player ->
   Declaring
     { hand = Vector.index hands player,
       rounds = map (Round.rotate player) rs,
-      eldest = e - player
+      eldest = e - player,
+      nominators = ns
     }

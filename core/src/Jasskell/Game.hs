@@ -3,8 +3,7 @@ module Jasskell.Game where
 import Control.Monad.Except (MonadError (throwError))
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
-import Jasskell.Card (Card, Cards)
-import Jasskell.Card qualified as Card
+import Jasskell.Card (BadCard, Card, Cards)
 import Jasskell.Declaration (BadDeclaration, Declaration)
 import Jasskell.Declaration qualified as Declaration
 import Jasskell.Jass (JassNat, deal)
@@ -22,7 +21,7 @@ newtype Game n = Game {rounds :: [Round n]}
   deriving (Show)
 
 data Error
-  = BadCard Card.Reason
+  = BadCard BadCard
   | BadDeclaration BadDeclaration
   deriving (Eq, Show)
 
@@ -53,11 +52,11 @@ play Interface {..} = evalStateT $ go [] 0
     declareVariant rounds hands eldest =
       Declaration.declareVariant interface (eldest :| [])
       where
+        makeView = View.Declaring.make hands rounds eldest
         interface =
           Declaration.Interface
             { Declaration.promptDeclaration = \current ps ->
-                let view = View.Declaring.make hands rounds eldest
-                 in promptDeclaration current view,
+                promptDeclaration current $ makeView (current :| ps),
               Declaration.throwBadDeclaration = throwError . BadDeclaration
             }
 
