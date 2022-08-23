@@ -1,5 +1,6 @@
 module Jasskell.Round
   ( Round,
+    Interface (..),
     View (MakeView),
     tricks,
     play,
@@ -7,7 +8,6 @@ module Jasskell.Round
   )
 where
 
-import Control.Monad.Except (MonadError)
 import Data.Finite (Finite)
 import Data.Type.Equality ((:~:) (Refl))
 import Data.Vector.Sized (Vector)
@@ -27,15 +27,20 @@ import Jasskell.Variant qualified as Variant
 newtype Round n = Round {tricks :: Vector (Div 36 n) (Trick n)}
   deriving (Eq, Show)
 
+data Interface n m = Interface
+  { promptCard :: Finite n -> View n -> m Card,
+    throwBadCard :: forall a. Card.Reason -> m a
+  }
+
 play ::
   forall n m.
-  (JassNat n, MonadError Card.Reason m) =>
-  (Finite n -> View n -> m Card) ->
+  (JassNat n, Monad m) =>
+  Interface n m ->
   Variant ->
   Finite n ->
   Vector n Cards ->
   m (Round n)
-play promptCard variant leader =
+play Interface {..} variant leader =
   evalStateT $ Round <$> Vector.constructM playTrick
   where
     playTrick ::
@@ -43,19 +48,23 @@ play promptCard variant leader =
       KnownNat i =>
       Vector i (Trick n) ->
       StateT (Vector n Cards) m (Trick n)
-    playTrick ts = Trick.play prompt var l
+    playTrick ts = Trick.play trickInterface var l
       where
         (var, l) = case Vector.notEmpty ts of
           Nothing -> (variant, leader)
           Just Refl ->
             let t = Vector.last ts
              in (Variant.next $ Trick.variant t, Trick.winner t)
-        prompt :: Finite n -> [Card] -> StateT (Vector n Cards) m Card
+        trickInterface =
+          Trick.Interface
+            { Trick.promptCard = prompt,
+              Trick.throwBadCard = lift . throwBadCard
+            }
         prompt current cards = do
-          hs <- get
+          hands <- get
           let view =
                 MakeView
-                  { View.hands = hs,
+                  { View.hands = hands,
                     View.tricks = Vector.toList ts,
                     View.variant = var,
                     View.leader = l,

@@ -69,6 +69,7 @@ common common
     , NamedFieldPuns
     , OverloadedStrings
     , RankNTypes
+    , RecordWildCards
     , ScopedTypeVariables
     , StandaloneDeriving 
     , TypeApplications
@@ -100,14 +101,15 @@ library
   -- Modules exported by the library.
   exposed-modules:
     , Jasskell.Card
+    , Jasskell.Declaration
     , Jasskell.Game
     , Jasskell.Game.View
-    , Jasskell.Interface
     , Jasskell.Jass
     , Jasskell.Round
     , Jasskell.Round.View
     , Jasskell.Trick
     , Jasskell.Variant
+    , Jasskell.View.Declaring
     , Jasskell.View.Playing
     , Jasskell.Views
 
