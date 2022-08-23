@@ -69,6 +69,7 @@ common common
     , NamedFieldPuns
     , OverloadedStrings
     , RankNTypes
+    , RecordWildCards
     , ScopedTypeVariables
     , StandaloneDeriving 
     , TypeApplications
@@ -84,7 +85,6 @@ common common
     , vector-sized ^>= 1.5.0
     , ghc-typelits-natnormalise ^>= 0.7.6
     , mtl ^>= 2.2.2
-    , free ^>= 5.1.7
     , random ^>= 1.2.1
 
   mixins:
@@ -101,13 +101,18 @@ library
   -- Modules exported by the library.
   exposed-modules:
     , Jasskell.Card
+    , Jasskell.Declaration
     , Jasskell.Game
+    , Jasskell.Game.View
     , Jasskell.Jass
     , Jasskell.Round
+    , Jasskell.Round.View
     , Jasskell.Trick
+    , Jasskell.Trick.View
     , Jasskell.Variant
-    , Jasskell.View.Absolute
-    , Jasskell.View.Relative
+    , Jasskell.View.Declaring
+    , Jasskell.View.Playing
+    , Jasskell.Views
 
   -- Modules included in this library but not exported.
   other-modules:

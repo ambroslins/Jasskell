@@ -6,9 +6,13 @@ module Jasskell.Card
     deck,
     value,
     compare,
+    BadCard (..),
+    playable,
   )
 where
 
+import Control.Monad.Except (MonadError (throwError))
+import Data.Foldable (maximumBy)
 import Data.Set qualified as Set
 import Jasskell.Card.Suit (Suit (..))
 import Jasskell.Variant (Direction (..), Variant (..))
@@ -63,3 +67,55 @@ compare variant lead = case variant of
                BottomUp -> comparing (Down . rank)
            )
         <> comparing suit
+
+data BadCard
+  = NotInHand
+  | FollowTrump Suit
+  | FollowLead Suit
+  | Undertrump Card
+  deriving (Eq, Show)
+
+playable :: Variant -> [Card] -> Cards -> Card -> Either BadCard Cards
+playable variant table hand card = Set.alterF check card hand
+  where
+    check :: Bool -> Either BadCard Bool
+    check hasCard = do
+      unless hasCard $ throwError NotInHand
+      case table of
+        [] -> pure ()
+        (c : cs) -> do
+          let lead = suit c
+              followers = Set.filter ((== lead) . suit) hand
+              comp = compare variant lead
+          case variant of
+            Trump trump
+              | lead == trump ->
+                unless
+                  (suit card == trump || Set.null (Set.delete puur trumps))
+                  $ throwError (FollowTrump trump)
+              | suit highest == trump ->
+                if suit card == trump
+                  then
+                    unless
+                      ( comp card highest == GT
+                          || (Set.null highers && hand == trumps)
+                      )
+                      $ throwError (Undertrump highest)
+                  else
+                    unless
+                      (suit card == lead || Set.null followers)
+                      $ throwError (FollowLead lead)
+              | otherwise ->
+                unless
+                  (suit card `elem` [lead, trump] || Set.null followers)
+                  $ throwError (FollowLead lead)
+              where
+                trumps = Set.filter ((== trump) . suit) hand
+                highest = maximumBy comp (c :| cs)
+                highers = Set.filter (\x -> comp x highest == GT) hand
+                puur = Card trump Under
+            _ ->
+              unless
+                (suit card == lead || Set.null followers)
+                $ throwError (FollowLead lead)
+      pure False

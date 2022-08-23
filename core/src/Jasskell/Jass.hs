@@ -3,8 +3,6 @@
 module Jasskell.Jass where
 
 import Control.Exception (assert)
-import Control.Monad.Free (MonadFree, liftF)
-import Control.Monad.Free.TH (makeFree)
 import Control.Monad.ST (runST)
 import Data.Finite (Finite, finite, getFinite)
 import Data.Set qualified as Set
@@ -13,18 +11,7 @@ import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import GHC.TypeLits (Div, type (+), type (-))
 import Jasskell.Card (Card (..), Cards, Rank (..), Suit (..), deck)
-import Jasskell.Variant (Variant)
-import Jasskell.View.Absolute qualified as Absolute
 import System.Random (RandomGen, uniformR)
-
-data Jass n next
-  = PromptCard (Finite n) (Absolute.View n) (Card -> next)
-  | PromptVariant (Finite n) (Absolute.View n) (Variant -> next)
-  deriving (Functor)
-
-makeFree ''Jass
-
-type MonadJass n m = (JassNat n, MonadFree (Jass n) m)
 
 class (KnownNat n, KnownNat (Div 36 n), n ~ ((n - 1) + 1)) => JassNat n where
   deal :: RandomGen g => g -> (Vector n Cards, g)

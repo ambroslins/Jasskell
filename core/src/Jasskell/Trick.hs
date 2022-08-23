@@ -1,25 +1,27 @@
 module Jasskell.Trick
   ( Trick,
+    Interface (..),
     play,
     variant,
     leader,
     cards,
     winner,
     points,
+    rotate,
   )
 where
 
 import Data.Finite (Finite)
-import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import Data.Vector.Sized.Extra qualified as Vector
-import Jasskell.Card (Card, Cards)
+import GHC.TypeNats (type (+))
+import Jasskell.Card (BadCard, Card, Cards)
 import Jasskell.Card qualified as Card
-import Jasskell.Jass (JassNat, MonadJass, promptCard)
+import Jasskell.Trick.View (View)
+import Jasskell.Trick.View qualified as View
 import Jasskell.Variant (Variant)
-import Jasskell.View.Absolute qualified as View.Absolute
-import Relude.Extra.Lens (over)
+import Relude.Extra.Lens qualified as Lens
 
 data Trick n = Trick
   { variant :: Variant,
@@ -28,36 +30,44 @@ data Trick n = Trick
   }
   deriving (Eq, Show)
 
+data Interface n m = Interface
+  { promptCard :: Finite n -> View n -> m Card,
+    throwBadCard :: forall a. BadCard -> m a
+  }
+
 play ::
   forall n m.
-  (MonadJass n m, MonadState (Vector n Cards) m) =>
+  (KnownNat n, MonadState (Vector n Cards) m) =>
+  Interface n m ->
   Variant ->
   Finite n ->
   m (Trick n)
-play variant leader = close <$> Vector.constructM playCard
+play Interface {..} variant leader = close <$> Vector.constructM playCard
   where
     close cs = Trick {variant, leader, cards = Vector.rotate (negate leader) cs}
+
     playCard :: forall i. KnownNat i => Vector i Card -> m Card
-    playCard table = do
+    playCard cards = do
       hands <- get
-      let current = leader + fromIntegral (Vector.length table)
-          cards =
-            Vector.rotate (negate leader) $
-              Vector.unfoldrN
-                (\case [] -> (Nothing, []); c : cs -> (Just c, cs))
-                (Vector.toList table)
+      let currentHand = Vector.index hands current
           view =
-            View.Absolute.MakeView
-              { View.Absolute.hands = hands,
-                View.Absolute.cards = cards,
-                View.Absolute.variant = Just variant,
-                View.Absolute.leader = leader
+            View.MakeView
+              { View.hands = hands,
+                View.variant = variant,
+                View.leader = leader,
+                View.cards = cardList
               }
       card <- promptCard current view
-      modify $ over (Vector.ix current) (Set.delete card)
-      pure card
+      case Card.playable variant cardList currentHand card of
+        Left reason -> throwBadCard reason
+        Right newHand -> do
+          modify $ Lens.set (Vector.ix current) newHand
+          pure card
+      where
+        current = leader + fromIntegral (Vector.length cards)
+        cardList = Vector.toList cards
 
-winner :: JassNat n => Trick n -> Finite n
+winner :: n ~ (m + 1) => Trick n -> Finite n
 winner Trick {leader, cards, variant} =
   Vector.maxIndexBy (Card.compare variant lead) cards
   where
@@ -65,3 +75,10 @@ winner Trick {leader, cards, variant} =
 
 points :: Trick n -> Int
 points Trick {cards, variant} = sum $ Vector.map (Card.value variant) cards
+
+rotate :: KnownNat n => Finite n -> Trick n -> Trick n
+rotate i trick =
+  trick
+    { leader = leader trick - i,
+      cards = Vector.rotate i $ cards trick
+    }
