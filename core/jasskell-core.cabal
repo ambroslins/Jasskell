@@ -140,5 +140,9 @@ test-suite jasskell-core-test
     , jasskell-core
     , tasty
     , tasty-hunit
+    , tasty-hedgehog
+    , hedgehog
   
   other-modules:
+    , CardTest
+    , Gen
