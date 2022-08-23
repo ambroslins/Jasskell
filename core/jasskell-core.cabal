@@ -129,7 +129,7 @@ test-suite jasskell-core-test
   hs-source-dirs:   test
 
   -- The entrypoint to the test suite.
-  main-is:          Spec.hs
+  main-is:          Test.hs
 
   build-tool-depends: hspec-discover:hspec-discover ^>=2.9.4
   ghc-options:
@@ -138,8 +138,7 @@ test-suite jasskell-core-test
   -- Test dependencies.
   build-depends:
     , jasskell-core
-    , hspec ^>=2.9.4
-    , QuickCheck ^>=2.14.2
+    , tasty
+    , tasty-hunit
   
   other-modules:
-    , CardSpec
