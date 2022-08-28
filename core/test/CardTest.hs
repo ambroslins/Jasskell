@@ -65,7 +65,7 @@ prop_value_totals_152 = property $ do
   sum ((map $ Card.value variant) (toList Card.deck)) === 152
 
 prop_compare_is_transitive :: Property
-prop_compare_is_transitive = withDiscards 200 $
+prop_compare_is_transitive = withDiscards 300 $
   property $ do
     v <- forAll Gen.variant
     l <- forAll Gen.suit
@@ -95,11 +95,12 @@ prop_compare_is_antisymmertric = property $ do
   comp c1 c2 /== comp c2 c1
 
 prop_compare_trump_match_topdown :: Property
-prop_compare_trump_match_topdown = property $ do
-  t <- forAll Gen.suit
-  l <- forAll Gen.suit
-  c1 <- forAll Gen.card
-  c2 <- forAll Gen.card
-  guard $ Card.suit c1 /= t
-  guard $ Card.suit c2 /= t
-  Card.compare (Trump t) l c1 c2 === Card.compare (Direction TopDown) l c1 c2
+prop_compare_trump_match_topdown = withDiscards 300 $
+  property $ do
+    t <- forAll Gen.suit
+    l <- forAll Gen.suit
+    c1 <- forAll Gen.card
+    c2 <- forAll Gen.card
+    guard $ Card.suit c1 /= t
+    guard $ Card.suit c2 /= t
+    Card.compare (Trump t) l c1 c2 === Card.compare (Direction TopDown) l c1 c2
