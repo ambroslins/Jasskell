@@ -1,4 +1,4 @@
-module CardTest where
+module CardTest (tests) where
 
 import Gen qualified
 import Hedgehog (Property, forAll, property, withDiscards, (/==), (===))

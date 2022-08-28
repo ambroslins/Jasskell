@@ -1,5 +1,6 @@
 module Gen where
 
+import Data.Finite (Finite)
 import Hedgehog (MonadGen)
 import Hedgehog.Gen qualified as Gen
 import Jasskell.Card (Card (Card), Rank, Suit)
@@ -30,3 +31,6 @@ variant =
       Direction <$> direction,
       Slalom <$> direction
     ]
+
+finite :: forall n m. (KnownNat n, MonadGen m) => m (Finite n)
+finite = Gen.enumBounded

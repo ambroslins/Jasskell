@@ -113,10 +113,10 @@ library
     , Jasskell.View.Declaring
     , Jasskell.View.Playing
     , Jasskell.Views
+    , Data.Vector.Sized.Extra
 
   -- Modules included in this library but not exported.
   other-modules:
-    , Data.Vector.Sized.Extra
     , Jasskell.Card.Suit
 
 test-suite jasskell-core-test
@@ -146,3 +146,4 @@ test-suite jasskell-core-test
   other-modules:
     , CardTest
     , Gen
+    , VectorTest

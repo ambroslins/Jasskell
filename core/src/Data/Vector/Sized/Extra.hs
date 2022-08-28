@@ -27,7 +27,12 @@ notEmpty v =
     then Nothing
     else Just $ unsafeCoerce Refl
 
-unfoldrM :: (KnownNat n, Monad m) => (b -> m (a, b)) -> b -> m (Vector n a)
+unfoldrM ::
+  forall n a b m.
+  (KnownNat n, Monad m) =>
+  (b -> m (a, b)) ->
+  b ->
+  m (Vector n a)
 unfoldrM f =
   evalStateT $
     Vector.replicateM $ do
