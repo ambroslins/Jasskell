@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Jasskell.Jass where
 
 import Control.Exception (assert)
@@ -10,25 +8,12 @@ import Data.Vector.Mutable.Sized qualified as Vector.Mutable
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import GHC.TypeLits (Div, type (+), type (-))
-import Jasskell.Card (Card (..), Cards, Rank (..), Suit (..), deck)
+import Jasskell.Card (Cards)
 import System.Random (RandomGen, uniformR)
 
-class (KnownNat n, KnownNat (Div 36 n), n ~ ((n - 1) + 1)) => JassNat n where
-  deal :: RandomGen g => g -> (Vector n Cards, g)
-  deal = dealDeck deck
+type JassNat n = (KnownNat n, KnownNat (Div 36 n), n ~ ((n - 1) + 1))
 
-instance JassNat 3
-
-instance JassNat 4
-
-instance JassNat 5 where
-  deal = dealDeck (Set.delete (Card Bells Six) deck)
-
-instance JassNat 6
-
-instance JassNat 7 where
-  deal = dealDeck (Set.delete (Card Bells Six) deck)
-
+-- TODO: handle assert if deck is not divisble
 dealDeck :: (KnownNat n, RandomGen g) => Cards -> g -> (Vector n Cards, g)
 dealDeck cards gen = Vector.withSizedList (toList cards) $ \cs ->
   let (shuffled, g) = shuffle gen cs
