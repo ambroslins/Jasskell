@@ -1,9 +1,7 @@
 module Jasskell.Server.Action where
 
-import Jasskell.Card (Card)
-import Jasskell.Variant (Variant)
+import Jasskell.Server.GameState (Move)
 
-data Action
-  = PlayCard Card
-  | DeclareVariant Variant
+newtype Action
+  = Move Move
   deriving (Eq, Show)

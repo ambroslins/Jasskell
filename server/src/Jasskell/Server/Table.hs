@@ -1,31 +1,45 @@
 module Jasskell.Server.Table where
 
-import Control.Monad.Except (Except, MonadError (..), runExcept)
-import Control.Monad.Free (Free (..))
+import Control.Concurrent.STM (writeTMVar)
+import Control.Monad.Except (MonadError (..))
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
-import Jasskell.Jass (JassNat)
+import Jasskell.Game (Game)
 import Jasskell.Server.Action (Action (..))
-import Jasskell.Server.GameState (GameState)
+import Jasskell.Server.Error (Error (..))
+import Jasskell.Server.GameState (GameState, Transition (..))
 import Jasskell.Server.GameState qualified as GameState
 import Jasskell.Server.Message (Message (..))
 import Jasskell.Server.TableID (TableID)
 import Jasskell.Server.TableID qualified as TableID
 import Jasskell.Server.User (User)
-import Jasskell.Server.User qualified as User
-import Relude.Extra.Lens (set)
 import Prelude hiding (join)
 
 newtype Table n = Table (TVar (TableState n))
 
-data TableState n
-  = Waiting (Vector n (Maybe (User n)))
-  | Playing (Vector n (User n)) (GameState n)
+data TableState n = TableState
+  { seats :: Vector n (Seat n),
+    phase :: Phase n
+  }
+
+data Seat n
+  = Empty
+  | Taken User (Message n -> STM ())
+
+data Phase n
+  = Waiting
+  | Playing (GameState n)
+  | Over (Game n)
 
 new :: KnownNat n => IO (TableID, Table n)
 new = do
-  table <- Table <$> newTVarIO (Waiting $ Vector.replicate Nothing)
+  let tableState =
+        TableState
+          { seats = Vector.replicate Empty,
+            phase = Waiting
+          }
+  table <- Table <$> newTVarIO tableState
   tableID <- TableID.new
   pure (tableID, table)
 
@@ -34,59 +48,41 @@ data Connection n = Connection
     getMessage :: STM (Message n)
   }
 
-join :: JassNat n => Text -> Finite n -> Table n -> STM (Maybe (Connection n))
-join username index t@(Table table) =
-  readTVar table >>= \case
-    Waiting users
-      | isJust $ Vector.index users index -> pure Nothing
-      | otherwise -> do
-        (user, getMsg) <- User.make username
-        messageUsers (\i -> UserJoined username (i - index)) t
-        writeTVar table $ Waiting $ set (Vector.ix index) (Just user) users
-        pure $
-          pure $
-            Connection
-              { putAction = update t index,
-                getMessage = getMsg
-              }
-    Playing _ _ -> pure Nothing
-
-update :: JassNat n => Table n -> Finite n -> Action -> STM (Either Error ())
-update t@(Table table) player action = do
+join :: User -> Finite n -> Table n -> STM (Maybe (Connection n))
+join user index t@(Table table) = do
+  messageVar <- newEmptyTMVar
   tableState <- readTVar table
-  case runExcept $ updateState player action tableState of
-    Left e -> pure $ throwError e
-    Right (ts, messages) -> do
-      writeTVar table ts
-      pure <$> messageUsers messages t
+  let sit seat = guard (isEmpty seat) $> Taken user (writeTMVar messageVar)
+  case Vector.ix index sit $ seats tableState of
+    Nothing -> pure Nothing
+    Just s ->
+      writeTVar table tableState {seats = s}
+        $> pure
+          Connection
+            { putAction = applyAction t index,
+              getMessage = takeTMVar messageVar
+            }
 
-messageUsers :: (Finite n -> Message n) -> Table n -> STM ()
-messageUsers messages (Table table) =
-  readTVar table >>= \case
-    Waiting users -> Vector.imapM_ (maybe pass . messageUser) users
-    Playing users _ -> Vector.imapM_ messageUser users
+applyAction :: forall n. Table n -> Finite n -> Action -> STM (Either Error ())
+applyAction (Table table) player action = do
+  tableState <- readTVar table
+  case updateState tableState of
+    Left e -> pure $ Left e
+    Right ts -> pure <$> writeTVar table ts
   where
-    messageUser i user = User.sendMessage user (messages i)
+    updateState :: TableState n -> Either Error (TableState n)
+    updateState ts = case action of
+      Move move -> case phase ts of
+        Waiting -> throwError WaitingForPlayers
+        Over _ -> throwError GameOver
+        Playing gameState -> do
+          p <- case GameState.update player move gameState of
+            Left badMove -> throwError $ BadMove badMove
+            Right (Continue gs) -> pure $ Playing gs
+            Right (Done game) -> pure $ Over game
+          pure $ ts {phase = p}
 
-data Error
-  = GameNotReady
-  | GameError GameState.Error
-  deriving (Show)
-
-updateState :: forall n m. (JassNat n, MonadError Error m) => Finite n -> Action -> TableState n -> m (TableState n, Finite n -> Message n)
-updateState player action tableState = case action of
-  PlayCard card -> updateGameState $ GameState.playCard player card
-  DeclareVariant variant -> updateGameState $ GameState.declareVariant player variant
-  where
-    updateGameState :: (GameState n -> Except GameState.Error (GameState n)) -> m (TableState n, Finite n -> Message n)
-    updateGameState f = case tableState of
-      Waiting _ -> throwError GameNotReady
-      Playing users gameState -> case runExcept $ f gameState of
-        Left e -> throwError $ GameError e
-        Right newGameState ->
-          pure
-            ( Playing users newGameState,
-              case newGameState of
-                Pure game -> const $ GameOver game
-                Free jass -> UpdateView . GameState.views jass
-            )
+isEmpty :: Seat n -> Bool
+isEmpty = \case
+  Empty -> True
+  _ -> False

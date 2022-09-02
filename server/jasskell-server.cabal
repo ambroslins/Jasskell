@@ -103,11 +103,13 @@ library
   -- Modules exported by the library.
   exposed-modules:
     , Jasskell.Server.Action
+    , Jasskell.Server.Error
     , Jasskell.Server.GameState
     , Jasskell.Server.Message
     , Jasskell.Server.ServerState
     , Jasskell.Server.Table
     , Jasskell.Server.TableID
+    , Jasskell.Server.TableState
     , Jasskell.Server.User
 
   -- Modules included in this library but not exported.
