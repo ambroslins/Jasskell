@@ -101,6 +101,7 @@ library
   -- Modules exported by the library.
   exposed-modules:
     , Jasskell.Card
+    , Jasskell.Dealer
     , Jasskell.Declaration
     , Jasskell.Game
     , Jasskell.Game.View
