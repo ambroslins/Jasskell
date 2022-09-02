@@ -1,4 +1,11 @@
-module Jasskell.Game where
+module Jasskell.Game
+  ( Game,
+    rounds,
+    Interface (..),
+    play,
+    rotate,
+  )
+where
 
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
@@ -62,3 +69,6 @@ play Interface {..} = go [] 0
                   View.Playing.make rounds view,
               Round.throwBadCard = throwBadCard
             }
+
+rotate :: KnownNat n => Finite n -> Game n -> Game n
+rotate i = coerce $ map (Round.rotate i)

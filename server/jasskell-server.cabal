@@ -111,6 +111,7 @@ library
     , Jasskell.Server.TableID
     , Jasskell.Server.TableState
     , Jasskell.Server.User
+    , Jasskell.Server.View
 
   -- Modules included in this library but not exported.
   -- other-modules:
