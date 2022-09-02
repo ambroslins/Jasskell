@@ -18,6 +18,8 @@ import Control.Monad.Free.TH (makeFree)
 import Control.Monad.Trans.Free (FreeF (..), FreeT (runFreeT))
 import Data.Finite (Finite)
 import Jasskell.Card (BadCard, Card)
+import Jasskell.Dealer (Dealer)
+import Jasskell.Dealer qualified as Dealer
 import Jasskell.Declaration (BadDeclaration, Declaration)
 import Jasskell.Game (Game)
 import Jasskell.Game qualified as Game
@@ -26,6 +28,7 @@ import Jasskell.View.Declaring (Declaring)
 import Jasskell.View.Playing (Playing)
 import Jasskell.Views (Views)
 import Jasskell.Views qualified as Views
+import System.Random (RandomGen)
 
 data PromptF n next
   = PromptCard (Finite n) (Views Playing n) (Card -> next)
@@ -84,17 +87,22 @@ transition f =
       Pure game -> Done game
       Free play -> Continue $ GameState play
 
-start :: (JassNat n, MonadError BadMove m) => m (Transition n)
-start =
-  transition $
-    Game.play $
-      Game.Interface
-        { Game.promptCard = promptCard,
-          Game.promptDeclaration = promptDeclaration,
-          Game.deal = undefined,
-          Game.throwBadCard = throwError . BadCard,
-          Game.throwBadDeclaration = throwError . BadDeclaration
-        }
+start ::
+  (JassNat n, MonadError BadMove m, RandomGen g) =>
+  Dealer n ->
+  g ->
+  m (Transition n)
+start dealer = transition . evalStateT game
+  where
+    game =
+      Game.play $
+        Game.Interface
+          { Game.promptCard = promptCard,
+            Game.promptDeclaration = promptDeclaration,
+            Game.deal = state (Dealer.run dealer),
+            Game.throwBadCard = throwError . BadCard,
+            Game.throwBadDeclaration = throwError . BadDeclaration
+          }
 
 views :: GameState n -> Views View n
 views (GameState f) = case f of

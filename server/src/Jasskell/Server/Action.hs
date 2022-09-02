@@ -2,6 +2,7 @@ module Jasskell.Server.Action where
 
 import Jasskell.Server.GameState (Move)
 
-newtype Action
+data Action
   = Move Move
+  | StartGame
   deriving (Eq, Show)

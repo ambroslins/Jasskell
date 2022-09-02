@@ -1,25 +1,38 @@
-module Jasskell.Server.Table where
+module Jasskell.Server.Table
+  ( Table,
+    new,
+    join,
+    Connection,
+    getMessage,
+    putAction,
+  )
+where
 
 import Control.Concurrent.STM (writeTMVar)
 import Control.Monad.Except (MonadError (..))
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
+import Jasskell.Dealer (Dealer)
 import Jasskell.Game (Game)
+import Jasskell.Jass (JassNat)
 import Jasskell.Server.Action (Action (..))
 import Jasskell.Server.Error (Error (..))
-import Jasskell.Server.GameState (GameState, Transition (..))
+import Jasskell.Server.GameState (BadMove, GameState, Transition (..))
 import Jasskell.Server.GameState qualified as GameState
 import Jasskell.Server.Message (Message (..))
 import Jasskell.Server.TableID (TableID)
 import Jasskell.Server.TableID qualified as TableID
 import Jasskell.Server.User (User)
+import System.Random (StdGen, newStdGen, split)
 import Prelude hiding (join)
 
 newtype Table n = Table (TVar (TableState n))
 
 data TableState n = TableState
   { seats :: Vector n (Seat n),
+    stdGen :: StdGen,
+    dealer :: Dealer n,
     phase :: Phase n
   }
 
@@ -32,11 +45,14 @@ data Phase n
   | Playing (GameState n)
   | Over (Game n)
 
-new :: KnownNat n => IO (TableID, Table n)
-new = do
+new :: KnownNat n => Dealer n -> IO (TableID, Table n)
+new d = do
+  gen <- newStdGen
   let tableState =
         TableState
           { seats = Vector.replicate Empty,
+            stdGen = gen,
+            dealer = d,
             phase = Waiting
           }
   table <- Table <$> newTVarIO tableState
@@ -48,7 +64,7 @@ data Connection n = Connection
     getMessage :: STM (Message n)
   }
 
-join :: User -> Finite n -> Table n -> STM (Maybe (Connection n))
+join :: JassNat n => User -> Finite n -> Table n -> STM (Maybe (Connection n))
 join user index t@(Table table) = do
   messageVar <- newEmptyTMVar
   tableState <- readTVar table
@@ -63,7 +79,7 @@ join user index t@(Table table) = do
               getMessage = takeTMVar messageVar
             }
 
-applyAction :: forall n. Table n -> Finite n -> Action -> STM (Either Error ())
+applyAction :: forall n. JassNat n => Table n -> Finite n -> Action -> STM (Either Error ())
 applyAction (Table table) player action = do
   tableState <- readTVar table
   case updateState tableState of
@@ -76,11 +92,21 @@ applyAction (Table table) player action = do
         Waiting -> throwError WaitingForPlayers
         Over _ -> throwError GameOver
         Playing gameState -> do
-          p <- case GameState.update player move gameState of
-            Left badMove -> throwError $ BadMove badMove
-            Right (Continue gs) -> pure $ Playing gs
-            Right (Done game) -> pure $ Over game
+          p <- fromTransition $ GameState.update player move gameState
           pure $ ts {phase = p}
+      StartGame -> case phase ts of
+        Playing _ -> throwError GameAlreadyStarted
+        _ -> do
+          let (g, g') = split $ stdGen ts
+          p <- fromTransition $ GameState.start (dealer ts) g
+          pure $ ts {phase = p, stdGen = g'}
+
+    fromTransition :: Either BadMove (Transition n) -> Either Error (Phase n)
+    fromTransition =
+      either (throwError . BadMove) $
+        pure . \case
+          Continue gameState -> Playing gameState
+          Done game -> Over game
 
 isEmpty :: Seat n -> Bool
 isEmpty = \case
