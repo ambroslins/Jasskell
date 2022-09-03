@@ -23,6 +23,6 @@ data Seat
 
 data Phase n
   = Waiting
-  | Playing (GameState.View n)
+  | Started (GameState.View n)
   | Over (Game n)
   deriving (Show)

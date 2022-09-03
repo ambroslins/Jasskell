@@ -16,6 +16,7 @@ import Data.Vector.Sized qualified as Vector
 import Data.Vector.Sized.Extra qualified as Vector
 import Jasskell.Dealer (Dealer)
 import Jasskell.Game (Game)
+import Jasskell.Game qualified as Game
 import Jasskell.Jass (JassNat)
 import Jasskell.Server.Action (Action (..))
 import Jasskell.Server.Error (Error (..))
@@ -29,7 +30,6 @@ import Jasskell.Server.View qualified as View
 import Jasskell.Views qualified as Views
 import System.Random (StdGen, newStdGen, split)
 import Prelude hiding (join)
-import qualified Jasskell.Game as Game
 
 newtype Table n = Table (TVar (TableState n))
 
@@ -144,7 +144,7 @@ view ts player =
       View.phase = case phase ts of
         Waiting -> View.Waiting
         Playing gameState ->
-          View.Playing $ Views.pov (GameState.views gameState) player
+          View.Started $ Views.pov (GameState.views gameState) player
         Over game -> View.Over $ Game.rotate player game
     }
   where
