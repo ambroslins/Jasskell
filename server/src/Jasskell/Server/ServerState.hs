@@ -15,11 +15,12 @@ newtype ServerState = ServerState {tables :: TVar (HashMap TableID SomeTable)}
 empty :: IO ServerState
 empty = ServerState <$> newTVarIO mempty
 
-createTable :: ServerState -> IO (TableID, Table 4)
+createTable :: ServerState -> IO TableID
 createTable ServerState {tables} = do
   (tableID, table) <- Table.new Dealer.four
   atomically $ modifyTVar tables (HashMap.insert tableID (SomeTable table))
-  pure (tableID, table)
+  putStrLn $ "Created new table: " <> show tableID
+  pure tableID
 
 lookupTable :: ServerState -> TableID -> STM (Maybe SomeTable)
 lookupTable ServerState {tables} tableID =
