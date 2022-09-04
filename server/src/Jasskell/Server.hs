@@ -8,9 +8,9 @@ import Jasskell.Server.API
 import Jasskell.Server.Html qualified as Html
 import Jasskell.Server.ServerState (ServerState)
 import Jasskell.Server.ServerState qualified as ServerState
-import Servant (Application, Server, serve, type (:<|>) (..))
+import Servant (Application, Raw, Server, serve, serveDirectoryWebApp, type (:<|>) (..))
 
-type Route = API :<|> Html.Route
+type Route = API :<|> Html.Route :<|> Raw
 
 app :: ServerState -> Application
 app serverState = serve (Proxy @Route) (server serverState)
@@ -25,3 +25,4 @@ server serverState =
       }
   )
     :<|> Html.server
+    :<|> serveDirectoryWebApp "./static/"
