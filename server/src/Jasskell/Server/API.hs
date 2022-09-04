@@ -6,9 +6,6 @@ import Servant.API.Generic (type (:-))
 
 type API = "api" :> NamedRoutes NamedAPI
 
-api :: Proxy API
-api = Proxy
-
 newtype NamedAPI mode = NamedAPI
   { tableRouts :: mode :- "table" :> NamedRoutes TableRouts
   }

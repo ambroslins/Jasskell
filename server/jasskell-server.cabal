@@ -63,10 +63,12 @@ common common
     , DerivingStrategies
     , DerivingVia
     , FlexibleContexts
+    , FlexibleInstances
     , GADTs
     , GeneralizedNewtypeDeriving
     , ImportQualifiedPost
     , LambdaCase
+    , MultiParamTypeClasses
     , NamedFieldPuns
     , OverloadedStrings
     , ScopedTypeVariables
@@ -95,6 +97,8 @@ common common
     , warp
     , servant
     , servant-server
+    , http-media
+    , lucid2
 
   mixins:
     , base hiding (Prelude)
@@ -115,6 +119,8 @@ library
     , Jasskell.Server.Encoder
     , Jasskell.Server.Error
     , Jasskell.Server.GameState
+    , Jasskell.Server.Html
+    , Jasskell.Server.Html.Index
     , Jasskell.Server.Message
     , Jasskell.Server.ServerState
     , Jasskell.Server.Table
