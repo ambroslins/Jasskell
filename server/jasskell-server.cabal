@@ -99,6 +99,9 @@ common common
     , servant-server
     , http-media
     , lucid2
+    , websockets
+    , wai-websockets
+    , async
 
   mixins:
     , base hiding (Prelude)
@@ -116,6 +119,7 @@ library
     , Jasskell.Server
     , Jasskell.Server.Action
     , Jasskell.Server.API
+    , Jasskell.Server.Decoder
     , Jasskell.Server.Encoder
     , Jasskell.Server.Error
     , Jasskell.Server.GameState
@@ -128,6 +132,7 @@ library
     , Jasskell.Server.TableState
     , Jasskell.Server.User
     , Jasskell.Server.View
+    , Jasskell.Server.WebSocket
 
   -- Modules included in this library but not exported.
   -- other-modules:

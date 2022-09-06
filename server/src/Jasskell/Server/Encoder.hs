@@ -19,7 +19,8 @@ import Jasskell.Round qualified as Round
 import Jasskell.Server.GameState qualified as GameState
 import Jasskell.Server.User (User)
 import Jasskell.Server.User qualified as User
-import Jasskell.Server.View (Phase (..), Seat (..))
+import Jasskell.Server.View (Phase (..), Seat (..), View)
+import Jasskell.Server.View qualified as View
 import Jasskell.Trick (Trick)
 import Jasskell.Trick qualified as Trick
 import Jasskell.Variant (Direction, Variant (..))
@@ -123,3 +124,10 @@ phase = tagged $ \case
   Waiting -> Tagged "waiting" Encoder.unit ()
   Started v -> Tagged "started" viewGameState v
   Over g -> Tagged "over" game g
+
+view :: Encoder (View n)
+view =
+  object
+    [ field "seats" (vector seat) View.seats,
+      field "phase" phase View.phase
+    ]
