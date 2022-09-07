@@ -104,7 +104,6 @@ library
     , Jasskell.Dealer
     , Jasskell.Declaration
     , Jasskell.Game
-    , Jasskell.Game.View
     , Jasskell.Jass
     , Jasskell.Round
     , Jasskell.Round.View

@@ -129,7 +129,6 @@ library
     , Jasskell.Server.ServerState
     , Jasskell.Server.Table
     , Jasskell.Server.TableID
-    , Jasskell.Server.TableState
     , Jasskell.Server.User
     , Jasskell.Server.View
     , Jasskell.Server.WebSocket
