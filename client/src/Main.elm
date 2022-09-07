@@ -10,12 +10,14 @@ module Main exposing (..)
 import Browser
 import Html exposing (Html, button, div, text)
 import Html.Events exposing (onClick)
+import Html.Attributes exposing (class)
 
 
 
 -- MAIN
 
 
+main : Program () Model Msg
 main =
   Browser.sandbox { init = init, update = update, view = view }
 
@@ -57,8 +59,8 @@ update msg model =
 
 view : Model -> Html Msg
 view model =
-  div []
-    [ button [ onClick Decrement ] [ text "-" ]
-    , div [] [ text (String.fromInt model) ]
-    , button [ onClick Increment ] [ text "+" ]
+  div [class "flex justify-center items-center"]
+    [ button [ onClick Decrement, class "p-2 rounded mx-20" ] [ text "-" ]
+    , div [class "text-xl"] [ text (String.fromInt model) ]
+    , button [ onClick Increment, class "p-2 rounded mx-20"] [ text "+" ]
     ]
