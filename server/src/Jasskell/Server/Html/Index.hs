@@ -7,5 +7,7 @@ index = html_ $ do
   head_ $ do
     title_ "Jasskell"
     link_ [rel_ "stylesheet", type_ "text/css", href_ "style.css"]
+    script_ [src_ "main.js"] ("" :: String)
   body_ $ do
-    h1_ "Hello World"
+    div_ [id_ "app"] ""
+    script_ "var app = Elm.Main.init({node: document.getElementById('app')})"

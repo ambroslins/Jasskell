@@ -32,4 +32,4 @@ server serverState =
       }
   )
     :<|> Html.server
-    :<|> serveDirectoryWebApp "./static/"
+    :<|> serveDirectoryWebApp "./client/static/"
