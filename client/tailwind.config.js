@@ -2,7 +2,11 @@
 module.exports = {
   content: ["./src/**/*.elm"],
   theme: {
-    extend: {},
+    extend: {
+      aspectRatio: {
+        card: '9 / 16'
+      }
+    },
   },
   plugins: [],
   purge: false,
