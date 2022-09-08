@@ -10,4 +10,4 @@ index = html_ $ do
     script_ [src_ "main.js"] ("" :: String)
   body_ $ do
     div_ [id_ "app"] ""
-    script_ "var app = Elm.Main.init({node: document.getElementById('app')})"
+    script_ [src_ "index.js"] ("" :: String)

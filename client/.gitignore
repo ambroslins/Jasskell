@@ -1,3 +1,4 @@
 elm-stuff/
 node_modules/
-static/
+static/style.css
+static/main.js
