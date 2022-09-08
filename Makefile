@@ -1,4 +1,4 @@
-.PHONY: all
+.PHONY: all client core server
 all: server client
 
 run: all

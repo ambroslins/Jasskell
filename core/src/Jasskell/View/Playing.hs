@@ -1,7 +1,19 @@
-module Jasskell.View.Playing where
+module Jasskell.View.Playing
+  ( Playing,
+    hand,
+    rounds,
+    tricks,
+    variant,
+    leader,
+    table,
+    make,
+  )
+where
 
 import Data.Finite (Finite)
+import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
+import Data.Vector.Sized.Extra qualified as Vector
 import Jasskell.Card (Card, Cards)
 import Jasskell.Round (Round)
 import Jasskell.Round qualified as Round
@@ -32,3 +44,10 @@ make rs view = Views.make $ \player ->
       leader = Round.View.leader view - player,
       cards = Round.View.cards view
     }
+
+table :: KnownNat n => Playing n -> Vector n (Maybe Card)
+table Playing {leader, cards} =
+  Vector.rotate (negate leader) $
+    Vector.unfoldrN
+      (maybe (Nothing, []) (first Just) . uncons)
+      cards
