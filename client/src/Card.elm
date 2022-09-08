@@ -1,12 +1,11 @@
-module Card exposing (Card, decode, encode, view)
+module Card exposing (Card, decode, encode, placeholder, view)
 
 import Card.Rank as Rank exposing (Rank)
 import Card.Suit as Suit exposing (Suit)
-import Html exposing (Html, p, text)
+import Html exposing (Html, div, p, text)
 import Html.Attributes exposing (class)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode exposing (Value)
-import Html exposing (div)
 
 
 type alias Card =
@@ -37,3 +36,8 @@ view card =
         [ p [] [ text <| Suit.toString card.suit ]
         , p [] [ text <| Rank.toString card.rank ]
         ]
+
+
+placeholder : Html msg
+placeholder =
+    div [ class "aspect-card border-2 rounded-3xl bg-gray-100" ] []
