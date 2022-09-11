@@ -1,6 +1,6 @@
-module Route exposing (Route(..), href, load, parse, toString)
+module Route exposing (Route(..), href, parse, push, toString)
 
-import Browser.Navigation as Navigation
+import Browser.Navigation as Nav
 import Html exposing (Attribute)
 import Html.Attributes as Attributes
 import TableID exposing (TableID)
@@ -14,9 +14,9 @@ type Route
     | Play TableID
 
 
-load : Route -> Cmd msg
-load =
-    Navigation.load << toString
+push : Nav.Key -> Route -> Cmd msg
+push key route =
+    Nav.pushUrl key (toString route)
 
 
 toString : Route -> String

@@ -1,10 +1,13 @@
 module Home exposing (Model, Msg, init, subscriptions, update, view)
 
+import API
 import Browser.Navigation as Nav
 import Html exposing (Html, button, div, text)
 import Html.Attributes exposing (class)
 import Html.Events exposing (onClick)
+import Http
 import Route
+import TableID exposing (TableID)
 
 
 
@@ -26,13 +29,26 @@ init () =
 
 type Msg
     = Create
+    | GotTableID (Result Http.Error TableID)
 
 
 update : Nav.Key -> Msg -> Model -> ( Model, Cmd Msg )
 update key msg model =
     case msg of
         Create ->
-            ( model, Nav.pushUrl key "/play/foo" )
+            ( model, API.createTable GotTableID )
+
+        GotTableID result ->
+            let
+                cmd =
+                    case result of
+                        Ok tableID ->
+                            Route.push key (Route.Play tableID)
+
+                        Err _ ->
+                            Cmd.none
+            in
+            ( model, cmd )
 
 
 
