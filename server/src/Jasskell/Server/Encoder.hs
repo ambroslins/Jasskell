@@ -1,5 +1,6 @@
 module Jasskell.Server.Encoder where
 
+import Data.Aeson (Value (Null))
 import Data.Aeson.Combinators.Encode
   ( Encoder,
     field,
@@ -33,6 +34,9 @@ set = contramap toList . Encoder.list
 
 vector :: Encoder a -> Encoder (Vector n a)
 vector = contramap Vector.fromSized . Encoder.vector
+
+nullable :: Encoder a -> Encoder (Maybe a)
+nullable e = Encoder.Encoder $ maybe Null (Encoder.run e)
 
 suit :: Encoder Suit
 suit = contramap show text
@@ -103,7 +107,7 @@ viewDeclaring =
       field "nominators" (contramap toList $ Encoder.list finite) View.Declaring.nominators
     ]
 
-viewPlaying :: Encoder (View.Playing.Playing n)
+viewPlaying :: KnownNat n => Encoder (View.Playing.Playing n)
 viewPlaying =
   object
     [ field "hand" (set card) View.Playing.hand,
@@ -111,21 +115,21 @@ viewPlaying =
       field "tricks" (Encoder.list trick) View.Playing.tricks,
       field "variant" variant View.Playing.variant,
       field "leader" finite View.Playing.leader,
-      field "cards" (Encoder.list card) View.Playing.cards
+      field "table" (vector (nullable card)) View.Playing.table
     ]
 
-viewGameState :: Encoder (GameState.View n)
+viewGameState :: KnownNat n => Encoder (GameState.View n)
 viewGameState = tagged $ \case
   GameState.Playing playing -> Tagged "playing" viewPlaying playing
   GameState.Declaring declaring -> Tagged "declaring" viewDeclaring declaring
 
-phase :: Encoder (Phase n)
+phase :: KnownNat n => Encoder (Phase n)
 phase = tagged $ \case
   Waiting -> Tagged "waiting" Encoder.unit ()
   Started v -> Tagged "started" viewGameState v
   Over g -> Tagged "over" game g
 
-view :: Encoder (View n)
+view :: KnownNat n => Encoder (View n)
 view =
   object
     [ field "seats" (vector seat) View.seats,

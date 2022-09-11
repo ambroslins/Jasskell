@@ -124,8 +124,8 @@ library
     , Jasskell.Server.Error
     , Jasskell.Server.GameState
     , Jasskell.Server.Html
-    , Jasskell.Server.Html.Index
     , Jasskell.Server.Message
+    , Jasskell.Server.Page
     , Jasskell.Server.ServerState
     , Jasskell.Server.Table
     , Jasskell.Server.TableID

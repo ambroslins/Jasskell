@@ -1,14 +1,11 @@
 module Jasskell.Server.Html
-  ( Route,
-    server,
+  ( HTML,
   )
 where
 
-import Jasskell.Server.Html.Index (index)
-import Lucid (Html, ToHtml (toHtml), renderBS)
+import Lucid (ToHtml (toHtml), renderBS)
 import Network.HTTP.Media ((//), (/:))
-import Servant (Server)
-import Servant.API (Accept (contentTypes), Get, MimeRender (mimeRender))
+import Servant.API (Accept (contentTypes), MimeRender (mimeRender))
 
 data HTML deriving (Typeable)
 
@@ -19,8 +16,3 @@ instance Accept HTML where
 
 instance ToHtml a => MimeRender HTML a where
   mimeRender _ = renderBS . toHtml
-
-type Route = Get '[HTML] (Html ())
-
-server :: Server Route
-server = pure index
