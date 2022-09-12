@@ -73,6 +73,7 @@ common common
     , OverloadedStrings
     , ScopedTypeVariables
     , StandaloneDeriving 
+    , TupleSections
     , TypeApplications
     , TypeFamilies
     , TypeOperators
@@ -119,16 +120,18 @@ library
     , Jasskell.Server
     , Jasskell.Server.Action
     , Jasskell.Server.API
+    , Jasskell.Server.Client
     , Jasskell.Server.Decoder
     , Jasskell.Server.Encoder
+    , Jasskell.Server.Env
     , Jasskell.Server.Error
     , Jasskell.Server.GameState
     , Jasskell.Server.Html
     , Jasskell.Server.Message
     , Jasskell.Server.Page
-    , Jasskell.Server.ServerState
     , Jasskell.Server.Table
     , Jasskell.Server.TableID
+    , Jasskell.Server.TableState
     , Jasskell.Server.User
     , Jasskell.Server.View
     , Jasskell.Server.WebSocket

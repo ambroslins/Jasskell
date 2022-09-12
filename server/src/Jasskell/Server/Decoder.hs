@@ -3,10 +3,13 @@ module Jasskell.Server.Decoder where
 import Data.Aeson (Key)
 import Data.Aeson.Combinators.Decode (Decoder, key)
 import Data.Aeson.Combinators.Decode qualified as Decoder
+import Data.Finite (Finite, packFinite)
 import Data.HashMap.Strict qualified as HashMap
 import Jasskell.Card (Card (Card), Rank, Suit)
 import Jasskell.Declaration (Declaration (..))
-import Jasskell.Server.Action (Action (..))
+import Jasskell.Jass (JassNat)
+import Jasskell.Server.Action (Action)
+import Jasskell.Server.Action qualified as Action
 import Jasskell.Server.GameState (Move (..))
 import Jasskell.Variant (Direction (..), Variant (..))
 import Relude.Extra (toFst)
@@ -32,6 +35,11 @@ boundedEnum ::
   Decoder a
 boundedEnum = withLookupTable [minBound .. maxBound]
 
+finite :: KnownNat n => Decoder (Finite n)
+finite =
+  -- TODO: use toBoundedInteger from scientific
+  Decoder.integer >>= maybe (fail "Out of bounds") pure . packFinite
+
 suit :: Decoder Suit
 suit = boundedEnum show Decoder.text
 
@@ -44,17 +52,17 @@ card = Card <$> key "suit" suit <*> key "rank" rank
 direction :: Decoder Direction
 direction = withLookupTable [TopDown, BottomUp] show Decoder.text
 
-data Tagged a = forall b. Tagged Key (b -> a) (Decoder b)
+data Tagged a = Tagged Key (Decoder a)
 
 tagged :: [Tagged a] -> Decoder a
-tagged = asum . map (\(Tagged tag f decoder) -> f <$> key tag decoder)
+tagged = asum . map (\(Tagged tag decoder) -> key tag decoder)
 
 variant :: Decoder Variant
 variant =
   tagged
-    [ Tagged "trump" Trump suit,
-      Tagged "direction" Direction direction,
-      Tagged "slalom" Slalom direction
+    [ Tagged "trump" $ Trump <$> suit,
+      Tagged "direction" $ Direction <$> direction,
+      Tagged "slalom" $ Slalom <$> direction
     ]
 
 declaration :: Decoder Declaration
@@ -63,13 +71,14 @@ declaration = maybe Shove Choose <$> Decoder.nullable variant
 move :: Decoder Move
 move =
   tagged
-    [ Tagged "playCard" PlayCard card,
-      Tagged "declare" Declare declaration
+    [ Tagged "playCard" $ PlayCard <$> card,
+      Tagged "declare" $ Declare <$> declaration
     ]
 
-action :: Decoder Action
+action :: JassNat n => Decoder (Action n)
 action =
   tagged
-    [ Tagged "move" Move move,
-      Tagged "start" (const StartGame) Decoder.unit
+    [ Tagged "move" $ Action.playMove <$> move,
+      Tagged "start" $ Action.startGame <$ Decoder.unit,
+      Tagged "takeSeat" $ Action.takeSeat <$> Decoder.text <*> finite
     ]

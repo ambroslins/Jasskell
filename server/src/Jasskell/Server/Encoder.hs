@@ -18,6 +18,7 @@ import Jasskell.Game qualified as Game
 import Jasskell.Round (Round)
 import Jasskell.Round qualified as Round
 import Jasskell.Server.GameState qualified as GameState
+import Jasskell.Server.Message (Message (..))
 import Jasskell.Server.User (User)
 import Jasskell.Server.User qualified as User
 import Jasskell.Server.View (Phase (..), Seat (..), View)
@@ -135,3 +136,8 @@ view =
     [ field "seats" (vector seat) View.seats,
       field "phase" phase View.phase
     ]
+
+message :: KnownNat n => Encoder (Message n)
+message = tagged $ \case
+  UpdateView v -> Tagged "view" view v
+  Error e -> Tagged "error" Encoder.text (show e)

@@ -7,4 +7,7 @@ data Error
   | GameOver
   | GameAlreadyStarted
   | BadMove BadMove
+  | NotAPlayer
+  | AlreadySeated
+  | SeatAlreadyTaken
   deriving (Eq, Show)

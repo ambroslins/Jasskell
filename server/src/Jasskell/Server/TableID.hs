@@ -3,6 +3,8 @@ module Jasskell.Server.TableID
     new,
     toText,
     fromText,
+    toByteString,
+    fromByteString,
   )
 where
 
@@ -15,11 +17,17 @@ import Prelude hiding (toText)
 newtype TableID = TableID UUID
   deriving newtype (Eq, Ord, Hashable, Show, ToJSON, FromJSON)
 
-new :: IO TableID
-new = TableID <$> UUID.V4.nextRandom
+new :: MonadIO m => m TableID
+new = TableID <$> liftIO UUID.V4.nextRandom
 
 toText :: TableID -> Text
 toText = coerce UUID.toText
 
 fromText :: Text -> Maybe TableID
 fromText = coerce UUID.fromText
+
+toByteString :: TableID -> ByteString
+toByteString = toStrict . coerce UUID.toByteString
+
+fromByteString :: ByteString -> Maybe TableID
+fromByteString = coerce UUID.fromByteString . fromStrict

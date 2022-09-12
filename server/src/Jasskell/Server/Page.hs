@@ -4,9 +4,10 @@ module Jasskell.Server.Page
   )
 where
 
+import Jasskell.Server.Env (Env)
 import Jasskell.Server.Html (HTML)
 import Lucid
-import Servant (Get, NamedRoutes, Server)
+import Servant (Get, Handler, NamedRoutes, ServerT)
 import Servant.API.Generic (type (:-))
 
 type Route = NamedRoutes Routes
@@ -16,7 +17,7 @@ newtype Routes mode = Routes
   }
   deriving (Generic)
 
-server :: Server Route
+server :: ServerT Route (ReaderT Env Handler)
 server =
   Routes
     { home = pure $
