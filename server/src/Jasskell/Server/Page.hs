@@ -35,6 +35,5 @@ makeHead title =
     script_ [src_ "main.js"] ("" :: String)
 
 initElm :: Monad m => HtmlT m ()
-initElm = do
-  div_ [id_ "app"] ""
-  script_ "const app = Elm.Main.init();"
+initElm =
+  script_ [src_ "index.js"] ("" :: String)

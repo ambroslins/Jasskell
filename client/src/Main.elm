@@ -6,9 +6,9 @@ import Home
 import Html
 import Maybe exposing (withDefault)
 import Play
-import Result exposing (fromMaybe)
 import Route exposing (Route(..))
 import Url exposing (Url)
+import WebSocket
 
 
 
@@ -21,7 +21,7 @@ main =
         { init = init
         , update = update
         , view = view
-        , subscriptions = always Sub.none
+        , subscriptions = subscriptions
         , onUrlChange = UrlChange
         , onUrlRequest = UrlRequest
         }
@@ -48,7 +48,7 @@ init () url key =
         route =
             withDefault Route.Home <| Route.parse url
 
-        ( model, cmd ) =
+        ( model, _ ) =
             Home.init ()
     in
     changeRoute route { page = Home model, key = key }
@@ -111,12 +111,16 @@ updatePage toPage toMsg model ( page, cmd ) =
 
 changeRoute : Route -> Model -> ( Model, Cmd Msg )
 changeRoute route model =
-    case route of
-        Route.Home ->
-            updatePage Home HomeMsg model <| Home.init ()
+    let
+        ( newModel, cmd ) =
+            case route of
+                Route.Home ->
+                    updatePage Home HomeMsg model <| Home.init ()
 
-        Route.Play tableID ->
-            updatePage Play PlayMsg model <| Play.init tableID
+                Route.Play tableID ->
+                    updatePage Play PlayMsg model <| Play.init tableID
+    in
+    ( newModel, Cmd.batch [ WebSocket.close, cmd ] )
 
 
 
