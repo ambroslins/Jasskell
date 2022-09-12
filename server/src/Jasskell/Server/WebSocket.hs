@@ -1,5 +1,6 @@
 module Jasskell.Server.WebSocket where
 
+import Colog.Message (logInfo)
 import Control.Concurrent.Async (concurrently_)
 import Data.Aeson.Combinators.Decode (Decoder)
 import Data.Aeson.Combinators.Decode qualified as Decoder
@@ -44,17 +45,25 @@ server env pendingConnection =
 
 handleConnection :: (MonadApp m, MonadIO m) => PendingConnection -> m ()
 handleConnection pendingConnection = do
-  print $ pendingRequest pendingConnection
   let path = requestPath $ pendingRequest pendingConnection
   case ByteString.stripPrefix "/play/" path >>= TableID.fromByteString of
-    Nothing ->
+    Nothing -> do
       liftIO $ rejectRequest pendingConnection $ "Invalid path: " <> path
+      logInfo $
+        "WebSocket connection rejected because the path: "
+          <> show path
+          <> " is invalid"
     Just tableID ->
       App.lookupTable tableID >>= \case
-        Nothing ->
+        Nothing -> do
           liftIO $ rejectRequest pendingConnection "Table not found"
+          logInfo $
+            "WebSocket connection rejected becuase the table: "
+              <> show tableID
+              <> " does not exist"
         Just (SomeTable table) -> do
           connection <- liftIO $ acceptRequest pendingConnection
+          logInfo "WebSocket connection accepted"
 
           (putAction, getMessage) <- Table.join table
 

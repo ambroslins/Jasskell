@@ -27,7 +27,7 @@ fromText :: Text -> Maybe TableID
 fromText = coerce UUID.fromText
 
 toByteString :: TableID -> ByteString
-toByteString = toStrict . coerce UUID.toByteString
+toByteString = coerce UUID.toASCIIBytes
 
 fromByteString :: ByteString -> Maybe TableID
-fromByteString = coerce UUID.fromByteString . fromStrict
+fromByteString = coerce UUID.fromASCIIBytes

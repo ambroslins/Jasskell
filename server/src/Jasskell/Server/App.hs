@@ -15,6 +15,7 @@ import Colog.Core
     LogAction,
     hoistLogAction,
   )
+import Colog.Message (logInfo)
 import Colog.Message qualified as Colog
 import Control.Concurrent.STM.TVar (modifyTVar)
 import Control.Monad.Except (MonadError)
@@ -65,11 +66,10 @@ makeEnv logAction = do
 createTable :: (MonadApp m, MonadIO m) => m TableID
 createTable = do
   Env {tables} <- ask
-  liftIO $ do
-    (tableID, table) <- Table.new Dealer.four
-    atomically $ modifyTVar tables (HashMap.insert tableID (SomeTable table))
-    putStrLn $ "Created new table: " <> show tableID
-    pure tableID
+  (tableID, table) <- Table.new Dealer.four
+  atomically $ modifyTVar tables (HashMap.insert tableID (SomeTable table))
+  logInfo $ "Created new table: " <> show tableID
+  pure tableID
 
 lookupTable :: (MonadApp m, MonadIO m) => TableID -> m (Maybe SomeTable)
 lookupTable tableID = do
