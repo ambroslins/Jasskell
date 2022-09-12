@@ -5,8 +5,8 @@ import Jasskell.Server.API
     NamedAPI (..),
     TableRouts (..),
   )
-import Jasskell.Server.Env (Env)
-import Jasskell.Server.Env qualified as Env
+import Jasskell.Server.App (AppT, runAppT)
+import Jasskell.Server.App qualified as App
 import Jasskell.Server.Page qualified as Page
 import Jasskell.Server.WebSocket qualified as WebSocket
 import Network.Wai.Handler.WebSockets (websocketsOr)
@@ -27,19 +27,24 @@ type Route = API :<|> Page.Route :<|> Raw
 route :: Proxy Route
 route = Proxy
 
-app :: Env -> Application
+app :: App.Env IO -> Application
 app env =
   websocketsOr
     defaultConnectionOptions
     (WebSocket.server env)
-    (serve route $ hoistServer route (`runReaderT` env) server)
+    ( serve route $
+        hoistServer
+          route
+          (runAppT (App.hoistEnv liftIO env))
+          server
+    )
 
-server :: ServerT Route (ReaderT Env Handler)
+server :: ServerT Route (AppT Handler)
 server =
   ( NamedAPI
       { tableRouts =
           TableRouts
-            { postTable = Env.createTable
+            { postTable = App.createTable
             }
       }
   )

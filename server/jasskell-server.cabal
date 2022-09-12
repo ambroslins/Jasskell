@@ -71,6 +71,7 @@ common common
     , MultiParamTypeClasses
     , NamedFieldPuns
     , OverloadedStrings
+    , RankNTypes
     , ScopedTypeVariables
     , StandaloneDeriving 
     , TupleSections
@@ -103,6 +104,8 @@ common common
     , websockets
     , wai-websockets
     , async
+    , co-log-core
+    , co-log
 
   mixins:
     , base hiding (Prelude)
@@ -120,10 +123,10 @@ library
     , Jasskell.Server
     , Jasskell.Server.Action
     , Jasskell.Server.API
+    , Jasskell.Server.App
     , Jasskell.Server.Client
     , Jasskell.Server.Decoder
     , Jasskell.Server.Encoder
-    , Jasskell.Server.Env
     , Jasskell.Server.Error
     , Jasskell.Server.GameState
     , Jasskell.Server.Html

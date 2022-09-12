@@ -5,10 +5,10 @@ import Data.Aeson.Combinators.Decode (Decoder)
 import Data.Aeson.Combinators.Decode qualified as Decoder
 import Data.Aeson.Combinators.Encode qualified as Encoder
 import Data.ByteString qualified as ByteString
+import Jasskell.Server.App (MonadApp, runAppT)
+import Jasskell.Server.App qualified as App
 import Jasskell.Server.Decoder qualified as Decoder
 import Jasskell.Server.Encoder qualified as Encoder
-import Jasskell.Server.Env (Env)
-import Jasskell.Server.Env qualified as Env
 import Jasskell.Server.Table (SomeTable (SomeTable))
 import Jasskell.Server.Table qualified as Table
 import Jasskell.Server.TableID (TableID)
@@ -38,11 +38,11 @@ joinMessageDecoder =
     <*> Decoder.key "tableID" Decoder.auto
     <*> Decoder.key "seat" Decoder.int
 
-server :: Env -> ServerApp
+server :: App.Env IO -> ServerApp
 server env pendingConnection =
-  runReaderT (handleConnection pendingConnection) env
+  runAppT env (handleConnection pendingConnection)
 
-handleConnection :: (MonadReader Env m, MonadIO m) => PendingConnection -> m ()
+handleConnection :: (MonadApp m, MonadIO m) => PendingConnection -> m ()
 handleConnection pendingConnection = do
   print $ pendingRequest pendingConnection
   let path = requestPath $ pendingRequest pendingConnection
@@ -50,7 +50,7 @@ handleConnection pendingConnection = do
     Nothing ->
       liftIO $ rejectRequest pendingConnection $ "Invalid path: " <> path
     Just tableID ->
-      Env.lookupTable tableID >>= \case
+      App.lookupTable tableID >>= \case
         Nothing ->
           liftIO $ rejectRequest pendingConnection "Table not found"
         Just (SomeTable table) -> do
