@@ -18,8 +18,8 @@ import Data.Vector.Sized.Extra qualified as Vector
 import GHC.TypeNats (type (+))
 import Jasskell.Card (BadCard, Card, Cards)
 import Jasskell.Card qualified as Card
-import Jasskell.Trick.View (View)
-import Jasskell.Trick.View qualified as View
+import Jasskell.Trick.State (TrickState)
+import Jasskell.Trick.State qualified as Trick.State
 import Jasskell.Variant (Variant)
 import Relude.Extra.Lens qualified as Lens
 
@@ -31,7 +31,7 @@ data Trick n = Trick
   deriving (Eq, Show)
 
 data Interface n m = Interface
-  { promptCard :: Finite n -> View n -> m Card,
+  { promptCard :: Finite n -> TrickState n -> m Card,
     throwBadCard :: forall a. BadCard -> m a
   }
 
@@ -50,14 +50,14 @@ play Interface {..} variant leader = close <$> Vector.constructM playCard
     playCard cards = do
       hands <- get
       let currentHand = Vector.index hands current
-          view =
-            View.MakeView
-              { View.hands = hands,
-                View.variant = variant,
-                View.leader = leader,
-                View.cards = cardList
+          trickState =
+            Trick.State.TrickState
+              { Trick.State.hands = hands,
+                Trick.State.variant = variant,
+                Trick.State.leader = leader,
+                Trick.State.cards = cardList
               }
-      card <- promptCard current view
+      card <- promptCard current trickState
       case Card.playable variant cardList currentHand card of
         Left reason -> throwBadCard reason
         Right newHand -> do

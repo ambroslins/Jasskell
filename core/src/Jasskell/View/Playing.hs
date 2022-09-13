@@ -1,5 +1,5 @@
 module Jasskell.View.Playing
-  ( Playing,
+  ( ViewPlaying,
     hand,
     rounds,
     tricks,
@@ -17,14 +17,15 @@ import Data.Vector.Sized.Extra qualified as Vector
 import Jasskell.Card (Card, Cards)
 import Jasskell.Round (Round)
 import Jasskell.Round qualified as Round
-import Jasskell.Round.View qualified as Round.View
+import Jasskell.Round.State (RoundState)
+import Jasskell.Round.State qualified as Round.State
 import Jasskell.Trick (Trick)
 import Jasskell.Trick qualified as Trick
 import Jasskell.Variant (Variant)
 import Jasskell.Views (Views)
 import Jasskell.Views qualified as Views
 
-data Playing n = Playing
+data ViewPlaying n = ViewPlaying
   { hand :: Cards,
     rounds :: [Round n],
     tricks :: [Trick n],
@@ -34,19 +35,19 @@ data Playing n = Playing
   }
   deriving (Eq, Show)
 
-make :: KnownNat n => [Round n] -> Round.View.View n -> Views Playing n
+make :: KnownNat n => [Round n] -> RoundState n -> Views ViewPlaying n
 make rs view = Views.make $ \player ->
-  Playing
-    { hand = Vector.index (Round.View.hands view) player,
+  ViewPlaying
+    { hand = Vector.index (Round.State.hands view) player,
       rounds = map (Round.rotate player) rs,
-      tricks = map (Trick.rotate player) $ Round.View.tricks view,
-      variant = Round.View.variant view,
-      leader = Round.View.leader view - player,
-      cards = Round.View.cards view
+      tricks = map (Trick.rotate player) $ Round.State.tricks view,
+      variant = Round.State.variant view,
+      leader = Round.State.leader view - player,
+      cards = Round.State.cards view
     }
 
-table :: KnownNat n => Playing n -> Vector n (Maybe Card)
-table Playing {leader, cards} =
+table :: KnownNat n => ViewPlaying n -> Vector n (Maybe Card)
+table ViewPlaying {leader, cards} =
   Vector.rotate (negate leader) $
     Vector.unfoldrN
       (maybe (Nothing, []) (first Just) . uncons)

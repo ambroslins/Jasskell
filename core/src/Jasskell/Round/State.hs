@@ -1,5 +1,5 @@
-module Jasskell.Round.View
-  ( View,
+module Jasskell.Round.State
+  ( RoundState,
     fromTrick,
     hands,
     tricks,
@@ -13,10 +13,10 @@ import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
 import Jasskell.Card (Card, Cards)
 import Jasskell.Trick (Trick)
-import Jasskell.Trick.View qualified as Trick.View
+import Jasskell.Trick.State qualified as Trick.State
 import Jasskell.Variant (Variant)
 
-data View n = MakeView
+data RoundState n = RoundState
   { hands :: Vector n Cards,
     tricks :: [Trick n],
     variant :: Variant,
@@ -25,12 +25,12 @@ data View n = MakeView
   }
   deriving (Eq, Show)
 
-fromTrick :: [Trick n] -> Trick.View.View n -> View n
-fromTrick tricks view =
-  MakeView
-    { hands = Trick.View.hands view,
+fromTrick :: [Trick n] -> Trick.State.TrickState n -> RoundState n
+fromTrick tricks ts =
+  RoundState
+    { hands = Trick.State.hands ts,
       tricks = tricks,
-      variant = Trick.View.variant view,
-      leader = Trick.View.leader view,
-      cards = Trick.View.cards view
+      variant = Trick.State.variant ts,
+      leader = Trick.State.leader ts,
+      cards = Trick.State.cards ts
     }

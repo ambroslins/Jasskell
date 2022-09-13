@@ -17,7 +17,6 @@ import Jasskell.Game (Game)
 import Jasskell.Game qualified as Game
 import Jasskell.Round (Round)
 import Jasskell.Round qualified as Round
-import Jasskell.Server.GameState qualified as GameState
 import Jasskell.Server.Message (Message (..))
 import Jasskell.Server.User (User)
 import Jasskell.Server.User qualified as User
@@ -99,7 +98,7 @@ round = contramap Round.tricks (vector trick)
 game :: Encoder (Game n)
 game = contramap Game.rounds (Encoder.list round)
 
-viewDeclaring :: Encoder (View.Declaring.Declaring n)
+viewDeclaring :: Encoder (View.Declaring.ViewDeclaring n)
 viewDeclaring =
   object
     [ field "hand" (set card) View.Declaring.hand,
@@ -108,7 +107,7 @@ viewDeclaring =
       field "nominators" (contramap toList $ Encoder.list finite) View.Declaring.nominators
     ]
 
-viewPlaying :: KnownNat n => Encoder (View.Playing.Playing n)
+viewPlaying :: KnownNat n => Encoder (View.Playing.ViewPlaying n)
 viewPlaying =
   object
     [ field "hand" (set card) View.Playing.hand,
@@ -119,15 +118,11 @@ viewPlaying =
       field "table" (vector (nullable card)) View.Playing.table
     ]
 
-viewGameState :: KnownNat n => Encoder (GameState.View n)
-viewGameState = tagged $ \case
-  GameState.Playing playing -> Tagged "playing" viewPlaying playing
-  GameState.Declaring declaring -> Tagged "declaring" viewDeclaring declaring
-
 phase :: KnownNat n => Encoder (Phase n)
 phase = tagged $ \case
   Waiting -> Tagged "waiting" Encoder.unit ()
-  Started v -> Tagged "started" viewGameState v
+  Playing v -> Tagged "playing" viewPlaying v
+  Declaring v -> Tagged "declaring" viewDeclaring v
   Over g -> Tagged "over" game g
 
 view :: KnownNat n => Encoder (View n)
@@ -139,5 +134,6 @@ view =
 
 message :: KnownNat n => Encoder (Message n)
 message = tagged $ \case
-  UpdateView v -> Tagged "view" view v
+  UpdatePlayerView v -> Tagged "player-view" view v
+  UpdateGuestView v -> Tagged "guest-view" view v
   Error e -> Tagged "error" Encoder.text (show e)

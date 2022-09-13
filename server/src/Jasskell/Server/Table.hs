@@ -24,7 +24,8 @@ import Jasskell.Server.TableState
     Seat (..),
     TableState (..),
     findClient,
-    view,
+    viewGuest,
+    viewPlayer,
   )
 import System.Random (newStdGen)
 import Prelude hiding (join)
@@ -74,10 +75,13 @@ runAction table clientID action = do
           broadcastView ts
 
 broadcastView :: KnownNat n => TableState n -> STM ()
-broadcastView tableState = Vector.imapM_ send $ seats tableState
+broadcastView tableState = do
+  Vector.imapM_ sendPlayer $ seats tableState
+  mapM_ sendGuest $ guests tableState
   where
-    -- TODO: send to guests
-    views = view tableState
-    send i = \case
+    sendPlayer i = \case
       Empty -> pure ()
-      Taken _ _ client -> Client.send client $ Message.UpdateView (views i)
+      Taken _ _ client ->
+        Client.send client $ Message.UpdatePlayerView (viewPlayer tableState i)
+    sendGuest client =
+      Client.send client $ Message.UpdateGuestView (viewGuest tableState)

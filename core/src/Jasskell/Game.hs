@@ -16,9 +16,9 @@ import Jasskell.Jass (JassNat)
 import Jasskell.Round (Round)
 import Jasskell.Round qualified as Round
 import Jasskell.Variant (Variant)
-import Jasskell.View.Declaring (Declaring)
+import Jasskell.View.Declaring (ViewDeclaring)
 import Jasskell.View.Declaring qualified as View.Declaring
-import Jasskell.View.Playing (Playing)
+import Jasskell.View.Playing (ViewPlaying)
 import Jasskell.View.Playing qualified as View.Playing
 import Jasskell.Views (Views)
 
@@ -26,8 +26,8 @@ newtype Game n = Game {rounds :: [Round n]}
   deriving (Show)
 
 data Interface n m = Interface
-  { promptCard :: Finite n -> Views Playing n -> m Card,
-    promptDeclaration :: Finite n -> Views Declaring n -> m Declaration,
+  { promptCard :: Finite n -> Views ViewPlaying n -> m Card,
+    promptDeclaration :: Finite n -> Views ViewDeclaring n -> m Declaration,
     deal :: m (Vector n Cards),
     throwBadCard :: forall a. BadCard -> m a,
     throwBadDeclaration :: forall a. BadDeclaration -> m a

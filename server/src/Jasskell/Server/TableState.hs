@@ -4,12 +4,14 @@ module Jasskell.Server.TableState
     Phase (..),
     isEmpty,
     findClient,
-    view,
+    viewPlayer,
+    viewGuest,
   )
 where
 
 import Data.Finite (Finite)
 import Data.HashMap.Strict qualified as HashMap
+import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import Data.Vector.Sized.Extra qualified as Vector
@@ -22,6 +24,8 @@ import Jasskell.Server.GameState qualified as GameState
 import Jasskell.Server.User (User)
 import Jasskell.Server.View (View)
 import Jasskell.Server.View qualified as View
+import Jasskell.View.Declaring qualified as View.Declaring
+import Jasskell.View.Playing qualified as View.Playing
 import Jasskell.Views qualified as Views
 import System.Random (StdGen)
 
@@ -63,19 +67,28 @@ findPlayer clientID = asum . Vector.imap p . seats
 findGuest :: ClientID -> TableState n -> Maybe (Client n)
 findGuest clientID = HashMap.lookup clientID . guests
 
-view :: KnownNat n => TableState n -> Finite n -> View n
-view ts player =
+viewPlayer :: KnownNat n => TableState n -> Finite n -> View n
+viewPlayer ts player =
   View.MakeView
     { View.seats =
-        Vector.rotate (negate player) $ Vector.map mapSeat $ seats ts,
+        Vector.rotate (negate player) . mapSeats $ seats ts,
       View.phase = case phase ts of
         Waiting -> View.Waiting
         Playing gameState ->
-          View.Started $ Views.pov (GameState.views gameState) player
+          Views.pov (GameState.viewPhase gameState) player
         Over game -> View.Over $ Game.rotate player game
     }
+
+mapSeats :: Vector n (Seat n) -> Vector n View.Seat
+mapSeats = Vector.map $ \case
+  Empty -> View.Empty
+  Taken user _ _ -> View.Taken user
+
+viewGuest :: KnownNat n => TableState n -> View n
+viewGuest ts = playerView {View.phase = phase}
   where
-    mapSeat :: Seat n -> View.Seat
-    mapSeat = \case
-      Empty -> View.Empty
-      Taken user _ _ -> View.Taken user
+    playerView = viewPlayer ts 0
+    phase = case View.phase playerView of
+      View.Playing v -> View.Playing v {View.Playing.hand = Set.empty}
+      View.Declaring v -> View.Declaring v {View.Declaring.hand = Set.empty}
+      p -> p

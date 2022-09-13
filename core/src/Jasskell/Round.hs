@@ -1,7 +1,6 @@
 module Jasskell.Round
   ( Round,
     Interface (..),
-    View,
     tricks,
     play,
     rotate,
@@ -16,8 +15,8 @@ import Data.Vector.Sized.Extra qualified as Vector
 import GHC.TypeNats (Div)
 import Jasskell.Card (BadCard, Card, Cards)
 import Jasskell.Jass (JassNat)
-import Jasskell.Round.View (View)
-import Jasskell.Round.View qualified as View
+import Jasskell.Round.State (RoundState)
+import Jasskell.Round.State qualified as Round.State
 import Jasskell.Trick (Trick)
 import Jasskell.Trick qualified as Trick
 import Jasskell.Variant (Variant)
@@ -27,7 +26,7 @@ newtype Round n = Round {tricks :: Vector (Div 36 n) (Trick n)}
   deriving (Eq, Show)
 
 data Interface n m = Interface
-  { promptCard :: Finite n -> View n -> m Card,
+  { promptCard :: Finite n -> RoundState n -> m Card,
     throwBadCard :: forall a. BadCard -> m a
   }
 
@@ -59,7 +58,7 @@ play Interface {..} variant leader =
             { Trick.promptCard = \current view ->
                 lift $
                   promptCard current $
-                    View.fromTrick (Vector.toList ts) view,
+                    Round.State.fromTrick (Vector.toList ts) view,
               Trick.throwBadCard = lift . throwBadCard
             }
 

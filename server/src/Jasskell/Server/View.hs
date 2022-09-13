@@ -7,8 +7,9 @@ where
 
 import Data.Vector.Sized (Vector)
 import Jasskell.Game (Game)
-import Jasskell.Server.GameState qualified as GameState
 import Jasskell.Server.User (User)
+import Jasskell.View.Declaring (ViewDeclaring)
+import Jasskell.View.Playing (ViewPlaying)
 
 data View n = MakeView
   { seats :: Vector n Seat,
@@ -23,6 +24,7 @@ data Seat
 
 data Phase n
   = Waiting
-  | Started (GameState.View n)
+  | Playing (ViewPlaying n)
+  | Declaring (ViewDeclaring n)
   | Over (Game n)
   deriving (Show)
