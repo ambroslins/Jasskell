@@ -1,17 +1,10 @@
-module Jasskell.Server.API where
+module Jasskell.Server.API (routes) where
 
-import Jasskell.Server.TableID (TableID)
-import Servant (JSON, NamedRoutes, Post, type (:>))
-import Servant.API.Generic (type (:-))
+import Jasskell.Server.App (createTable)
+import Jasskell.Server.Http qualified as Http
+import Web.Twain (json)
 
-type API = "api" :> NamedRoutes NamedAPI
-
-newtype NamedAPI mode = NamedAPI
-  { tableRouts :: mode :- "table" :> NamedRoutes TableRouts
-  }
-  deriving (Generic)
-
-newtype TableRouts mode = TableRouts
-  { postTable :: mode :- Post '[JSON] TableID
-  }
-  deriving (Generic)
+routes :: [Http.Route]
+routes =
+  [ Http.post "/api/table" (json <$> createTable)
+  ]

@@ -1,31 +1,22 @@
-module Jasskell.Server.Page
-  ( Route,
-    server,
-  )
-where
+module Jasskell.Server.Page (routes) where
 
-import Jasskell.Server.App (AppT)
-import Jasskell.Server.Html (HTML)
+import Jasskell.Server.Http qualified as Http
 import Lucid
-import Servant (Get, Handler, NamedRoutes, ServerT)
-import Servant.API.Generic (type (:-))
+import Network.Wai (Response)
+import Web.Twain qualified as Twain
 
-type Route = NamedRoutes Routes
+routes :: [Http.Route]
+routes =
+  [ Http.get "/" $ html index
+  ]
 
-newtype Routes mode = Routes
-  { home :: mode :- Get '[HTML] (Html ())
-  }
-  deriving (Generic)
+html :: Monad m => HtmlT m a -> m Response
+html m = Twain.html <$> renderBST m
 
-server :: ServerT Route (AppT Handler)
-server =
-  Routes
-    { home = pure $
-        html_ $ do
-          makeHead "Jasskell"
-          body_
-            initElm
-    }
+index :: Monad m => HtmlT m ()
+index = html_ $ do
+  makeHead "Jasskell"
+  body_ initElm
 
 makeHead :: Monad m => Text -> HtmlT m ()
 makeHead title =

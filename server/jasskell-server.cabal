@@ -97,9 +97,8 @@ common common
     , aeson-combinators
     , wai
     , warp
-    , servant
-    , servant-server
-    , http-media
+    , twain
+    , wai-app-static
     , lucid2
     , websockets
     , wai-websockets
@@ -129,7 +128,7 @@ library
     , Jasskell.Server.Encoder
     , Jasskell.Server.Error
     , Jasskell.Server.GameState
-    , Jasskell.Server.Html
+    , Jasskell.Server.Http
     , Jasskell.Server.Message
     , Jasskell.Server.Page
     , Jasskell.Server.Table
