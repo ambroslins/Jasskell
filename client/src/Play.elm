@@ -42,7 +42,9 @@ update msg model =
         WebSocketEvent event ->
             case event of
                 WebSocket.Open ->
-                    ( { model | state = Connected "" }, Cmd.none )
+                    ( { model | state = Connected "" }
+                    , WebSocket.send "{\"take-seat\": {\"username\": \"test\", \"seat\": 0}}"
+                    )
 
                 WebSocket.Message message ->
                     ( { model | state = Connected message }, Cmd.none )

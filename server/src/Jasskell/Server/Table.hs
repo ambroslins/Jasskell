@@ -52,11 +52,12 @@ new d = do
 join :: (JassNat n, MonadIO m) => Table n -> m (Action n -> IO (), IO (Message n))
 join (Table table) = do
   (clientID, client) <- Client.make
-  atomically $
+  atomically $ do
     modifyTVar table $ \tableState ->
       tableState
         { guests = HashMap.insert clientID client $ guests tableState
         }
+    broadcastView table
   pure
     ( atomically . runAction table clientID,
       atomically $ Client.recive client
@@ -72,16 +73,18 @@ runAction table clientID action = do
         Left e -> Client.send client $ Message.Error e
         Right ts -> do
           writeTVar table ts
-          broadcastView ts
+          broadcastView table
 
-broadcastView :: KnownNat n => TableState n -> STM ()
-broadcastView tableState = do
+broadcastView :: KnownNat n => TVar (TableState n) -> STM ()
+broadcastView table = do
+  tableState <- readTVar table
+  let sendPlayer i = \case
+        Empty -> pure ()
+        Taken _ _ client ->
+          Client.send client $
+            Message.UpdatePlayerView (viewPlayer tableState i)
+      sendGuest client =
+        Client.send client $
+          Message.UpdateGuestView (viewGuest tableState)
   Vector.imapM_ sendPlayer $ seats tableState
   mapM_ sendGuest $ guests tableState
-  where
-    sendPlayer i = \case
-      Empty -> pure ()
-      Taken _ _ client ->
-        Client.send client $ Message.UpdatePlayerView (viewPlayer tableState i)
-    sendGuest client =
-      Client.send client $ Message.UpdateGuestView (viewGuest tableState)

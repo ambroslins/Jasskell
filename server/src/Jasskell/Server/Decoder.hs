@@ -71,7 +71,7 @@ declaration = maybe Shove Choose <$> Decoder.nullable variant
 move :: Decoder Move
 move =
   tagged
-    [ Tagged "playCard" $ PlayCard <$> card,
+    [ Tagged "play-card" $ PlayCard <$> card,
       Tagged "declare" $ Declare <$> declaration
     ]
 
@@ -80,5 +80,8 @@ action =
   tagged
     [ Tagged "move" $ Action.playMove <$> move,
       Tagged "start" $ Action.startGame <$ Decoder.unit,
-      Tagged "takeSeat" $ Action.takeSeat <$> Decoder.text <*> finite
+      Tagged "take-seat" $
+        Action.takeSeat
+          <$> key "username" Decoder.text
+          <*> key "seat" finite
     ]
