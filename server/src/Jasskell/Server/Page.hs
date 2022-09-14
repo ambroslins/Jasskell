@@ -1,39 +1,31 @@
-module Jasskell.Server.Page
-  ( Route,
-    server,
-  )
-where
+module Jasskell.Server.Page (routes) where
 
-import Jasskell.Server.App (AppT)
-import Jasskell.Server.Html (HTML)
+import Jasskell.Server.Http qualified as Http
 import Lucid
-import Servant (Get, Handler, NamedRoutes, ServerT)
-import Servant.API.Generic (type (:-))
+import Network.Wai (Response)
+import Web.Twain qualified as Twain
 
-type Route = NamedRoutes Routes
+routes :: [Http.Route]
+routes =
+  [ Http.get "/" $ html index
+  , Http.get "/play/:tableID" $ html index
+  ]
 
-newtype Routes mode = Routes
-  { home :: mode :- Get '[HTML] (Html ())
-  }
-  deriving (Generic)
+html :: Monad m => HtmlT m a -> m Response
+html m = Twain.html <$> renderBST m
 
-server :: ServerT Route (AppT Handler)
-server =
-  Routes
-    { home = pure $
-        html_ $ do
-          makeHead "Jasskell"
-          body_
-            initElm
-    }
+index :: Monad m => HtmlT m ()
+index = html_ $ do
+  makeHead "Jasskell"
+  body_ initElm
 
 makeHead :: Monad m => Text -> HtmlT m ()
 makeHead title =
   head_ $ do
     title_ $ toHtml title
-    link_ [rel_ "stylesheet", type_ "text/css", href_ "style.css"]
-    script_ [src_ "main.js"] ("" :: String)
+    link_ [rel_ "stylesheet", type_ "text/css", href_ "/style.css"]
+    script_ [src_ "/main.js"] ("" :: String)
 
 initElm :: Monad m => HtmlT m ()
 initElm =
-  script_ [src_ "index.js"] ("" :: String)
+  script_ [src_ "/index.js"] ("" :: String)
