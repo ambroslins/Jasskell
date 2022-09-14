@@ -71,7 +71,7 @@ viewPlayer :: KnownNat n => TableState n -> Finite n -> View n
 viewPlayer ts player =
   View.MakeView
     { View.seats =
-        Vector.rotate (negate player) . mapSeats $ seats ts,
+        Vector.rotate player . mapSeats $ seats ts,
       View.phase = case phase ts of
         Waiting -> View.Waiting
         Playing gameState ->

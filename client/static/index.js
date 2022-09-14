@@ -15,7 +15,7 @@ app.ports.open.subscribe((path) => {
   socket.onerror = (event) => app.ports.onError.send({});
 });
 
-app.ports.send.subscribe((msg) => socket?.send(msg));
+app.ports.send.subscribe((msg) => socket?.send(JSON.stringify(msg)));
 app.ports.closePort.subscribe((_) => {
   socket?.close();
   socket = null;

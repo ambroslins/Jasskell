@@ -39,7 +39,7 @@ subscribe toMsg =
             ]
 
 
-port send : String -> Cmd msg
+port send : Value -> Cmd msg
 
 
 port open : String -> Cmd msg
