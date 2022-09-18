@@ -24,14 +24,11 @@ view { radius, elementSize, offset, center, elements } =
     let
         viewElement i { attributes, key, child } =
             let
+                rel =
+                    toFloat (i - offset) / toFloat (List.length elements)
+
                 angle =
-                    toFloat (i - offset) * 2 * pi / toFloat (List.length elements)
-
-                x =
-                    negate <| radius * sin angle
-
-                y =
-                    radius * cos angle
+                    2 * pi * (rel + 0.25)
             in
             Keyed.node "div"
                 (attributes
@@ -40,8 +37,8 @@ view { radius, elementSize, offset, center, elements } =
                        , style "width" <| toRem elementSize.width
                        , style "height" <| toRem elementSize.height
                        , style "transform" <|
-                            String.concat
-                                [ "translate(", toRem x, ", ", toRem y, ")" ]
+                            String.join " "
+                                [ rotate angle, translate radius, rotate -angle ]
                        ]
                 )
                 [ ( key, child ) ]
@@ -60,3 +57,18 @@ view { radius, elementSize, offset, center, elements } =
 toRem : Float -> String
 toRem f =
     String.fromFloat f ++ "rem"
+
+
+translate : Float -> String
+translate distance =
+    "translate(" ++ toRem distance ++ ")"
+
+
+toRad : Float -> String
+toRad f =
+    String.fromFloat f ++ "rad"
+
+
+rotate : Float -> String
+rotate angle =
+    "rotate(" ++ toRad angle ++ ")"

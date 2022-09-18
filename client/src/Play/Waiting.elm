@@ -17,7 +17,7 @@ import WebSocket
 
 type alias Model =
     { username : String
-    , selectedSeat : Maybe Index
+    , selectedSeat : Maybe Int
     }
 
 
@@ -44,8 +44,24 @@ update msg model =
         ChangeUsername username ->
             ( { model | username = username }, Cmd.none )
 
-        SelectSeat seat ->
-            ( { model | selectedSeat = Just seat }, Cmd.none )
+        SelectSeat seatIndex ->
+            let
+                previousSeat =
+                    Maybe.withDefault 0 model.selectedSeat
+
+                offset =
+                    Index.sub seatIndex <| Index.modulo previousSeat
+
+                newSeat =
+                    if offset == Index3 then
+                        previousSeat - 1
+
+                    else
+                        previousSeat + Index.toInt offset
+            in
+            ( { model | selectedSeat = Just newSeat }
+            , Cmd.none
+            )
 
         TakeSeat ->
             case model.selectedSeat of
@@ -59,7 +75,7 @@ update msg model =
                             [ ( "take-seat"
                               , Encode.object
                                     [ ( "username", Encode.string model.username )
-                                    , ( "seat", Index.encode seat )
+                                    , ( "seat", Index.encode <| Index.modulo seat )
                                     ]
                               )
                             ]
@@ -76,7 +92,12 @@ view seats model =
         viewSeat i seat =
             let
                 isSelected =
-                    Just i == model.selectedSeat
+                    case model.selectedSeat of
+                        Nothing ->
+                            False
+
+                        Just s ->
+                            Index.modulo s == i
             in
             { attributes = [ class "transition-transform duration-400" ]
             , key = String.fromInt <| Index.toInt i
@@ -100,7 +121,7 @@ view seats model =
             [ Circle.view
                 { radius = 16.0
                 , elementSize = { width = 8.0, height = 8.0 }
-                , offset = Index.toInt <| Maybe.withDefault Index0 model.selectedSeat
+                , offset = Maybe.withDefault 0 model.selectedSeat
                 , center = text ""
                 , elements =
                     Vector.toList <|
