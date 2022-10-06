@@ -53,21 +53,16 @@ isEmptySeat = \case
 findPlayer :: Client n -> TableState n -> Maybe (Finite n)
 findPlayer client =
   Vector.findIndex
-    ( \case
-        Empty -> False
-        Taken _ c -> c == client
-    )
+    (\case Empty -> False; Taken _ c -> c == client)
     . seats
 
 viewPlayer :: KnownNat n => TableState n -> Finite n -> View n
 viewPlayer ts player =
   View.MakeView
-    { View.seats =
-        Vector.rotate player . mapSeats $ seats ts,
+    { View.seats = Vector.rotate player . mapSeats $ seats ts,
       View.phase = case phase ts of
         Waiting -> View.Waiting
-        Playing gameState ->
-          Views.pov (GameState.viewPhase gameState) player
+        Playing gameState -> Views.pov (GameState.viewPhase gameState) player
         Over game -> View.Over $ Game.rotate player game
     }
 

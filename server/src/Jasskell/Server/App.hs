@@ -39,7 +39,7 @@ newtype AppT m a = AppT (ReaderT (Env (AppT m)) m a)
 type MonadApp m = MonadReader (Env m) m
 
 instance MonadTrans AppT where
-  lift m = AppT $ lift m
+  lift m = AppT (lift m)
 
 runAppT :: Monad m => Env m -> AppT m a -> m a
 runAppT env (AppT m) = runReaderT m (liftEnv env)
@@ -57,7 +57,7 @@ liftEnv :: (Monad m, MonadTrans t) => Env m -> Env (t m)
 liftEnv = hoistEnv lift
 
 hoistEnv :: (forall x. m x -> n x) -> Env m -> Env n
-hoistEnv f env = env {logAction = hoistLogAction f $ logAction env}
+hoistEnv f env = env {logAction = hoistLogAction f (logAction env)}
 
 makeEnv :: MonadIO m => LogAction m Colog.Message -> m (Env m)
 makeEnv logAction = do

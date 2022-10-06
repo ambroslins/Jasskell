@@ -48,10 +48,7 @@ join :: (JassNat n, MonadIO m) => Table n -> m (Action n -> IO (), IO (Message n
 join (Table table) = do
   client <- Client.make
   atomically $ do
-    modifyTVar table $ \tableState ->
-      tableState
-        { guests = HashSet.insert client $ guests tableState
-        }
+    modifyTVar table $ \ts -> ts {guests = HashSet.insert client $ guests ts}
     broadcastView table
   pure
     ( atomically . runAction table client,

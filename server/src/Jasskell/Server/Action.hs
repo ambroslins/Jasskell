@@ -27,11 +27,7 @@ import Jasskell.Server.User (User (User))
 import System.Random (RandomGen (split))
 
 newtype Action n = Action
-  { run ::
-      Client n ->
-      TableState n ->
-      Either Error (TableState n)
-  }
+  {run :: Client n -> TableState n -> Either Error (TableState n)}
 
 takeSeat :: Text -> Finite n -> Action n
 takeSeat username index = Action $ \client tableState -> do
@@ -39,10 +35,10 @@ takeSeat username index = Action $ \client tableState -> do
   let sit s = guard (isEmptySeat s) $> Taken (User username) client
   case Vector.ix index sit $ seats tableState of
     Nothing -> throwError SeatAlreadyTaken
-    Just s ->
+    Just ss ->
       pure $
         tableState
-          { seats = s,
+          { seats = ss,
             guests = HashSet.delete client $ guests tableState
           }
 
@@ -52,9 +48,11 @@ playMove move = Action $ \client tableState -> do
     Waiting -> throwError WaitingForPlayers
     Over _ -> throwError GameOver
     Playing gameState -> do
-      player <- whenNothing (findPlayer client tableState) (throwError NotAPlayer)
-      let transition = GameState.update player move gameState
-      p <- fromTransition transition
+      player <-
+        whenNothing
+          (findPlayer client tableState)
+          (throwError NotAPlayer)
+      p <- fromTransition (GameState.update player move gameState)
       pure $ tableState {phase = p}
 
 startGame :: JassNat n => Action n
@@ -71,8 +69,6 @@ startGame = Action $ \_ tableState -> do
           }
 
 fromTransition :: Either BadMove (Transition n) -> Either Error (Phase n)
-fromTransition =
-  either (throwError . BadMove) $
-    pure . \case
-      Continue gameState -> Playing gameState
-      Done game -> Over game
+fromTransition = bimap BadMove $ \case
+  Continue gameState -> Playing gameState
+  Done game -> Over game
