@@ -24,6 +24,7 @@ import Jasskell.Dealer qualified as Dealer
 import Jasskell.Server.Table (SomeTable (..))
 import Jasskell.Server.Table qualified as Table
 import Jasskell.Server.TableID (TableID)
+import Jasskell.Server.TableID qualified as TableID
 
 newtype AppT m a = AppT (ReaderT (Env (AppT m)) m a)
   deriving newtype
@@ -66,7 +67,8 @@ makeEnv logAction = do
 createTable :: (MonadApp m, MonadIO m) => m TableID
 createTable = do
   Env {tables} <- ask
-  (tableID, table) <- Table.new Dealer.four
+  tableID <- TableID.new
+  table <- Table.new Dealer.four
   atomically $ modifyTVar tables (HashMap.insert tableID (SomeTable table))
   logInfo $ "Created new table: " <> show tableID
   pure tableID
