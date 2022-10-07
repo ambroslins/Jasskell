@@ -15,6 +15,7 @@ import Jasskell.Declaration qualified as Declaration
 import Jasskell.Jass (JassNat)
 import Jasskell.Round (Round)
 import Jasskell.Round qualified as Round
+import Jasskell.Trick (Hands)
 import Jasskell.Variant (Variant)
 import Jasskell.View.Declaring (ViewDeclaring)
 import Jasskell.View.Declaring qualified as View.Declaring
@@ -39,36 +40,35 @@ play Interface {..} = go [] 0
     go rs leader =
       -- TODO: check if one team has reached the point limit
       if length rs >= 10
-        then pure $ Game rs
+        then pure Game {rounds = rs}
         else do
           hands <- deal
-          variant <- declareVariant rs hands leader
-          r <- playRound rs hands leader variant
+          variant <- declareVariant rs leader hands
+          r <- playRound rs variant leader hands
           go (r : rs) (leader + 1)
 
-    declareVariant :: [Round n] -> Vector n Cards -> Finite n -> m Variant
-    declareVariant rounds hands eldest =
+    declareVariant :: [Round n] -> Finite n -> Hands n -> m Variant
+    declareVariant rounds eldest hands =
       Declaration.declareVariant interface (eldest :| [])
       where
-        makeView = View.Declaring.make hands rounds eldest
+        makeView = View.Declaring.makeViews hands rounds eldest
         interface =
           Declaration.Interface
-            { Declaration.promptDeclaration = \current ps ->
-                promptDeclaration current $ makeView (current :| ps),
+            { Declaration.promptDeclaration = \current ns ->
+                promptDeclaration current (makeView (current :| ns)),
               Declaration.throwBadDeclaration = throwBadDeclaration
             }
 
-    playRound :: [Round n] -> Vector n Cards -> Finite n -> Variant -> m (Round n)
-    playRound rounds hands leader variant =
+    playRound :: [Round n] -> Variant -> Finite n -> Hands n -> m (Round n)
+    playRound rounds variant leader hands =
       Round.play interface variant leader hands
       where
         interface =
           Round.Interface
-            { Round.promptCard = \current view ->
-                promptCard current $
-                  View.Playing.make rounds view,
+            { Round.promptCard = \current views ->
+                promptCard current (View.Playing.makeViews rounds views),
               Round.throwBadCard = throwBadCard
             }
 
 rotate :: KnownNat n => Finite n -> Game n -> Game n
-rotate i = coerce $ map (Round.rotate i)
+rotate i = coerce (map (Round.rotate i))

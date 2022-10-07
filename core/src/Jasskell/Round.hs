@@ -15,18 +15,19 @@ import Data.Vector.Sized.Extra qualified as Vector
 import GHC.TypeNats (Div)
 import Jasskell.Card (BadCard, Card, Cards)
 import Jasskell.Jass (JassNat)
-import Jasskell.Round.State (RoundState)
-import Jasskell.Round.State qualified as Round.State
-import Jasskell.Trick (Trick)
+import Jasskell.Round.View (RoundView)
+import Jasskell.Round.View qualified as Round.View
+import Jasskell.Trick (Hands, Trick)
 import Jasskell.Trick qualified as Trick
 import Jasskell.Variant (Variant)
 import Jasskell.Variant qualified as Variant
+import Jasskell.Views (Views)
 
 newtype Round n = Round {tricks :: Vector (Div 36 n) (Trick n)}
   deriving (Eq, Show)
 
 data Interface n m = Interface
-  { promptCard :: Finite n -> RoundState n -> m Card,
+  { promptCard :: Finite n -> Views RoundView n -> m Card,
     throwBadCard :: forall a. BadCard -> m a
   }
 
@@ -39,28 +40,29 @@ play ::
   Vector n Cards ->
   m (Round n)
 play Interface {..} variant leader =
-  evalStateT $ Round <$> Vector.constructM playTrick
+  evalStateT (Round <$> Vector.constructM playTrick)
   where
     playTrick ::
       forall i.
       KnownNat i =>
       Vector i (Trick n) ->
-      StateT (Vector n Cards) m (Trick n)
+      StateT (Hands n) m (Trick n)
     playTrick ts = Trick.play interface var l
       where
         (var, l) = case Vector.notEmpty ts of
           Nothing -> (variant, leader)
           Just Refl ->
-            let t = Vector.last ts
-             in (Variant.next $ Trick.variant t, Trick.winner t)
+            let lastTrick = Vector.last ts
+             in (Variant.next (Trick.variant lastTrick), Trick.winner lastTrick)
         interface =
           Trick.Interface
-            { Trick.promptCard = \current view ->
+            { Trick.promptCard = \current views ->
                 lift $
-                  promptCard current $
-                    Round.State.fromTrick (Vector.toList ts) view,
+                  promptCard
+                    current
+                    (Round.View.makeViews (Vector.toList ts) views),
               Trick.throwBadCard = lift . throwBadCard
             }
 
 rotate :: KnownNat n => Finite n -> Round n -> Round n
-rotate i = coerce $ Vector.map (Trick.rotate i)
+rotate i = coerce (Vector.map (Trick.rotate i))

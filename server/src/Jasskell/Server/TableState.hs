@@ -10,7 +10,6 @@ module Jasskell.Server.TableState
 where
 
 import Data.Finite (Finite)
-import Data.Set qualified as Set
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import Data.Vector.Sized.Extra qualified as Vector
@@ -23,8 +22,6 @@ import Jasskell.Server.GameState qualified as GameState
 import Jasskell.Server.User (User)
 import Jasskell.Server.View (View)
 import Jasskell.Server.View qualified as View
-import Jasskell.View.Declaring qualified as View.Declaring
-import Jasskell.View.Playing qualified as View.Playing
 import Jasskell.Views qualified as Views
 import System.Random (StdGen)
 
@@ -72,10 +69,4 @@ mapSeats = Vector.map $ \case
   Taken user _ -> View.Taken user
 
 viewGuest :: KnownNat n => TableState n -> View n
-viewGuest ts = playerView {View.phase = phase}
-  where
-    playerView = viewPlayer ts 0
-    phase = case View.phase playerView of
-      View.Playing v -> View.Playing v {View.Playing.hand = Set.empty}
-      View.Declaring v -> View.Declaring v {View.Declaring.hand = Set.empty}
-      p -> p
+viewGuest ts = viewPlayer ts 0

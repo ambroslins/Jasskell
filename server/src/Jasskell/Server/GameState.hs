@@ -107,5 +107,5 @@ start dealer = transition . evalStateT game
 
 viewPhase :: GameState n -> Views View.Phase n
 viewPhase (GameState f) = case f of
-  PromptCard _ vs _ -> Views.map View.Playing vs
-  PromptDeclaration _ vs _ -> Views.map View.Declaring vs
+  PromptCard _ vs _ -> Views.map (const View.Playing) vs
+  PromptDeclaration _ vs _ -> Views.map (const View.Declaring) vs

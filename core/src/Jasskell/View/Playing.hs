@@ -1,54 +1,51 @@
 module Jasskell.View.Playing
   ( ViewPlaying,
+    makeViews,
     hand,
-    rounds,
-    tricks,
     variant,
     leader,
-    table,
-    make,
+    playedCards,
+    tricks,
+    rounds,
   )
 where
 
 import Data.Finite (Finite)
 import Data.Vector.Sized (Vector)
-import Data.Vector.Sized qualified as Vector
-import Data.Vector.Sized.Extra qualified as Vector
 import Jasskell.Card (Card, Cards)
 import Jasskell.Round (Round)
 import Jasskell.Round qualified as Round
-import Jasskell.Round.State (RoundState)
-import Jasskell.Round.State qualified as Round.State
+import Jasskell.Round.View (RoundView)
+import Jasskell.Round.View qualified as Round.View
 import Jasskell.Trick (Trick)
-import Jasskell.Trick qualified as Trick
 import Jasskell.Variant (Variant)
 import Jasskell.Views (Views)
 import Jasskell.Views qualified as Views
 
-data ViewPlaying n = ViewPlaying
-  { hand :: Cards,
-    rounds :: [Round n],
-    tricks :: [Trick n],
-    variant :: Variant,
-    leader :: Finite n,
-    cards :: [Card]
+data ViewPlaying n = MakeViewPlaying
+  { rounds :: [Round n],
+    current :: RoundView n
   }
   deriving (Eq, Show)
 
-make :: KnownNat n => [Round n] -> RoundState n -> Views ViewPlaying n
-make rs view = Views.make $ \player ->
-  ViewPlaying
-    { hand = Vector.index (Round.State.hands view) player,
-      rounds = map (Round.rotate player) rs,
-      tricks = map (Trick.rotate player) $ Round.State.tricks view,
-      variant = Round.State.variant view,
-      leader = Round.State.leader view - player,
-      cards = Round.State.cards view
+makeViews :: KnownNat n => [Round n] -> Views RoundView n -> Views ViewPlaying n
+makeViews rs = Views.map $ \i roundView ->
+  MakeViewPlaying
+    { rounds = map (Round.rotate i) rs,
+      current = roundView
     }
 
-table :: KnownNat n => ViewPlaying n -> Vector n (Maybe Card)
-table ViewPlaying {leader, cards} =
-  Vector.rotate (negate leader) $
-    Vector.unfoldrN
-      (maybe (Nothing, []) (first Just) . uncons)
-      cards
+hand :: ViewPlaying n -> Cards
+hand = Round.View.hand . current
+
+variant :: ViewPlaying n -> Variant
+variant = Round.View.variant . current
+
+leader :: ViewPlaying n -> Finite n
+leader = Round.View.leader . current
+
+playedCards :: KnownNat n => ViewPlaying n -> Vector n (Maybe Card)
+playedCards = Round.View.playedCards . current
+
+tricks :: ViewPlaying n -> [Trick n]
+tricks = Round.View.tricks . current

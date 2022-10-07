@@ -1,5 +1,6 @@
 module Jasskell.Trick
   ( Trick,
+    Hands,
     Interface (..),
     play,
     variant,
@@ -18,9 +19,10 @@ import Data.Vector.Sized.Extra qualified as Vector
 import GHC.TypeNats (type (+))
 import Jasskell.Card (BadCard, Card, Cards)
 import Jasskell.Card qualified as Card
-import Jasskell.Trick.State (TrickState)
-import Jasskell.Trick.State qualified as Trick.State
+import Jasskell.Trick.View (TrickView)
+import Jasskell.Trick.View qualified as Trick.View
 import Jasskell.Variant (Variant)
+import Jasskell.Views (Views)
 import Relude.Extra.Lens qualified as Lens
 
 data Trick n = Trick
@@ -30,14 +32,16 @@ data Trick n = Trick
   }
   deriving (Eq, Show)
 
+type Hands n = Vector n Cards
+
 data Interface n m = Interface
-  { promptCard :: Finite n -> TrickState n -> m Card,
+  { promptCard :: Finite n -> Views TrickView n -> m Card,
     throwBadCard :: forall a. BadCard -> m a
   }
 
 play ::
   forall n m.
-  (KnownNat n, MonadState (Vector n Cards) m) =>
+  (KnownNat n, MonadState (Hands n) m) =>
   Interface n m ->
   Variant ->
   Finite n ->
@@ -50,14 +54,8 @@ play Interface {..} variant leader = close <$> Vector.constructM playCard
     playCard cards = do
       hands <- get
       let currentHand = Vector.index hands current
-          trickState =
-            Trick.State.TrickState
-              { Trick.State.hands = hands,
-                Trick.State.variant = variant,
-                Trick.State.leader = leader,
-                Trick.State.cards = cardList
-              }
-      card <- promptCard current trickState
+          views = Trick.View.makeViews hands variant leader cardList
+      card <- promptCard current views
       case Card.playable variant cardList currentHand card of
         Left reason -> throwBadCard reason
         Right newHand -> do
@@ -71,14 +69,14 @@ winner :: n ~ (m + 1) => Trick n -> Finite n
 winner Trick {leader, cards, variant} =
   Vector.maxIndexBy (Card.compare variant lead) cards
   where
-    lead = Card.suit $ Vector.index cards leader
+    lead = Card.suit (Vector.index cards leader)
 
 points :: Trick n -> Int
-points Trick {cards, variant} = sum $ Vector.map (Card.value variant) cards
+points Trick {cards, variant} = sum (Vector.map (Card.value variant) cards)
 
 rotate :: KnownNat n => Finite n -> Trick n -> Trick n
 rotate i trick =
   trick
     { leader = leader trick - i,
-      cards = Vector.rotate i $ cards trick
+      cards = Vector.rotate i (cards trick)
     }

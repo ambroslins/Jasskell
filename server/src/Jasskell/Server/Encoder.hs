@@ -115,7 +115,7 @@ viewPlaying =
       field "tricks" (Encoder.list trick) View.Playing.tricks,
       field "variant" variant View.Playing.variant,
       field "leader" finite View.Playing.leader,
-      field "table" (vector (nullable card)) View.Playing.table
+      field "table" (vector (nullable card)) View.Playing.playedCards
     ]
 
 phase :: KnownNat n => Encoder (Phase n)

@@ -1,10 +1,10 @@
 module Jasskell.View.Declaring
   ( ViewDeclaring,
+    makeViews,
     hand,
     rounds,
     eldest,
     nominators,
-    make,
   )
 where
 
@@ -14,9 +14,10 @@ import Data.Vector.Sized qualified as Vector
 import Jasskell.Card (Cards)
 import Jasskell.Round (Round)
 import Jasskell.Round qualified as Round
+import Jasskell.Views (Views)
 import Jasskell.Views qualified as Views
 
-data ViewDeclaring n = ViewDeclaring
+data ViewDeclaring n = MakeViewDeclaring
   { hand :: Cards,
     rounds :: [Round n],
     eldest :: Finite n,
@@ -24,17 +25,17 @@ data ViewDeclaring n = ViewDeclaring
   }
   deriving (Eq, Show)
 
-make ::
+makeViews ::
   KnownNat n =>
   Vector n Cards ->
   [Round n] ->
   Finite n ->
   NonEmpty (Finite n) ->
-  Views.Views ViewDeclaring n
-make hands rs e ns = Views.make $ \player ->
-  ViewDeclaring
-    { hand = Vector.index hands player,
-      rounds = map (Round.rotate player) rs,
-      eldest = e - player,
-      nominators = ns
+  Views ViewDeclaring n
+makeViews hands rs e ns = Views.make $ \i ->
+  MakeViewDeclaring
+    { hand = Vector.index hands i,
+      rounds = map (Round.rotate i) rs,
+      eldest = e - i,
+      nominators = subtract i <$> ns
     }

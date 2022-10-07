@@ -14,5 +14,5 @@ newtype Views view n = Views {pov :: Finite n -> view n}
 make :: (Finite n -> view n) -> Views view n
 make = Views
 
-map :: (view n -> view' n) -> Views view n -> Views view' n
-map f (Views vs) = Views $ f . vs
+map :: (Finite n -> view n -> view' n) -> Views view n -> Views view' n
+map f (Views vs) = Views $ \i -> f i (vs i)
