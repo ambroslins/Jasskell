@@ -9,7 +9,7 @@ import Data.ByteString qualified as ByteString
 import Jasskell.Server.App (MonadApp, runAppT)
 import Jasskell.Server.App qualified as App
 import Jasskell.Server.Decoder qualified as Decoder
-import Jasskell.Server.Encoder qualified as Encoder
+import Jasskell.Server.Message qualified as Message
 import Jasskell.Server.Table (SomeTable (SomeTable))
 import Jasskell.Server.Table qualified as Table
 import Jasskell.Server.TableID (TableID)
@@ -72,7 +72,7 @@ handleConnection pendingConnection = do
 
               sendThread = forever $ do
                 message <- getMessage
-                send $ Encoder.encode Encoder.message message
+                send $ Encoder.encode Message.encoder message
 
               reciveThread = forever $ do
                 message <- recive

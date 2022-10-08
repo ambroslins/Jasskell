@@ -1,4 +1,21 @@
-module Jasskell.Server.Encoder where
+module Jasskell.Server.Encoder
+  ( Tagged (..),
+    tagged,
+    set,
+    vector,
+    nullable,
+    finite,
+    suit,
+    rank,
+    card,
+    cards,
+    variant,
+    user,
+    trick,
+    round,
+    game,
+  )
+where
 
 import Data.Aeson (Value (Null))
 import Data.Aeson.Combinators.Encode
@@ -17,16 +34,11 @@ import Jasskell.Game (Game)
 import Jasskell.Game qualified as Game
 import Jasskell.Round (Round)
 import Jasskell.Round qualified as Round
-import Jasskell.Server.Message (Message (..))
 import Jasskell.Server.User (User)
 import Jasskell.Server.User qualified as User
-import Jasskell.Server.View (Phase (..), Seat (..), View)
-import Jasskell.Server.View qualified as View
 import Jasskell.Trick (Trick)
 import Jasskell.Trick qualified as Trick
 import Jasskell.Variant (Direction, Variant (..))
-import Jasskell.View.Declaring qualified as View.Declaring
-import Jasskell.View.Playing qualified as View.Playing
 import Prelude hiding (round)
 
 set :: Encoder a -> Encoder (Set a)
@@ -79,11 +91,6 @@ user =
     [ field "name" Encoder.text User.name
     ]
 
-seat :: Encoder Seat
-seat = tagged $ \case
-  Empty -> Tagged "empty" Encoder.unit ()
-  Taken u -> Tagged "taken" user u
-
 trick :: Encoder (Trick n)
 trick =
   object
@@ -97,43 +104,3 @@ round = contramap Round.tricks (vector trick)
 
 game :: Encoder (Game n)
 game = contramap Game.rounds (Encoder.list round)
-
-viewDeclaring :: Encoder (View.Declaring.ViewDeclaring n)
-viewDeclaring =
-  object
-    [ field "hand" (set card) View.Declaring.hand,
-      field "rounds" (Encoder.list round) View.Declaring.rounds,
-      field "eldest" finite View.Declaring.eldest,
-      field "nominators" (contramap toList $ Encoder.list finite) View.Declaring.nominators
-    ]
-
-viewPlaying :: KnownNat n => Encoder (View.Playing.ViewPlaying n)
-viewPlaying =
-  object
-    [ field "hand" (set card) View.Playing.hand,
-      field "rounds" (Encoder.list round) View.Playing.rounds,
-      field "tricks" (Encoder.list trick) View.Playing.tricks,
-      field "variant" variant View.Playing.variant,
-      field "leader" finite View.Playing.leader,
-      field "table" (vector (nullable card)) View.Playing.playedCards
-    ]
-
-phase :: KnownNat n => Encoder (Phase n)
-phase = tagged $ \case
-  Waiting -> Tagged "waiting" Encoder.unit ()
-  Playing v -> Tagged "playing" viewPlaying v
-  Declaring v -> Tagged "declaring" viewDeclaring v
-  Over g -> Tagged "over" game g
-
-view :: KnownNat n => Encoder (View n)
-view =
-  object
-    [ field "seats" (vector seat) View.seats,
-      field "phase" phase View.phase
-    ]
-
-message :: KnownNat n => Encoder (Message n)
-message = tagged $ \case
-  UpdatePlayerView v -> Tagged "player-view" view v
-  UpdateGuestView v -> Tagged "guest-view" view v
-  Error e -> Tagged "error" Encoder.text (show e)

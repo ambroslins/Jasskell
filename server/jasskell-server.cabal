@@ -131,11 +131,12 @@ library
     , Jasskell.Server.Http
     , Jasskell.Server.Message
     , Jasskell.Server.Page
+    , Jasskell.Server.Player
+    , Jasskell.Server.PlayerView
     , Jasskell.Server.Table
     , Jasskell.Server.TableID
     , Jasskell.Server.TableState
     , Jasskell.Server.User
-    , Jasskell.Server.View
     , Jasskell.Server.WebSocket
 
   -- Modules included in this library but not exported.

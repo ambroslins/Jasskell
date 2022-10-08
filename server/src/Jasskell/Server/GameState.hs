@@ -5,10 +5,10 @@ module Jasskell.Server.GameState
     Transition (..),
     Move (..),
     BadMove (..),
-    SomeView (..),
+    GameView (..),
     start,
     update,
-    viewPhase,
+    views,
   )
 where
 
@@ -24,7 +24,6 @@ import Jasskell.Declaration (BadDeclaration, Declaration)
 import Jasskell.Game (Game)
 import Jasskell.Game qualified as Game
 import Jasskell.Jass (JassNat)
-import Jasskell.Server.View qualified as View
 import Jasskell.View.Declaring (ViewDeclaring)
 import Jasskell.View.Playing (ViewPlaying)
 import Jasskell.Views (Views)
@@ -57,7 +56,7 @@ data BadMove
   | BadDeclaration BadDeclaration
   deriving (Eq, Show)
 
-data SomeView n
+data GameView n
   = Playing (ViewPlaying n)
   | Declaring (ViewDeclaring n)
   deriving (Eq, Show)
@@ -105,7 +104,7 @@ start dealer = transition . evalStateT game
             Game.throwBadDeclaration = throwError . BadDeclaration
           }
 
-viewPhase :: GameState n -> Views View.Phase n
-viewPhase (GameState f) = case f of
-  PromptCard _ vs _ -> Views.map (const View.Playing) vs
-  PromptDeclaration _ vs _ -> Views.map (const View.Declaring) vs
+views :: GameState n -> Views GameView n
+views (GameState f) = case f of
+  PromptCard _ vs _ -> Views.map (const Playing) vs
+  PromptDeclaration _ vs _ -> Views.map (const Declaring) vs

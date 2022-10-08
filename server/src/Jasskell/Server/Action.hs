@@ -16,12 +16,11 @@ import Jasskell.Server.Client (Client)
 import Jasskell.Server.Error (Error (..))
 import Jasskell.Server.GameState (BadMove, Move, Transition (..))
 import Jasskell.Server.GameState qualified as GameState
+import Jasskell.Server.Player qualified as Player
 import Jasskell.Server.TableState
   ( Phase (..),
-    Seat (Taken),
     TableState (..),
     findPlayer,
-    isEmptySeat,
   )
 import Jasskell.Server.User (User (User))
 import System.Random (RandomGen (split))
@@ -31,15 +30,15 @@ newtype Action n = Action
 
 takeSeat :: Text -> Finite n -> Action n
 takeSeat username index = Action $ \client tableState -> do
-  when (isJust $ findPlayer client tableState) $ throwError AlreadySeated
-  let sit s = guard (isEmptySeat s) $> Taken (User username) client
-  case Vector.ix index sit $ seats tableState of
+  when (isJust $ findPlayer client tableState) (throwError AlreadySeated)
+  let sit s = guard (isNothing s) $> Just (Player.make (User username) client)
+  case Vector.ix index sit (players tableState) of
     Nothing -> throwError SeatAlreadyTaken
-    Just ss ->
+    Just ps ->
       pure $
         tableState
-          { seats = ss,
-            guests = HashSet.delete client $ guests tableState
+          { players = ps,
+            guests = HashSet.delete client (guests tableState)
           }
 
 playMove :: Move -> Action n
@@ -53,20 +52,16 @@ playMove move = Action $ \client tableState -> do
           (findPlayer client tableState)
           (throwError NotAPlayer)
       p <- fromTransition (GameState.update player move gameState)
-      pure $ tableState {phase = p}
+      pure (tableState {phase = p})
 
 startGame :: JassNat n => Action n
 startGame = Action $ \_ tableState -> do
   case phase tableState of
     Playing _ -> throwError GameAlreadyStarted
     _ -> do
-      let (g, g') = split $ stdGen tableState
+      let (g, g') = split (stdGen tableState)
       p <- fromTransition $ GameState.start (dealer tableState) g
-      pure $
-        tableState
-          { phase = p,
-            stdGen = g'
-          }
+      pure (tableState {phase = p, stdGen = g'})
 
 fromTransition :: Either BadMove (Transition n) -> Either Error (Phase n)
 fromTransition = bimap BadMove $ \case

@@ -17,13 +17,13 @@ import Jasskell.Server.Client (Client)
 import Jasskell.Server.Client qualified as Client
 import Jasskell.Server.Message (Message)
 import Jasskell.Server.Message qualified as Message
+import Jasskell.Server.Player qualified as Player
 import Jasskell.Server.TableState
   ( Phase (Waiting),
-    Seat (..),
     TableState (..),
-    viewGuest,
-    viewPlayer,
+    playerViews,
   )
+import Jasskell.Views qualified as Views
 import System.Random (newStdGen)
 import Prelude hiding (join)
 
@@ -37,7 +37,7 @@ new d = do
   let tableState =
         TableState
           { guests = HashSet.empty,
-            seats = Vector.replicate Empty,
+            players = Vector.replicate Nothing,
             stdGen = gen,
             dealer = d,
             phase = Waiting
@@ -67,13 +67,12 @@ runAction table client action = do
 broadcastView :: KnownNat n => TVar (TableState n) -> STM ()
 broadcastView table = do
   tableState <- readTVar table
-  let sendPlayer i = \case
-        Empty -> pure ()
-        Taken _ client ->
-          Client.send client $
-            Message.UpdatePlayerView (viewPlayer tableState i)
-      sendGuest client =
-        Client.send client $
-          Message.UpdateGuestView (viewGuest tableState)
-  Vector.imapM_ sendPlayer $ seats tableState
-  traverse_ sendGuest $ guests tableState
+  let sendPlayer i =
+        maybe
+          pass
+          ( \p ->
+              Client.send
+                (Player.client p)
+                (Message.UpdatePlayerView $ Views.pov (playerViews tableState) i)
+          )
+  Vector.imapM_ sendPlayer (players tableState)
