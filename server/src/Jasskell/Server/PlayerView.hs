@@ -79,7 +79,7 @@ encoder =
     phaseEncoder = Encoder.tagged $ \case
       Waiting -> Tagged "waiting" Encoder.unit ()
       Active (Playing view) -> Tagged "playing" playingEncoder view
-      Active (Declaring view) -> Tagged "a" declaringEncoder view
+      Active (Declaring view) -> Tagged "active" declaringEncoder view
       Over game -> Tagged "over" Encoder.game game
 
     playingEncoder :: Encoder (ViewPlaying n)
