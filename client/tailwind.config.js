@@ -1,6 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ["./src/**/*.elm"],
+  content: [
+    "./src/**/*.elm",
+    "../server/src/Jasskell/Server/Page.hs"
+  ],
   theme: {
     extend: {
       aspectRatio: {

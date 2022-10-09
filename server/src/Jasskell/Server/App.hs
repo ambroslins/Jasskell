@@ -5,6 +5,7 @@ module Jasskell.Server.App
     runAppT,
     createTable,
     lookupTable,
+    activeTables,
     makeEnv,
     hoistEnv,
   )
@@ -77,3 +78,8 @@ lookupTable :: (MonadApp m, MonadIO m) => TableID -> m (Maybe SomeTable)
 lookupTable tableID = do
   Env {tables} <- ask
   atomically $ HashMap.lookup tableID <$> readTVar tables
+
+activeTables :: (MonadApp m, MonadIO m) => m [TableID]
+activeTables = do
+  Env {tables} <- ask
+  atomically $ HashMap.keys <$> readTVar tables
