@@ -128,6 +128,7 @@ library
     , Jasskell.Server.Encoder
     , Jasskell.Server.Error
     , Jasskell.Server.GameState
+    , Jasskell.Server.GuestView
     , Jasskell.Server.Http
     , Jasskell.Server.Message
     , Jasskell.Server.Page

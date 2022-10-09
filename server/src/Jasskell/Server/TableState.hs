@@ -3,6 +3,7 @@ module Jasskell.Server.TableState
     Phase (..),
     findPlayer,
     playerViews,
+    guestView,
   )
 where
 
@@ -14,6 +15,8 @@ import Jasskell.Game (Game)
 import Jasskell.Server.Client (Client)
 import Jasskell.Server.GameState (GameState)
 import Jasskell.Server.GameState qualified as GameState
+import Jasskell.Server.GuestView (GuestView)
+import Jasskell.Server.GuestView qualified as GuestView
 import Jasskell.Server.Player (Player)
 import Jasskell.Server.Player qualified as Player
 import Jasskell.Server.PlayerView (PlayerView)
@@ -46,4 +49,12 @@ playerViews tableState = case phase tableState of
   Playing gameState -> PlayerView.makeActive users (GameState.views gameState)
   Over game -> PlayerView.makeOver users game
   where
-    users = Vector.map (Player.user <$>) (players tableState)
+    users = Vector.map (fmap Player.user) (players tableState)
+
+guestView :: TableState n -> GuestView n
+guestView tableState = case phase tableState of
+  Waiting -> GuestView.makeWaiting users
+  Playing _ -> GuestView.makeActive users
+  Over _ -> GuestView.makeActive users
+  where
+    users = Vector.map (fmap Player.user) (players tableState)

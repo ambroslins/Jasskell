@@ -21,6 +21,7 @@ import Jasskell.Server.Player qualified as Player
 import Jasskell.Server.TableState
   ( Phase (Waiting),
     TableState (..),
+    guestView,
     playerViews,
   )
 import Jasskell.Views qualified as Views
@@ -75,4 +76,9 @@ broadcastView table = do
                 (Player.client p)
                 (Message.UpdatePlayerView $ Views.pov (playerViews tableState) i)
           )
+      sendGuest c =
+        Client.send
+          c
+          (Message.UpdateGuestView (guestView tableState))
   Vector.imapM_ sendPlayer (players tableState)
+  traverse_ sendGuest (guests tableState)
