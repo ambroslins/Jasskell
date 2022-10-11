@@ -1,5 +1,3 @@
-const app = Elm.Main.init();
-
 let socket = null;
 
 app.ports.open.subscribe((path) => {

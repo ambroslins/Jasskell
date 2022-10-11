@@ -1,4 +1,14 @@
-module Vector.Index exposing (Index(..), add, encode, fromInt, modulo, negate, sub, toInt)
+module Vector.Index exposing
+    ( Index(..)
+    , add
+    , encode
+    , fromInt
+    , modulo
+    , negate
+    , sub
+    , toInt
+    , toString
+    )
 
 import Json.Encode as Encode exposing (Value)
 
@@ -24,6 +34,11 @@ toInt i =
 
         Index3 ->
             3
+
+
+toString : Index -> String
+toString =
+    String.fromInt << toInt
 
 
 fromInt : Int -> Maybe Index

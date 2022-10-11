@@ -5,12 +5,15 @@ module Jasskell.Server.Http
     get,
     post,
     notFound,
+    MonadResponder (..),
+    param,
   )
 where
 
 import Jasskell.Server.App (AppT, Env, hoistEnv, runAppT)
+import Lucid (HtmlT)
 import Network.Wai (Application, Middleware)
-import Web.Twain (Method, ResponderM, Response)
+import Web.Twain (Method, ParsableParam, ResponderM, Response)
 import Web.Twain qualified as Twain
 import Web.Twain.Types (PathPattern (..), matchPath)
 import Prelude hiding (get)
@@ -37,3 +40,18 @@ route method path m = Route $ \env ->
 
 notFound :: Application
 notFound = Twain.notFound pass
+
+class Monad m => MonadResponder m where
+  liftResponder :: ResponderM a -> m a
+
+instance MonadResponder ResponderM where
+  liftResponder = id
+
+instance MonadResponder m => MonadResponder (AppT m) where
+  liftResponder = lift . liftResponder
+
+instance MonadResponder m => MonadResponder (HtmlT m) where
+  liftResponder = lift . liftResponder
+
+param :: (ParsableParam a, MonadResponder m) => Text -> m a
+param = liftResponder . Twain.param

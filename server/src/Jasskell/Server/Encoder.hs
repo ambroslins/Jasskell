@@ -10,7 +10,6 @@ module Jasskell.Server.Encoder
     card,
     cards,
     variant,
-    user,
     trick,
     round,
     game,
@@ -34,8 +33,6 @@ import Jasskell.Game (Game)
 import Jasskell.Game qualified as Game
 import Jasskell.Round (Round)
 import Jasskell.Round qualified as Round
-import Jasskell.Server.User (User)
-import Jasskell.Server.User qualified as User
 import Jasskell.Trick (Trick)
 import Jasskell.Trick qualified as Trick
 import Jasskell.Variant (Direction, Variant (..))
@@ -84,12 +81,6 @@ variant = tagged $ \case
   Trump s -> Tagged "trump" suit s
   Direction d -> Tagged "direction" direction d
   Slalom d -> Tagged "slalom" direction d
-
-user :: Encoder User
-user =
-  object
-    [ field "name" Encoder.text User.name
-    ]
 
 trick :: Encoder (Trick n)
 trick =

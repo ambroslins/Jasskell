@@ -134,6 +134,7 @@ library
     , Jasskell.Server.Page
     , Jasskell.Server.Player
     , Jasskell.Server.PlayerView
+    , Jasskell.Server.Seat
     , Jasskell.Server.Table
     , Jasskell.Server.TableID
     , Jasskell.Server.TableState

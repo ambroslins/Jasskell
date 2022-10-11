@@ -10,12 +10,15 @@ where
 import Data.Aeson.Combinators.Encode (Encoder, field)
 import Data.Aeson.Combinators.Encode qualified as Encoder hiding (vector)
 import Data.Vector.Sized (Vector)
+import Data.Vector.Sized qualified as Vector
 import Data.Vector.Sized.Extra qualified as Vector
 import Jasskell.Game (Game)
 import Jasskell.Game qualified as Game
 import Jasskell.Server.Encoder (Tagged (..))
 import Jasskell.Server.Encoder qualified as Encoder
 import Jasskell.Server.GameState (GameView (..))
+import Jasskell.Server.Seat (Seat (..))
+import Jasskell.Server.Seat qualified as Seat
 import Jasskell.Server.User (User)
 import Jasskell.View.Declaring (ViewDeclaring)
 import Jasskell.View.Declaring qualified as View.Declaring
@@ -25,7 +28,7 @@ import Jasskell.Views (Views)
 import Jasskell.Views qualified as Views
 
 data PlayerView n = MakePlayerView
-  { users :: Vector n (Maybe User),
+  { seats :: Vector n Seat,
     phase :: Phase n
   }
   deriving (Show)
@@ -44,7 +47,7 @@ makeViews ::
   Views PlayerView n
 makeViews f us = Views.map $ \i view ->
   MakePlayerView
-    { users = Vector.rotate i us,
+    { seats = Vector.rotate i (Vector.map (maybe Empty Taken) us),
       phase = f view
     }
 
@@ -72,7 +75,7 @@ encoder :: forall n. (KnownNat n) => Encoder (PlayerView n)
 encoder =
   Encoder.object
     [ field "status" Encoder.text (const "player"),
-      field "users" (Encoder.vector (Encoder.nullable Encoder.user)) users,
+      field "seats" (Encoder.vector Seat.encoder) seats,
       field "phase" phaseEncoder phase
     ]
   where
@@ -80,7 +83,7 @@ encoder =
     phaseEncoder = Encoder.tagged $ \case
       Waiting -> Tagged "waiting" Encoder.unit ()
       Active (Playing view) -> Tagged "playing" playingEncoder view
-      Active (Declaring view) -> Tagged "active" declaringEncoder view
+      Active (Declaring view) -> Tagged "declaring" declaringEncoder view
       Over game -> Tagged "over" Encoder.game game
 
     playingEncoder :: Encoder (ViewPlaying n)

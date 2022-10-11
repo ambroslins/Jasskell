@@ -8,7 +8,6 @@ import Html.Keyed as Keyed
 type alias Circle msg =
     { radius : Float -- in rem
     , elementSize : { width : Float, height : Float }
-    , offset : Int
     , center : Html msg
     , elements :
         List
@@ -20,15 +19,15 @@ type alias Circle msg =
 
 
 view : Circle msg -> Html msg
-view { radius, elementSize, offset, center, elements } =
+view { radius, elementSize, center, elements } =
     let
+        count =
+            toFloat (List.length elements)
+
         viewElement i { attributes, key, child } =
             let
-                rel =
-                    toFloat (i - offset) / toFloat (List.length elements)
-
                 angle =
-                    2 * pi * (rel + 0.25)
+                    2 * pi * (toFloat i / count + 0.25)
             in
             Keyed.node "div"
                 (attributes

@@ -13,7 +13,7 @@ server: core
 client: elm tailwind
 
 elm:
-	cd client && elm make ./src/Main.elm --output ./static/main.js
+	cd client && elm make ./src/Play.elm --output ./static/main.js
 
 tailwind:
 	cd client && npx tailwindcss -i ./style.css -o ./static/style.css
