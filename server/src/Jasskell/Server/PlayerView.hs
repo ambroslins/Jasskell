@@ -71,7 +71,8 @@ makeOver us game = makeViews Over us (Views.make $ \i -> Game.rotate i game)
 encoder :: forall n. (KnownNat n) => Encoder (PlayerView n)
 encoder =
   Encoder.object
-    [ field "users" (Encoder.vector (Encoder.nullable Encoder.user)) users,
+    [ field "status" Encoder.text (const "player"),
+      field "users" (Encoder.vector (Encoder.nullable Encoder.user)) users,
       field "phase" phaseEncoder phase
     ]
   where

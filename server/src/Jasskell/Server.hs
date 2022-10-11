@@ -18,4 +18,4 @@ app env =
     (Http.serve env static (API.routes <> Page.routes))
 
 static :: Application
-static = staticApp $ defaultWebAppSettings "../client/static/"
+static = staticApp $ defaultWebAppSettings "./client/static/"

@@ -9,10 +9,10 @@ import Web.Twain qualified as Twain
 
 routes :: [Http.Route]
 routes =
-  [ Http.get "/" $ html index,
-    Http.get "/play" $ html play,
+  [ Http.get "/" (html index),
+    Http.get "/play" (html play),
     Http.post "/play" createTable,
-    Http.get "/play/:tableID" $ html index
+    Http.get "/play/:tableID" (html index)
   ]
 
 html :: Monad m => HtmlT m a -> m Response
@@ -21,12 +21,9 @@ html m = Twain.html <$> renderBST m
 makePage :: Monad m => Text -> HtmlT m () -> HtmlT m ()
 makePage title body = do
   head_ $ do
-    title_ $ toHtml title
+    title_ (toHtml title)
     link_ [rel_ "stylesheet", type_ "text/css", href_ "/style.css"]
-  body_ $
-    div_
-      [class_ "w-screen h-screen flex justify-center items-center"]
-      body
+  body_ [class_ "w-screen h-screen flex justify-center items-center"] body
 
 index :: Monad m => HtmlT m ()
 index =
@@ -54,7 +51,7 @@ play = do
         td_ $
           span_ $ do
             toHtml @Text $ show tableID
-            a_ "Join"
+            a_ [href_ ("/play/" <> show tableID)] "Join"
 
 createTable :: (MonadApp m, MonadIO m) => m Response
 createTable = do

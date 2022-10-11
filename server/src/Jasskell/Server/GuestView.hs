@@ -39,6 +39,7 @@ makeActive = make Active
 encoder :: Encoder (GuestView n)
 encoder =
   Encoder.object
-    [ field "users" (Encoder.vector (Encoder.nullable Encoder.user)) users,
+    [ field "status" Encoder.text (const "guest"),
+      field "users" (Encoder.vector (Encoder.nullable Encoder.user)) users,
       field "phase" Encoder.text (show . phase)
     ]
