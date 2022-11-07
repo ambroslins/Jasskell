@@ -5,7 +5,7 @@ import Html exposing (Html, div, text)
 import Html.Attributes exposing (class)
 import Json.Decode as Decode exposing (Decoder, Value)
 import Json.Decode.Pipeline as Decode
-import Play.Waiting as Waiting
+import Play.AsGuest as AsGuest
 import TableID
 import WebSocket
 
@@ -26,7 +26,7 @@ main =
 
 type Model
     = Connecting
-    | Waiting Waiting.Model
+    | AsGuest AsGuest.Model
     | Error String
 
 
@@ -46,7 +46,7 @@ init flags =
 
 type Msg
     = WebSocketEvent WebSocket.Event
-    | WaitingMsg Waiting.Msg
+    | AsGuestMsg AsGuest.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -71,9 +71,9 @@ update msg model =
                 WebSocket.Close ->
                     ( Error "websocket close", Cmd.none )
 
-        ( WaitingMsg msgWaiting, Waiting modelWaiting ) ->
-            Waiting.update msgWaiting modelWaiting
-                |> updateWith Waiting WaitingMsg
+        ( AsGuestMsg msgGuest, AsGuest modelGuest ) ->
+            AsGuest.update msgGuest modelGuest
+                |> updateWith AsGuest AsGuestMsg
 
         _ ->
             ( model, Cmd.none )
@@ -87,15 +87,24 @@ updateWith toModel toMsg ( subModel, subCmd ) =
 messageDecoder : Decoder (Model -> Model)
 messageDecoder =
     let
-        waiting state model =
+        guest state model =
             case model of
-                Waiting modelWaiting ->
-                    Waiting (Waiting.updateState state modelWaiting)
+                AsGuest modelGuest ->
+                    AsGuest (AsGuest.updateState state modelGuest)
 
                 _ ->
-                    Waiting (Waiting.init state)
+                    AsGuest (AsGuest.init state)
     in
-    Decode.map waiting Waiting.decoder
+    Decode.field "status" Decode.string
+        |> Decode.andThen
+            (\status ->
+                case status of
+                    "guest" ->
+                        Decode.map guest AsGuest.decode
+
+                    _ ->
+                        Decode.fail ("invalid status: " ++ status)
+            )
 
 
 
@@ -109,8 +118,8 @@ view model =
             Connecting ->
                 div [ class "text-8xl" ] [ text "Connecting" ]
 
-            Waiting modelWaiting ->
-                Html.map WaitingMsg (Waiting.view modelWaiting)
+            AsGuest modelGuest ->
+                Html.map AsGuestMsg (AsGuest.view modelGuest)
 
             Error s ->
                 div [ class "text-4xl text-red-500" ]

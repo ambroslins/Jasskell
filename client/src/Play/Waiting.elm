@@ -1,6 +1,5 @@
 module Play.Waiting exposing (..)
 
-import Circle
 import Html exposing (Html, button, div, form, input, text)
 import Html.Attributes exposing (class, classList, disabled, placeholder, type_)
 import Html.Events exposing (onClick, onInput, onSubmit)
