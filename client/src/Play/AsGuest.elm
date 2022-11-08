@@ -117,7 +117,7 @@ view model =
                     ++ [ onClick (Select index)
                        , disabled (seat /= Empty)
                        , class "bg-gray-400 rounded-full border-4 text-4xl text-center"
-                       , class "aspect-square"
+                       , class "w-3/4 aspect-square"
                        , classList [ ( "border-lime-400", isSelected ) ]
                        ]
                 )
@@ -137,7 +137,7 @@ view model =
                 [ div [ class "m-4" ]
                     [ label
                         [ for "username"
-                        , class "block text-gray-700- font-bold mb-2"
+                        , class "block text-gray-700 font-bold mb-2 text-2xl"
                         ]
                         [ text "Username" ]
                     , input
@@ -145,22 +145,28 @@ view model =
                         , id "username"
                         , placeholder "Username"
                         , onInput ChangeUsername
-                        , class "shadow border rounded text-gray-700 focus:shadow-outline"
+                        , class "shadow border rounded focus:shadow-outline p-2"
+                        , class "text-2xl text-gray-700 "
                         ]
                         []
                     ]
                 , div
-                    [ class "flex items-center" ]
+                    [ class "flex flex-col items-center" ]
                     [ button
-                        [ class "shadow border rounded text-xl text-center p-2 hover:bg-green-400"
-                        , disabled <| model.selected == Nothing || String.isEmpty model.username
+                        [ class "shadow border rounded text-xl text-center p-2"
+                        , class "enabled:hover:bg-green-400"
+                        , disabled <|
+                            (model.selected == Nothing)
+                                || String.isEmpty model.username
                         ]
                         [ text "Take Seat" ]
                     ]
                 ]
     in
     div
-        [ class "grid grid-cols-3 grid-rows-3 justify-center items-center" ]
+        [ class "grid grid-cols-3 grid-rows-3"
+        , class "justify-center items-center justify-items-center"
+        ]
         [ viewSeat Index1 [ class "row-span-3" ]
         , viewSeat Index2 []
         , viewSeat Index3 [ class "row-span-3" ]
