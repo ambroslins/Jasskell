@@ -21,6 +21,7 @@ import Jasskell.Server.Player (Player)
 import Jasskell.Server.Player qualified as Player
 import Jasskell.Server.PlayerView (PlayerView)
 import Jasskell.Server.PlayerView qualified as PlayerView
+import Jasskell.Server.Seat (Seat (..))
 import Jasskell.Views (Views)
 import System.Random (StdGen)
 
@@ -43,18 +44,21 @@ findPlayer client =
     (maybe False (\p -> Player.client p == client))
     . players
 
+seats :: TableState n -> Vector n Seat
+seats = Vector.map (maybe Empty (Taken . Player.user)) . players
+
 playerViews :: KnownNat n => TableState n -> Views PlayerView n
 playerViews tableState = case phase tableState of
-  Waiting -> PlayerView.makeWaiting users
-  Playing gameState -> PlayerView.makeActive users (GameState.views gameState)
-  Over game -> PlayerView.makeOver users game
+  Waiting -> PlayerView.makeWaiting ss
+  Playing gameState -> PlayerView.makeActive ss (GameState.views gameState)
+  Over game -> PlayerView.makeOver ss game
   where
-    users = Vector.map (fmap Player.user) (players tableState)
+    ss = seats tableState
 
 guestView :: TableState n -> GuestView n
 guestView tableState = case phase tableState of
-  Waiting -> GuestView.makeWaiting users
-  Playing _ -> GuestView.makeActive users
-  Over _ -> GuestView.makeActive users
+  Waiting -> GuestView.makeJoining ss
+  Playing _ -> GuestView.makeSpectating ss
+  Over _ -> GuestView.makeSpectating ss
   where
-    users = Vector.map (fmap Player.user) (players tableState)
+    ss = seats tableState

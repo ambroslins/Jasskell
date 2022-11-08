@@ -10,7 +10,6 @@ where
 import Data.Aeson.Combinators.Encode (Encoder, field)
 import Data.Aeson.Combinators.Encode qualified as Encoder hiding (vector)
 import Data.Vector.Sized (Vector)
-import Data.Vector.Sized qualified as Vector
 import Data.Vector.Sized.Extra qualified as Vector
 import Jasskell.Game (Game)
 import Jasskell.Game qualified as Game
@@ -19,7 +18,6 @@ import Jasskell.Server.Encoder qualified as Encoder
 import Jasskell.Server.GameState (GameView (..))
 import Jasskell.Server.Seat (Seat (..))
 import Jasskell.Server.Seat qualified as Seat
-import Jasskell.Server.User (User)
 import Jasskell.View.Declaring (ViewDeclaring)
 import Jasskell.View.Declaring qualified as View.Declaring
 import Jasskell.View.Playing (ViewPlaying)
@@ -42,40 +40,39 @@ data Phase n
 makeViews ::
   KnownNat n =>
   (view n -> Phase n) ->
-  Vector n (Maybe User) ->
+  Vector n Seat ->
   Views view n ->
   Views PlayerView n
-makeViews f us = Views.map $ \i view ->
+makeViews f ss = Views.map $ \i view ->
   MakePlayerView
-    { seats = Vector.rotate i (Vector.map (maybe Empty Taken) us),
+    { seats = Vector.rotate i ss,
       phase = f view
     }
 
 makeWaiting ::
   KnownNat n =>
-  Vector n (Maybe User) ->
+  Vector n Seat ->
   Views PlayerView n
-makeWaiting us = makeViews id us (Views.make (const Waiting))
+makeWaiting ss = makeViews id ss (Views.make (const Waiting))
 
 makeActive ::
   KnownNat n =>
-  Vector n (Maybe User) ->
+  Vector n Seat ->
   Views GameView n ->
   Views PlayerView n
 makeActive = makeViews Active
 
 makeOver ::
   KnownNat n =>
-  Vector n (Maybe User) ->
+  Vector n Seat ->
   Game n ->
   Views PlayerView n
-makeOver us game = makeViews Over us (Views.make $ \i -> Game.rotate i game)
+makeOver ss game = makeViews Over ss (Views.make $ \i -> Game.rotate i game)
 
 encoder :: forall n. (KnownNat n) => Encoder (PlayerView n)
 encoder =
   Encoder.object
-    [ field "status" Encoder.text (const "player"),
-      field "seats" (Encoder.vector Seat.encoder) seats,
+    [ field "seats" (Encoder.vector Seat.encoder) seats,
       field "phase" phaseEncoder phase
     ]
   where
