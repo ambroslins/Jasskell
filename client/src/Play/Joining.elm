@@ -1,4 +1,4 @@
-module Play.AsGuest exposing
+module Play.Joining exposing
     ( Model
     , Msg
     , State
@@ -35,13 +35,7 @@ type alias Model =
 
 type alias State =
     { seats : Vector Seat
-    , phase : Phase
     }
-
-
-type Phase
-    = Waiting
-    | Active
 
 
 init : State -> Model
@@ -181,22 +175,5 @@ view model =
 
 decode : Decoder State
 decode =
-    let
-        decodePhase =
-            Decode.string
-                |> Decode.andThen
-                    (\phase ->
-                        case phase of
-                            "waiting" ->
-                                Decode.succeed Waiting
-
-                            "active" ->
-                                Decode.succeed Active
-
-                            _ ->
-                                Decode.fail ("invalid phase: " ++ phase)
-                    )
-    in
     Decode.succeed State
         |> Decode.required "seats" (Vector.decode Seat.decoder)
-        |> Decode.required "phase" decodePhase

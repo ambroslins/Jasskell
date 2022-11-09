@@ -5,7 +5,7 @@ import Html exposing (Html, div, text)
 import Html.Attributes exposing (class)
 import Json.Decode as Decode exposing (Decoder, Value)
 import Json.Decode.Pipeline as Decode
-import Play.AsGuest as AsGuest
+import Play.Joining as Joining
 import TableID
 import WebSocket
 
@@ -26,7 +26,7 @@ main =
 
 type Model
     = Connecting
-    | AsGuest AsGuest.Model
+    | Joining Joining.Model
     | Error String
 
 
@@ -46,7 +46,7 @@ init flags =
 
 type Msg
     = WebSocketEvent WebSocket.Event
-    | AsGuestMsg AsGuest.Msg
+    | JoiningMsg Joining.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -71,9 +71,9 @@ update msg model =
                 WebSocket.Close ->
                     ( Error "websocket close", Cmd.none )
 
-        ( AsGuestMsg msgGuest, AsGuest modelGuest ) ->
-            AsGuest.update msgGuest modelGuest
-                |> updateWith AsGuest AsGuestMsg
+        ( JoiningMsg msgJoining, Joining modelJoining ) ->
+            Joining.update msgJoining modelJoining
+                |> updateWith Joining JoiningMsg
 
         _ ->
             ( model, Cmd.none )
@@ -87,23 +87,23 @@ updateWith toModel toMsg ( subModel, subCmd ) =
 messageDecoder : Decoder (Model -> Model)
 messageDecoder =
     let
-        guest state model =
+        joining state model =
             case model of
-                AsGuest modelGuest ->
-                    AsGuest (AsGuest.updateState state modelGuest)
+                Joining modelJoining ->
+                    Joining (Joining.updateState state modelJoining)
 
                 _ ->
-                    AsGuest (AsGuest.init state)
+                    Joining (Joining.init state)
     in
-    Decode.field "status" Decode.string
+    Decode.field "phase" Decode.string
         |> Decode.andThen
-            (\status ->
-                case status of
-                    "guest" ->
-                        Decode.map guest AsGuest.decode
+            (\phase ->
+                case phase of
+                    "joining" ->
+                        Decode.map joining Joining.decode
 
                     _ ->
-                        Decode.fail ("invalid status: " ++ status)
+                        Decode.fail ("Invalid phase: " ++ phase)
             )
 
 
@@ -118,8 +118,8 @@ view model =
             Connecting ->
                 div [ class "text-8xl" ] [ text "Connecting" ]
 
-            AsGuest modelGuest ->
-                Html.map AsGuestMsg (AsGuest.view modelGuest)
+            Joining modelJoining ->
+                Html.map JoiningMsg (Joining.view modelJoining)
 
             Error s ->
                 div [ class "text-4xl text-red-500" ]
