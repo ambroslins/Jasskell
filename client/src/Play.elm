@@ -6,6 +6,7 @@ import Html.Attributes exposing (class)
 import Json.Decode as Decode exposing (Decoder, Value)
 import Json.Decode.Pipeline as Decode
 import Play.Joining as Joining
+import Play.Waiting as Waiting
 import TableID
 import WebSocket
 
@@ -27,6 +28,7 @@ main =
 type Model
     = Connecting
     | Joining Joining.Model
+    | Waiting Waiting.Model
     | Error String
 
 
@@ -47,6 +49,7 @@ init flags =
 type Msg
     = WebSocketEvent WebSocket.Event
     | JoiningMsg Joining.Msg
+    | WaitingMsg Waiting.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -75,6 +78,10 @@ update msg model =
             Joining.update msgJoining modelJoining
                 |> updateWith Joining JoiningMsg
 
+        ( WaitingMsg msgWaiting, Waiting modelWaiting ) ->
+            Waiting.update msgWaiting modelWaiting
+                |> updateWith Waiting WaitingMsg
+
         _ ->
             ( model, Cmd.none )
 
@@ -94,6 +101,14 @@ messageDecoder =
 
                 _ ->
                     Joining (Joining.init state)
+
+        waiting state model =
+            case model of
+                Waiting modelWaiting ->
+                    Waiting (Waiting.updateState state modelWaiting)
+
+                _ ->
+                    Waiting (Waiting.init state)
     in
     Decode.field "phase" Decode.string
         |> Decode.andThen
@@ -101,6 +116,9 @@ messageDecoder =
                 case phase of
                     "joining" ->
                         Decode.map joining Joining.decode
+
+                    "waiting" ->
+                        Decode.map waiting Waiting.decode
 
                     _ ->
                         Decode.fail ("Invalid phase: " ++ phase)
@@ -120,6 +138,9 @@ view model =
 
             Joining modelJoining ->
                 Html.map JoiningMsg (Joining.view modelJoining)
+
+            Waiting modelWaiting ->
+                Html.map WaitingMsg (Waiting.view modelWaiting)
 
             Error s ->
                 div [ class "text-4xl text-red-500" ]
