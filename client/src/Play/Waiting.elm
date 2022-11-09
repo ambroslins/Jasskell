@@ -47,14 +47,18 @@ init state =
 
 
 type Msg
-    = Msg
+    = Start
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        Msg ->
-            ( model, Cmd.none )
+        Start ->
+            ( model
+            , WebSocket.send <|
+                Encode.object
+                    [ ( "start", Encode.null ) ]
+            )
 
 
 updateState : State -> Model -> Model
@@ -95,7 +99,11 @@ view model =
         [ viewSeat Index1 [ class "row-span-3" ]
         , viewSeat Index2 []
         , viewSeat Index3 [ class "row-span-3" ]
-        , div [] [ text "Waiting" ]
+        , button
+            [ onClick Start
+            , class "text-4xl p-4 m-4 rounded shadow hover:bg-green-300"
+            ]
+            [ text "Start Game" ]
         , viewSeat Index0 []
         ]
 
