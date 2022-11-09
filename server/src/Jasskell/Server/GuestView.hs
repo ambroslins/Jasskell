@@ -9,8 +9,6 @@ where
 import Data.Aeson.Combinators.Encode (Encoder, field)
 import Data.Aeson.Combinators.Encode qualified as Encoder hiding (vector)
 import Data.Vector.Sized (Vector)
-import Data.Vector.Sized qualified as Vector
-import Jasskell.Server.Encoder (Tagged (Tagged))
 import Jasskell.Server.Encoder qualified as Encoder
 import Jasskell.Server.Seat (Seat (..))
 import Jasskell.Server.Seat qualified as Seat
@@ -47,6 +45,10 @@ encoder =
     ]
   where
     phaseEncoder :: Encoder Phase
-    phaseEncoder = Encoder.tagged $ \case
-      Joining -> Tagged "joining" Encoder.unit ()
-      Spectating -> Tagged "spectating" Encoder.unit ()
+    phaseEncoder =
+      Encoder.text
+        & contramap
+          ( \case
+              Joining -> "joining"
+              Spectating -> "spectating"
+          )
