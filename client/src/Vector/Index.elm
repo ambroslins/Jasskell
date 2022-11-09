@@ -1,6 +1,7 @@
 module Vector.Index exposing
     ( Index(..)
     , add
+    , decode
     , encode
     , fromInt
     , modulo
@@ -10,6 +11,7 @@ module Vector.Index exposing
     , toString
     )
 
+import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode exposing (Value)
 
 
@@ -83,3 +85,18 @@ sub i j =
 encode : Index -> Value
 encode =
     Encode.int << toInt
+
+
+decode : Decoder Index
+decode =
+    Decode.int
+        |> Decode.andThen
+            (\i ->
+                case fromInt i of
+                    Just index ->
+                        Decode.succeed index
+
+                    Nothing ->
+                        Decode.fail
+                            ("Index: " ++ String.fromInt i ++ " out of range")
+            )
