@@ -9,9 +9,9 @@ module Play.Waiting exposing
     , view
     )
 
-import Html exposing (Html, button, div, form, input, label, text)
-import Html.Attributes exposing (class, classList, disabled, for, id, placeholder, type_)
-import Html.Events exposing (onClick, onInput, onSubmit)
+import Html exposing (Html, button, div, text)
+import Html.Attributes exposing (class)
+import Html.Events exposing (onClick)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as Decode
 import Json.Encode as Encode

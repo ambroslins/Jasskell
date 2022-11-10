@@ -10,17 +10,14 @@ module Play.Playing exposing
     )
 
 import Card exposing (Card)
-import Html exposing (Html, button, div, form, input, label, p, text)
-import Html.Attributes exposing (class, classList, disabled, for, id, placeholder, type_)
-import Html.Events exposing (onClick, onInput, onSubmit)
+import Html exposing (Html, div, p, text)
+import Html.Attributes exposing (class)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as Decode
-import Json.Encode as Encode
 import Seat exposing (Seat(..))
 import User
 import Vector as Vector exposing (Vector)
 import Vector.Index as Index exposing (Index(..))
-import WebSocket
 
 
 
