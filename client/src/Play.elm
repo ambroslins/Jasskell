@@ -5,7 +5,10 @@ import Html exposing (Html, div, text)
 import Html.Attributes exposing (class)
 import Json.Decode as Decode exposing (Decoder, Value)
 import Json.Decode.Pipeline as Decode
-import Play.AsGuest as AsGuest
+import Play.Declaring as Declaring
+import Play.Joining as Joining
+import Play.Playing as Playing
+import Play.Waiting as Waiting
 import TableID
 import WebSocket
 
@@ -26,7 +29,10 @@ main =
 
 type Model
     = Connecting
-    | AsGuest AsGuest.Model
+    | Joining Joining.Model
+    | Waiting Waiting.Model
+    | Declaring Declaring.Model
+    | Playing Playing.Model
     | Error String
 
 
@@ -46,7 +52,10 @@ init flags =
 
 type Msg
     = WebSocketEvent WebSocket.Event
-    | AsGuestMsg AsGuest.Msg
+    | JoiningMsg Joining.Msg
+    | WaitingMsg Waiting.Msg
+    | DeclaringMsg Declaring.Msg
+    | PlayingMsg Playing.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -71,9 +80,21 @@ update msg model =
                 WebSocket.Close ->
                     ( Error "websocket close", Cmd.none )
 
-        ( AsGuestMsg msgGuest, AsGuest modelGuest ) ->
-            AsGuest.update msgGuest modelGuest
-                |> updateWith AsGuest AsGuestMsg
+        ( JoiningMsg msgJoining, Joining modelJoining ) ->
+            Joining.update msgJoining modelJoining
+                |> updateWith Joining JoiningMsg
+
+        ( WaitingMsg msgWaiting, Waiting modelWaiting ) ->
+            Waiting.update msgWaiting modelWaiting
+                |> updateWith Waiting WaitingMsg
+
+        ( DeclaringMsg msgDeclaring, Declaring modelDeclaring ) ->
+            Declaring.update msgDeclaring modelDeclaring
+                |> updateWith Declaring DeclaringMsg
+
+        ( PlayingMsg msgPlaying, Playing modelPlaying ) ->
+            Playing.update msgPlaying modelPlaying
+                |> updateWith Playing PlayingMsg
 
         _ ->
             ( model, Cmd.none )
@@ -87,23 +108,56 @@ updateWith toModel toMsg ( subModel, subCmd ) =
 messageDecoder : Decoder (Model -> Model)
 messageDecoder =
     let
-        guest state model =
+        joining state model =
             case model of
-                AsGuest modelGuest ->
-                    AsGuest (AsGuest.updateState state modelGuest)
+                Joining modelJoining ->
+                    Joining (Joining.updateState state modelJoining)
 
                 _ ->
-                    AsGuest (AsGuest.init state)
+                    Joining (Joining.init state)
+
+        waiting state model =
+            case model of
+                Waiting modelWaiting ->
+                    Waiting (Waiting.updateState state modelWaiting)
+
+                _ ->
+                    Waiting (Waiting.init state)
+
+        declaring state model =
+            case model of
+                Declaring modelDeclaring ->
+                    Declaring (Declaring.updateState state modelDeclaring)
+
+                _ ->
+                    Declaring (Declaring.init state)
+
+        playing state model =
+            case model of
+                Playing modelPlaying ->
+                    Playing (Playing.updateState state modelPlaying)
+
+                _ ->
+                    Playing (Playing.init state)
     in
-    Decode.field "status" Decode.string
+    Decode.field "phase" Decode.string
         |> Decode.andThen
-            (\status ->
-                case status of
-                    "guest" ->
-                        Decode.map guest AsGuest.decode
+            (\phase ->
+                case phase of
+                    "joining" ->
+                        Decode.map joining Joining.decode
+
+                    "waiting" ->
+                        Decode.map waiting Waiting.decode
+
+                    "declaring" ->
+                        Decode.map declaring Declaring.decode
+
+                    "playing" ->
+                        Decode.map playing Playing.decode
 
                     _ ->
-                        Decode.fail ("invalid status: " ++ status)
+                        Decode.fail ("Invalid phase: " ++ phase)
             )
 
 
@@ -118,8 +172,17 @@ view model =
             Connecting ->
                 div [ class "text-8xl" ] [ text "Connecting" ]
 
-            AsGuest modelGuest ->
-                Html.map AsGuestMsg (AsGuest.view modelGuest)
+            Joining modelJoining ->
+                Html.map JoiningMsg (Joining.view modelJoining)
+
+            Waiting modelWaiting ->
+                Html.map WaitingMsg (Waiting.view modelWaiting)
+
+            Declaring modelDeclaring ->
+                Html.map DeclaringMsg (Declaring.view modelDeclaring)
+
+            Playing modelPlaying ->
+                Html.map PlayingMsg (Playing.view modelPlaying)
 
             Error s ->
                 div [ class "text-4xl text-red-500" ]

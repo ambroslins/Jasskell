@@ -7,22 +7,18 @@ module Jasskell.Server.PlayerView
   )
 where
 
-import Data.Aeson.Combinators.Encode (Encoder, field)
+import Data.Aeson (Key, Value)
+import Data.Aeson.Combinators.Encode (Encoder, field, field')
 import Data.Aeson.Combinators.Encode qualified as Encoder hiding (vector)
 import Data.Vector.Sized (Vector)
-import Data.Vector.Sized qualified as Vector
 import Data.Vector.Sized.Extra qualified as Vector
 import Jasskell.Game (Game)
 import Jasskell.Game qualified as Game
-import Jasskell.Server.Encoder (Tagged (..))
 import Jasskell.Server.Encoder qualified as Encoder
 import Jasskell.Server.GameState (GameView (..))
 import Jasskell.Server.Seat (Seat (..))
 import Jasskell.Server.Seat qualified as Seat
-import Jasskell.Server.User (User)
-import Jasskell.View.Declaring (ViewDeclaring)
 import Jasskell.View.Declaring qualified as View.Declaring
-import Jasskell.View.Playing (ViewPlaying)
 import Jasskell.View.Playing qualified as View.Playing
 import Jasskell.Views (Views)
 import Jasskell.Views qualified as Views
@@ -42,70 +38,68 @@ data Phase n
 makeViews ::
   KnownNat n =>
   (view n -> Phase n) ->
-  Vector n (Maybe User) ->
+  Vector n Seat ->
   Views view n ->
   Views PlayerView n
-makeViews f us = Views.map $ \i view ->
+makeViews f ss = Views.map $ \i view ->
   MakePlayerView
-    { seats = Vector.rotate i (Vector.map (maybe Empty Taken) us),
+    { seats = Vector.rotate i ss,
       phase = f view
     }
 
 makeWaiting ::
   KnownNat n =>
-  Vector n (Maybe User) ->
+  Vector n Seat ->
   Views PlayerView n
-makeWaiting us = makeViews id us (Views.make (const Waiting))
+makeWaiting ss = makeViews id ss (Views.make (const Waiting))
 
 makeActive ::
   KnownNat n =>
-  Vector n (Maybe User) ->
+  Vector n Seat ->
   Views GameView n ->
   Views PlayerView n
 makeActive = makeViews Active
 
 makeOver ::
   KnownNat n =>
-  Vector n (Maybe User) ->
+  Vector n Seat ->
   Game n ->
   Views PlayerView n
-makeOver us game = makeViews Over us (Views.make $ \i -> Game.rotate i game)
+makeOver ss game = makeViews Over ss (Views.make $ \i -> Game.rotate i game)
 
 encoder :: forall n. (KnownNat n) => Encoder (PlayerView n)
 encoder =
-  Encoder.object
-    [ field "status" Encoder.text (const "player"),
-      field "seats" (Encoder.vector Seat.encoder) seats,
-      field "phase" phaseEncoder phase
-    ]
+  Encoder.object' $ \playerView ->
+    field' "seats" (Encoder.vector Seat.encoder) (seats playerView) :
+    case phase playerView of
+      Waiting -> encodePhase "waiting" () []
+      Active (Playing view) ->
+        encodePhase
+          "playing"
+          view
+          [ field "hand" Encoder.cards View.Playing.hand,
+            field "variant" Encoder.variant View.Playing.variant,
+            field "leader" Encoder.finite View.Playing.leader,
+            field
+              "played-cards"
+              (Encoder.vector (Encoder.nullable Encoder.card))
+              View.Playing.playedCards,
+            field "tricks" (Encoder.list Encoder.trick) View.Playing.tricks
+          ]
+      Active (Declaring view) ->
+        encodePhase
+          "declaring"
+          view
+          [ field "hand" Encoder.cards View.Declaring.hand,
+            field "eldest" Encoder.finite View.Declaring.eldest,
+            field
+              "nominators"
+              (Encoder.nonEmpty Encoder.finite)
+              View.Declaring.nominators
+          ]
+      Over ga -> encodePhase "over" ga []
   where
-    phaseEncoder :: Encoder (Phase n)
-    phaseEncoder = Encoder.tagged $ \case
-      Waiting -> Tagged "waiting" Encoder.unit ()
-      Active (Playing view) -> Tagged "playing" playingEncoder view
-      Active (Declaring view) -> Tagged "declaring" declaringEncoder view
-      Over game -> Tagged "over" Encoder.game game
-
-    playingEncoder :: Encoder (ViewPlaying n)
-    playingEncoder =
-      Encoder.object
-        [ field "hand" Encoder.cards View.Playing.hand,
-          field "variant" Encoder.variant View.Playing.variant,
-          field "leader" Encoder.finite View.Playing.leader,
-          field
-            "played-cards"
-            (Encoder.vector (Encoder.nullable Encoder.card))
-            View.Playing.playedCards,
-          field "tricks" (Encoder.list Encoder.trick) View.Playing.tricks
-        ]
-
-    declaringEncoder :: Encoder (ViewDeclaring n)
-    declaringEncoder =
-      Encoder.object
-        [ field "hand" Encoder.cards View.Declaring.hand,
-          field "eldest" Encoder.finite View.Declaring.eldest,
-          field
-            "nominators"
-            (contramap toList (Encoder.list Encoder.finite))
-            View.Declaring.nominators
-        ]
+    encodePhase :: Text -> a -> [a -> (Key, Value)] -> [(Key, Value)]
+    encodePhase name view fields =
+      field' "phase" Encoder.text name :
+      map ($ view) fields

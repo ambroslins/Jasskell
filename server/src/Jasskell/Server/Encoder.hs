@@ -3,6 +3,7 @@ module Jasskell.Server.Encoder
     tagged,
     set,
     vector,
+    nonEmpty,
     nullable,
     finite,
     suit,
@@ -36,13 +37,16 @@ import Jasskell.Round qualified as Round
 import Jasskell.Trick (Trick)
 import Jasskell.Trick qualified as Trick
 import Jasskell.Variant (Direction, Variant (..))
-import Prelude hiding (round)
+import Prelude hiding (nonEmpty, round)
 
 set :: Encoder a -> Encoder (Set a)
 set = contramap toList . Encoder.list
 
 vector :: Encoder a -> Encoder (Vector n a)
 vector = contramap Vector.fromSized . Encoder.vector
+
+nonEmpty :: Encoder a -> Encoder (NonEmpty a)
+nonEmpty = contramap toList . Encoder.list
 
 nullable :: Encoder a -> Encoder (Maybe a)
 nullable e = Encoder.Encoder $ maybe Null (Encoder.run e)

@@ -1,4 +1,4 @@
-module Play.Waiting exposing
+module Play.Declaring exposing
     ( Model
     , Msg
     , State
@@ -9,17 +9,15 @@ module Play.Waiting exposing
     , view
     )
 
-import Html exposing (Html, button, div, text)
+import Card exposing (Card)
+import Html exposing (Html, div, p, text)
 import Html.Attributes exposing (class)
-import Html.Events exposing (onClick)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as Decode
-import Json.Encode as Encode
 import Seat exposing (Seat(..))
 import User
 import Vector as Vector exposing (Vector)
 import Vector.Index as Index exposing (Index(..))
-import WebSocket
 
 
 
@@ -33,6 +31,9 @@ type alias Model =
 
 type alias State =
     { seats : Vector Seat
+    , hand : List Card
+    , eldest : Index
+    , nominators : List Index
     }
 
 
@@ -47,18 +48,14 @@ init state =
 
 
 type Msg
-    = Start
+    = Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        Start ->
-            ( model
-            , WebSocket.send <|
-                Encode.object
-                    [ ( "start", Encode.null ) ]
-            )
+        Msg ->
+            ( model, Cmd.none )
 
 
 updateState : State -> Model -> Model
@@ -99,11 +96,7 @@ view model =
         [ viewSeat Index1 [ class "row-span-3" ]
         , viewSeat Index2 []
         , viewSeat Index3 [ class "row-span-3" ]
-        , button
-            [ onClick Start
-            , class "text-4xl p-4 m-4 rounded shadow hover:bg-green-300"
-            ]
-            [ text "Start Game" ]
+        , p [] [ text (Debug.toString model.state) ]
         , viewSeat Index0 []
         ]
 
@@ -116,3 +109,6 @@ decode : Decoder State
 decode =
     Decode.succeed State
         |> Decode.required "seats" (Vector.decode Seat.decoder)
+        |> Decode.required "hand" (Decode.list Card.decode)
+        |> Decode.required "eldest" Index.decode
+        |> Decode.required "nominators" (Decode.list Index.decode)
