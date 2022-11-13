@@ -1,17 +1,20 @@
 module Jasskell.Server.Client
   ( Client,
     make,
-    send,
-    recive,
+    sendMessage,
+    reciveAction,
   )
 where
 
 import Control.Concurrent.STM.TMVar (writeTMVar)
 import Data.Unique (Unique, newUnique)
+import GHC.Show (Show (..))
+import Jasskell.Server.Action (Action)
 import Jasskell.Server.Message (Message)
 
 data Client n = Client
-  { messageVar :: TMVar (Message n),
+  { send :: Message n -> IO (),
+    actionVar :: TMVar (Action n),
     unique :: Unique
   }
 
@@ -21,11 +24,17 @@ instance Eq (Client n) where
 instance Hashable (Client n) where
   hashWithSalt seed = hashWithSalt seed . unique
 
-make :: MonadIO m => m (Client n)
-make = Client <$> newEmptyTMVarIO <*> liftIO newUnique
+instance Show (Client n) where
+  show = const "Client"
 
-send :: Client n -> Message n -> STM ()
-send = writeTMVar . messageVar
+make :: MonadIO m => (Message n -> IO ()) -> m (Client n, Action n -> IO ())
+make s = do
+  var <- newEmptyTMVarIO
+  client <- Client s var <$> liftIO newUnique
+  pure (client, atomically . writeTMVar var)
 
-recive :: Client n -> STM (Message n)
-recive = takeTMVar . messageVar
+sendMessage :: MonadIO m => Client n -> Message n -> m ()
+sendMessage client = liftIO . send client
+
+reciveAction :: Client n -> STM (Action n)
+reciveAction = takeTMVar . actionVar

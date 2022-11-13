@@ -1,30 +1,22 @@
-module Jasskell.Server.Action
-  ( Action,
-    run,
-    takeSeat,
-    playMove,
-    startGame,
-  )
-where
+module Jasskell.Server.Action where
 
-import Control.Monad.Except (throwError)
+{-( Action,
+  run,
+  takeSeat,
+  playMove,
+  startGame,
+)-}
+
 import Data.Finite (Finite)
-import Data.HashSet qualified as HashSet
-import Data.Vector.Sized qualified as Vector
-import Jasskell.Jass (JassNat)
-import Jasskell.Server.Client (Client)
-import Jasskell.Server.Error (Error (..))
-import Jasskell.Server.GameState (BadMove, Move, Transition (..))
-import Jasskell.Server.GameState qualified as GameState
-import Jasskell.Server.Player qualified as Player
-import Jasskell.Server.TableState
-  ( Phase (..),
-    TableState (..),
-    findPlayer,
-  )
-import Jasskell.Server.User (User (User))
-import System.Random (RandomGen (split))
+import Jasskell.Server.GameState (Move)
 
+data Action n
+  = TakeSeat Text (Finite n)
+  | PlayMove Move
+  | StartGame
+  deriving (Eq, Show)
+
+{-
 newtype Action n = Action
   {run :: Client n -> TableState n -> Either Error (TableState n)}
 
@@ -67,3 +59,4 @@ fromTransition :: Either BadMove (Transition n) -> Either Error (Phase n)
 fromTransition = bimap BadMove $ \case
   Continue gameState -> Playing gameState
   Done game -> Over game
+  -}

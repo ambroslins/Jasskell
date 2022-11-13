@@ -78,10 +78,10 @@ move =
 action :: JassNat n => Decoder (Action n)
 action =
   tagged
-    [ Tagged "move" $ Action.playMove <$> move,
-      Tagged "start" $ Action.startGame <$ Decoder.unit,
+    [ Tagged "move" $ Action.PlayMove <$> move,
+      Tagged "start" $ Action.StartGame <$ Decoder.unit,
       Tagged "take-seat" $
-        Action.takeSeat
+        Action.TakeSeat
           <$> key "username" Decoder.text
           <*> key "seat" finite
     ]
