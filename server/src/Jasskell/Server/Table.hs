@@ -6,79 +6,65 @@ module Jasskell.Server.Table
   )
 where
 
-import Control.Concurrent.STM.TVar (modifyTVar)
-import Data.HashSet qualified as HashSet
-import Data.Vector.Sized qualified as Vector
+import Control.Concurrent.Async (Async, async)
+import Control.Concurrent.STM (TBQueue, newTBQueueIO, readTBQueue, writeTBQueue)
 import Jasskell.Dealer (Dealer)
 import Jasskell.Jass (JassNat)
 import Jasskell.Server.Action (Action)
-import Jasskell.Server.Action qualified as Action
 import Jasskell.Server.Client (Client)
 import Jasskell.Server.Client qualified as Client
 import Jasskell.Server.Message (Message)
 import Jasskell.Server.Message qualified as Message
-import Jasskell.Server.Player qualified as Player
-import Jasskell.Server.TableState
-  ( Phase (Waiting),
-    TableState (..),
-    guestView,
-    playerViews,
-  )
-import Jasskell.Views qualified as Views
-import System.Random (newStdGen)
+import Jasskell.Server.TableState (TableState)
+import Jasskell.Server.TableState qualified as TableState
 import Prelude hiding (join)
 
-newtype Table n = Table (TVar (TableState n))
+data Event n
+  = ClientAction (Client n) (Action n)
+  | ClientJoined (Client n)
+  deriving (Eq)
+
+data Table n = MakeTable
+  { thread :: Async (),
+    eventQueue :: TBQueue (Event n)
+  }
 
 data SomeTable = forall n. JassNat n => SomeTable (Table n)
 
-new :: (KnownNat n, MonadIO m) => Dealer n -> m (Table n)
-new d = do
-  gen <- newStdGen
-  let tableState =
-        TableState
-          { guests = HashSet.empty,
-            players = Vector.replicate Nothing,
-            stdGen = gen,
-            dealer = d,
-            phase = Waiting
-          }
-  Table <$> newTVarIO tableState
+join :: MonadIO m => (Message n -> IO ()) -> Table n -> m (Action n -> IO ())
+join sendMessage table = do
+  (client, sendAction) <- Client.make sendMessage writeClientAction
+  atomically $ writeTBQueue (eventQueue table) (ClientJoined client)
+  pure sendAction
+  where
+    writeClientAction client action =
+      writeTBQueue queue (ClientAction client action)
+    queue = eventQueue table
 
-join :: (JassNat n, MonadIO m) => Table n -> m (Action n -> IO (), IO (Message n))
-join (Table table) = do
-  client <- Client.make
-  atomically $ do
-    modifyTVar table $ \ts -> ts {guests = HashSet.insert client $ guests ts}
-    broadcastView table
+new :: (JassNat n, MonadIO m) => Dealer n -> m (Table n)
+new dealer = do
+  tableState <- TableState.make dealer
+  queue <- liftIO (newTBQueueIO 8)
+  a <- liftIO $ async (run (readTBQueue queue) tableState)
   pure
-    ( atomically . runAction table client,
-      atomically $ Client.recive client
-    )
+    MakeTable
+      { thread = a,
+        eventQueue = queue
+      }
 
-runAction :: JassNat n => TVar (TableState n) -> Client n -> Action n -> STM ()
-runAction table client action = do
-  tableState <- readTVar table
-  case Action.run action client tableState of
-    Left e -> Client.send client $ Message.Error e
-    Right ts -> do
-      writeTVar table ts
-      broadcastView table
-
-broadcastView :: KnownNat n => TVar (TableState n) -> STM ()
-broadcastView table = do
-  tableState <- readTVar table
-  let sendPlayer i =
-        maybe
-          pass
-          ( \p ->
-              Client.send
-                (Player.client p)
-                (Message.UpdatePlayerView $ Views.pov (playerViews tableState) i)
-          )
-      sendGuest c =
-        Client.send
-          c
-          (Message.UpdateGuestView (guestView tableState))
-  Vector.imapM_ sendPlayer (players tableState)
-  traverse_ sendGuest (guests tableState)
+run :: (JassNat n, MonadIO m) => STM (Event n) -> TableState n -> m ()
+run waitEvent = fix $ \loop tableState -> do
+  event <- atomically waitEvent
+  case event of
+    ClientAction client action ->
+      case TableState.applyAction client action tableState of
+        Left e -> do
+          Client.sendMessage client (Message.Error e)
+          loop tableState
+        Right ts -> do
+          TableState.broadcast ts
+          loop ts
+    ClientJoined client -> do
+      let ts = TableState.addGuest client tableState
+      TableState.broadcast ts
+      loop ts

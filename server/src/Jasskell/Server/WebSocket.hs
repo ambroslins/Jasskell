@@ -1,7 +1,6 @@
 module Jasskell.Server.WebSocket where
 
 import Colog.Message (logInfo)
-import Control.Concurrent.Async (concurrently_)
 import Data.Aeson.Combinators.Decode (Decoder)
 import Data.Aeson.Combinators.Decode qualified as Decoder
 import Data.Aeson.Combinators.Encode qualified as Encoder
@@ -65,21 +64,22 @@ handleConnection pendingConnection = do
           connection <- liftIO $ acceptRequest pendingConnection
           logInfo "WebSocket connection accepted"
 
-          (putAction, getMessage) <- Table.join table
+          let sendMessage =
+                sendTextData connection
+                  . Encoder.encode Message.encoder
+              reciveAction =
+                Decoder.eitherDecode Decoder.action
+                  <$> receiveData connection
 
-          let send = sendTextData connection
-              recive = receiveData connection
-
-              sendThread = forever $ do
-                message <- getMessage
-                send $ Encoder.encode Message.encoder message
-
-              reciveThread = forever $ do
-                message <- recive
-                case Decoder.eitherDecode Decoder.action message of
-                  Left e -> send $ fromString e
-                  Right action -> putAction action
+          sendAction <- Table.join sendMessage table
 
           liftIO $
-            withPingThread connection 30 pass $
-              concurrently_ sendThread reciveThread
+            withPingThread connection 30 pass $ do
+              fix $ \loop ->
+                reciveAction >>= \case
+                  Left e -> do
+                    print e
+                    loop
+                  Right action -> do
+                    sendAction action
+                    loop
