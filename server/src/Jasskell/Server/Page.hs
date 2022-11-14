@@ -4,28 +4,24 @@ import Data.Aeson (Value (String), encode)
 import Data.Text qualified as Text
 import Jasskell.Server.App (MonadApp)
 import Jasskell.Server.App qualified as App
-import Jasskell.Server.Http (MonadResponder)
+import Jasskell.Server.Http (ResponderT)
 import Jasskell.Server.Http qualified as Http
-import Jasskell.Server.TableID (TableID)
 import Jasskell.Server.TableID qualified as TableID
 import Lucid
 import Network.Wai (Response)
-import Web.Twain (ParsableParam)
+import UnliftIO (MonadUnliftIO)
 import Web.Twain qualified as Twain
 
-routes :: [Http.Route]
+routes :: (MonadApp m, MonadUnliftIO m) => [Http.Route m]
 routes =
-  [ Http.get "/" (html index),
-    Http.get "/play" (html play),
+  [ Http.get "/" (pure $ html index),
+    Http.get "/play" (html <$> play),
     Http.post "/play" createTable,
-    Http.get "/play/:tableID" (html (withParam "tableID" playActive))
+    Http.get "/play/:tableID" (html <$> playActive)
   ]
 
-html :: Monad m => HtmlT m a -> m Response
-html m = Twain.html <$> renderBST m
-
-withParam :: (ParsableParam a, MonadResponder m) => Text -> (a -> m b) -> m b
-withParam name f = Http.param name >>= f
+html :: Html () -> Response
+html = Twain.html . renderBS
 
 makePage :: Monad m => Text -> HtmlT m () -> HtmlT m ()
 makePage title body = do
@@ -44,34 +40,37 @@ index =
       ]
       "Play"
 
-play :: (MonadApp m, MonadIO m) => HtmlT m ()
+play :: (MonadApp m, MonadUnliftIO m) => ResponderT m (Html ())
 play = do
   tableIDs <- lift App.activeTables
-  makePage "Play Jasskell" $ do
-    form_ [action_ "/play", method_ "post"] $
-      button_
-        [ class_ "text-4xl rounded-xl p-1 m-3",
-          class_ "border-2 border-lime-400 hover:bg-lime-400"
-        ]
-        "Create Table"
-    table_ $ do
-      tr_ (th_ "Table ID")
-      forM_ tableIDs $ \tableID ->
-        tr_ $
-          td_ $
-            span_ $ do
-              toHtml (TableID.toText tableID)
-              a_ [href_ ("/play/" <> show tableID)] "Join"
+  pure $
+    makePage "Play Jasskell" $ do
+      form_ [action_ "/play", method_ "post"] $
+        button_
+          [ class_ "text-4xl rounded-xl p-1 m-3",
+            class_ "border-2 border-lime-400 hover:bg-lime-400"
+          ]
+          "Create Table"
+      table_ $ do
+        tr_ (th_ "Table ID")
+        forM_ tableIDs $ \tableID ->
+          tr_ $
+            td_ $
+              span_ $ do
+                toHtml (TableID.toText tableID)
+                a_ [href_ ("/play/" <> show tableID)] "Join"
 
-playActive :: Monad m => TableID -> HtmlT m ()
-playActive tableID = do
-  makePage "Play Jasskell" $ do
-    elmElement "Play" (String (TableID.toText tableID))
-    script_ [src_ "/index.js"] Text.empty
+playActive :: MonadIO m => ResponderT m (Html ())
+playActive = do
+  tableID <- Http.param "tableID"
+  pure $
+    makePage "Play Jasskell" $ do
+      elmElement "Play" (String (TableID.toText tableID))
+      script_ [src_ "/index.js"] Text.empty
 
-createTable :: (MonadApp m, MonadIO m) => m Response
+createTable :: (MonadApp m, MonadUnliftIO m) => ResponderT m Response
 createTable = do
-  tableID <- App.createTable
+  tableID <- lift App.createTable
   pure $ Twain.redirect302 $ "/play/" <> show tableID
 
 elmElement :: Monad m => Text -> Value -> HtmlT m ()

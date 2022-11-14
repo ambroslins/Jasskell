@@ -6,7 +6,8 @@ module Jasskell.Server.Table
   )
 where
 
-import Control.Concurrent.Async (Async, async)
+import Colog (WithLog)
+import Colog qualified
 import Control.Concurrent.STM (TBQueue, newTBQueueIO, readTBQueue, writeTBQueue)
 import Jasskell.Dealer (Dealer)
 import Jasskell.Jass (JassNat)
@@ -17,6 +18,8 @@ import Jasskell.Server.Message (Message)
 import Jasskell.Server.Message qualified as Message
 import Jasskell.Server.TableState (TableState)
 import Jasskell.Server.TableState qualified as TableState
+import UnliftIO (MonadUnliftIO)
+import UnliftIO.Async (Async, async)
 import Prelude hiding (join)
 
 data Event n
@@ -41,20 +44,27 @@ join sendMessage table = do
       writeTBQueue queue (ClientAction client action)
     queue = eventQueue table
 
-new :: (JassNat n, MonadIO m) => Dealer n -> m (Table n)
+new ::
+  (JassNat n, WithLog env Colog.Message m, MonadUnliftIO m) =>
+  Dealer n ->
+  m (Table n)
 new dealer = do
   tableState <- TableState.make dealer
   queue <- liftIO (newTBQueueIO 8)
-  a <- liftIO $ async (run (readTBQueue queue) tableState)
+  a <- async (run queue tableState)
   pure
     MakeTable
       { thread = a,
         eventQueue = queue
       }
 
-run :: (JassNat n, MonadIO m) => STM (Event n) -> TableState n -> m ()
-run waitEvent = fix $ \loop tableState -> do
-  event <- atomically waitEvent
+run ::
+  (JassNat n, WithLog env Colog.Message m, MonadUnliftIO m) =>
+  TBQueue (Event n) ->
+  TableState n ->
+  m ()
+run queue = fix $ \loop tableState -> do
+  event <- atomically (readTBQueue queue)
   case event of
     ClientAction client action ->
       case TableState.applyAction client action tableState of

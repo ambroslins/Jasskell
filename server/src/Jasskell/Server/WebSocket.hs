@@ -1,11 +1,12 @@
 module Jasskell.Server.WebSocket where
 
-import Colog.Message (logInfo)
+import Colog.Message (logError, logInfo, logWarning)
 import Data.Aeson.Combinators.Decode (Decoder)
 import Data.Aeson.Combinators.Decode qualified as Decoder
 import Data.Aeson.Combinators.Encode qualified as Encoder
 import Data.ByteString qualified as ByteString
-import Jasskell.Server.App (MonadApp, runAppT)
+import Data.Text qualified as Text
+import Jasskell.Server.App (MonadApp)
 import Jasskell.Server.App qualified as App
 import Jasskell.Server.Decoder qualified as Decoder
 import Jasskell.Server.Message qualified as Message
@@ -23,6 +24,7 @@ import Network.WebSockets
     sendTextData,
     withPingThread,
   )
+import UnliftIO (MonadUnliftIO, toIO, withException, withRunInIO)
 
 data JoinMessage = JoinMessage
   { username :: Text,
@@ -38,11 +40,10 @@ joinMessageDecoder =
     <*> Decoder.key "tableID" Decoder.auto
     <*> Decoder.key "seat" Decoder.int
 
-server :: App.Env IO -> ServerApp
-server env pendingConnection =
-  runAppT env (handleConnection pendingConnection)
+server :: (MonadApp m, MonadUnliftIO m) => m ServerApp
+server = withRunInIO $ \runInIO -> pure (runInIO . handleConnection)
 
-handleConnection :: (MonadApp m, MonadIO m) => PendingConnection -> m ()
+handleConnection :: (MonadApp m, MonadUnliftIO m) => PendingConnection -> m ()
 handleConnection pendingConnection = do
   let path = requestPath $ pendingRequest pendingConnection
   case ByteString.stripPrefix "/play/" path >>= TableID.fromByteString of
@@ -73,13 +74,13 @@ handleConnection pendingConnection = do
 
           sendAction <- Table.join sendMessage table
 
-          liftIO $
-            withPingThread connection 30 pass $ do
-              fix $ \loop ->
-                reciveAction >>= \case
-                  Left e -> do
-                    print e
-                    loop
-                  Right action -> do
-                    sendAction action
-                    loop
+          run <-
+            toIO . forever $
+              liftIO reciveAction >>= \case
+                Left e ->
+                  logWarning ("Failed to decode client action: " <> Text.pack e)
+                Right action -> liftIO (sendAction action)
+
+          liftIO (withPingThread connection 30 pass run)
+            `withException` \(SomeException e) ->
+              logError ("WebSocket connection ended with: " <> show e)

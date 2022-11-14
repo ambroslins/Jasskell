@@ -12,6 +12,8 @@ module Jasskell.Server.TableState
   )
 where
 
+import Colog (WithLog)
+import Colog qualified
 import Control.Monad.Except (MonadError, liftEither, throwError)
 import Data.Finite (Finite)
 import Data.HashSet qualified as HashSet
@@ -38,6 +40,7 @@ import Jasskell.Server.User (User (User))
 import Jasskell.Views (Views)
 import Jasskell.Views qualified as Views
 import System.Random (StdGen, newStdGen, split)
+import UnliftIO (MonadUnliftIO)
 
 data TableState n = TableState
   { guests :: HashSet (Client n),
@@ -101,7 +104,10 @@ guestView tableState = case phase tableState of
   where
     ss = seats tableState
 
-broadcast :: (KnownNat n, MonadIO m) => TableState n -> m ()
+broadcast ::
+  (KnownNat n, WithLog env Colog.Message m, MonadUnliftIO m) =>
+  TableState n ->
+  m ()
 broadcast tableState = do
   let sendPlayer i =
         maybe

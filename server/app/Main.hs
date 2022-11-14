@@ -8,4 +8,4 @@ import Colog.Actions (richMessageAction)
 main :: IO ()
 main = do
   env <- App.makeEnv richMessageAction
-  run 8080 (app env)
+  App.runAppT env app >>= run 8080

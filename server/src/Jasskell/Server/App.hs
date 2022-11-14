@@ -26,6 +26,7 @@ import Jasskell.Server.Table (SomeTable (..))
 import Jasskell.Server.Table qualified as Table
 import Jasskell.Server.TableID (TableID)
 import Jasskell.Server.TableID qualified as TableID
+import UnliftIO (MonadUnliftIO)
 
 newtype AppT m a = AppT (ReaderT (Env (AppT m)) m a)
   deriving newtype
@@ -34,7 +35,8 @@ newtype AppT m a = AppT (ReaderT (Env (AppT m)) m a)
       Monad,
       MonadIO,
       MonadReader (Env (AppT m)),
-      MonadError e
+      MonadError e,
+      MonadUnliftIO
     )
 
 type MonadApp m = MonadReader (Env m) m
@@ -65,7 +67,7 @@ makeEnv logAction = do
   tables <- newTVarIO HashMap.empty
   pure Env {tables, logAction}
 
-createTable :: (MonadApp m, MonadIO m) => m TableID
+createTable :: (MonadApp m, MonadUnliftIO m) => m TableID
 createTable = do
   Env {tables} <- ask
   tableID <- TableID.new
