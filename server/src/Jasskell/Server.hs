@@ -6,10 +6,15 @@ import Jasskell.Server.Http qualified as Http
 import Jasskell.Server.Page qualified as Page
 import Jasskell.Server.WebSocket qualified as WebSocket
 import Network.Wai (Application)
-import Network.Wai.Application.Static (defaultWebAppSettings, staticApp)
+import Network.Wai.Application.Static
+  ( StaticSettings (ssMaxAge),
+    defaultWebAppSettings,
+    staticApp,
+  )
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets.Connection (defaultConnectionOptions)
 import UnliftIO (MonadUnliftIO)
+import WaiAppStatic.Types (MaxAge (NoMaxAge))
 
 app :: (MonadApp m, MonadUnliftIO m) => m Application
 app =
@@ -18,4 +23,7 @@ app =
     <*> Http.serve static (API.routes <> Page.routes)
 
 static :: Application
-static = staticApp $ defaultWebAppSettings "./client/static/"
+static =
+  staticApp $
+    -- TODO: enable caching
+    (defaultWebAppSettings "./client/static/") {ssMaxAge = NoMaxAge}
