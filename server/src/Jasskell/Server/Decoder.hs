@@ -5,6 +5,7 @@ import Data.Aeson.Combinators.Decode (Decoder, key)
 import Data.Aeson.Combinators.Decode qualified as Decoder
 import Data.Finite (Finite, packFinite)
 import Data.HashMap.Strict qualified as HashMap
+import Data.Text qualified as Text
 import Jasskell.Card (Card (Card), Rank, Suit)
 import Jasskell.Declaration (Declaration (..))
 import Jasskell.Jass (JassNat)
@@ -35,22 +36,29 @@ boundedEnum ::
   Decoder a
 boundedEnum = withLookupTable [minBound .. maxBound]
 
+boundedEnumShowLowerCase :: (Enum a, Bounded a, Show a) => Decoder a
+boundedEnumShowLowerCase = boundedEnum (Text.toLower . show) Decoder.text
+
 finite :: KnownNat n => Decoder (Finite n)
 finite =
   -- TODO: use toBoundedInteger from scientific
   Decoder.integer >>= maybe (fail "Out of bounds") pure . packFinite
 
 suit :: Decoder Suit
-suit = boundedEnum show Decoder.text
+suit = boundedEnumShowLowerCase
 
 rank :: Decoder Rank
-rank = boundedEnum show Decoder.text
+rank = boundedEnumShowLowerCase
 
 card :: Decoder Card
 card = Card <$> key "suit" suit <*> key "rank" rank
 
 direction :: Decoder Direction
-direction = withLookupTable [TopDown, BottomUp] show Decoder.text
+direction =
+  withLookupTable
+    [TopDown, BottomUp]
+    (Text.toLower . show)
+    Decoder.text
 
 data Tagged a = Tagged Key (Decoder a)
 

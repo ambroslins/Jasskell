@@ -15,16 +15,16 @@ toString : Suit -> String
 toString s =
     case s of
         Bells ->
-            "Bells"
+            "bells"
 
         Hearts ->
-            "Hearts"
+            "hearts"
 
         Acorns ->
-            "Acorns"
+            "acorns"
 
         Leaves ->
-            "Leaves"
+            "leaves"
 
 
 encode : Suit -> Value
@@ -38,16 +38,16 @@ decode =
         |> Decode.andThen
             (\s ->
                 case s of
-                    "Bells" ->
+                    "bells" ->
                         Decode.succeed Bells
 
-                    "Hearts" ->
+                    "hearts" ->
                         Decode.succeed Hearts
 
-                    "Acorns" ->
+                    "acorns" ->
                         Decode.succeed Acorns
 
-                    "Leaves" ->
+                    "leaves" ->
                         Decode.succeed Leaves
 
                     _ ->

@@ -20,31 +20,31 @@ toString : Rank -> String
 toString r =
     case r of
         Six ->
-            "Six"
+            "six"
 
         Seven ->
-            "Seven"
+            "seven"
 
         Eight ->
-            "Eight"
+            "eight"
 
         Nine ->
-            "Nine"
+            "nine"
 
         Ten ->
-            "Ten"
+            "ten"
 
         Under ->
-            "Under"
+            "under"
 
         Over ->
-            "Over"
+            "over"
 
         King ->
-            "King"
+            "king"
 
         Ace ->
-            "Ace"
+            "ace"
 
 
 encode : Rank -> Value
@@ -58,31 +58,31 @@ decode =
         |> Decode.andThen
             (\r ->
                 case r of
-                    "Six" ->
+                    "six" ->
                         Decode.succeed Six
 
-                    "Seven" ->
+                    "seven" ->
                         Decode.succeed Seven
 
-                    "Eight" ->
+                    "eight" ->
                         Decode.succeed Eight
 
-                    "Nine" ->
+                    "nine" ->
                         Decode.succeed Nine
 
-                    "Ten" ->
+                    "ten" ->
                         Decode.succeed Ten
 
-                    "Under" ->
+                    "under" ->
                         Decode.succeed Under
 
-                    "Over" ->
+                    "over" ->
                         Decode.succeed Over
 
-                    "King" ->
+                    "king" ->
                         Decode.succeed King
 
-                    "Ace" ->
+                    "ace" ->
                         Decode.succeed Ace
 
                     _ ->

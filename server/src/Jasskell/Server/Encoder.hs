@@ -26,6 +26,7 @@ import Data.Aeson.Combinators.Encode
   )
 import Data.Aeson.Combinators.Encode qualified as Encoder
 import Data.Finite (Finite, getFinite)
+import Data.Text qualified as Text
 import Data.Vector.Sized (Vector)
 import Data.Vector.Sized qualified as Vector
 import Jasskell.Card (Card, Cards, Rank, Suit)
@@ -51,11 +52,14 @@ nonEmpty = contramap toList . Encoder.list
 nullable :: Encoder a -> Encoder (Maybe a)
 nullable e = Encoder.Encoder $ maybe Null (Encoder.run e)
 
+encodeLowerCaseShow :: Show a => Encoder a
+encodeLowerCaseShow = contramap (Text.toLower . show) text
+
 suit :: Encoder Suit
-suit = contramap show text
+suit = encodeLowerCaseShow
 
 rank :: Encoder Rank
-rank = contramap show text
+rank = encodeLowerCaseShow
 
 card :: Encoder Card
 card =
@@ -71,7 +75,7 @@ finite :: Encoder (Finite n)
 finite = contramap getFinite Encoder.integer
 
 direction :: Encoder Direction
-direction = contramap show Encoder.text
+direction = encodeLowerCaseShow
 
 data Tagged = forall a. Tagged Encoder.Key (Encoder a) a
 
