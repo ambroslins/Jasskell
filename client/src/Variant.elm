@@ -1,6 +1,13 @@
-module Variant exposing (..)
+module Variant exposing
+    ( Direction(..)
+    , Variant(..)
+    , all
+    , decode
+    , encode
+    , toString
+    )
 
-import Card.Suit as Suit exposing (Suit)
+import Card.Suit as Suit exposing (Suit(..))
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode exposing (Value)
 
@@ -16,6 +23,32 @@ type Direction
     | BottomUp
 
 
+all : List Variant
+all =
+    [ Trump Bells
+    , Trump Hearts
+    , Trump Acorns
+    , Trump Leaves
+    , Direction TopDown
+    , Direction BottomUp
+    , Slalom TopDown
+    , Slalom BottomUp
+    ]
+
+
+toString : Variant -> String
+toString variant =
+    case variant of
+        Trump suit ->
+            Suit.toString suit
+
+        Direction direction ->
+            directionToString direction
+
+        Slalom direction ->
+            "Slalom " ++ directionToString direction
+
+
 encode : Variant -> Value
 encode variant =
     case variant of
@@ -29,14 +62,19 @@ encode variant =
             Encode.object [ ( "slalom", encodeDirection direction ) ]
 
 
-encodeDirection : Direction -> Value
-encodeDirection direction =
+directionToString : Direction -> String
+directionToString direction =
     case direction of
         TopDown ->
-            Encode.string "topdown"
+            "topdown"
 
         BottomUp ->
-            Encode.string "bottomup"
+            "bottomup"
+
+
+encodeDirection : Direction -> Value
+encodeDirection =
+    Encode.string << directionToString
 
 
 decode : Decoder Variant

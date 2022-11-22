@@ -9,7 +9,7 @@ module Play.Playing exposing
     , view
     )
 
-import Card exposing (Card)
+import Hand exposing (Hand)
 import Html exposing (Html, div, p, text)
 import Html.Attributes exposing (class)
 import Json.Decode as Decode exposing (Decoder)
@@ -31,7 +31,8 @@ type alias Model =
 
 type alias State =
     { seats : Vector Seat
-    , hand : List Card
+    , hand : Hand
+    , leader : Index
     }
 
 
@@ -87,15 +88,29 @@ view model =
                         [ text (User.name user) ]
                 )
     in
-    div
-        [ class "grid grid-cols-3 grid-rows-3"
-        , class "justify-center items-center justify-items-center"
-        ]
-        [ viewSeat Index1 [ class "row-span-3" ]
-        , viewSeat Index2 []
-        , viewSeat Index3 [ class "row-span-3" ]
-        , p [] [ text (Debug.toString model.state) ]
-        , viewSeat Index0 []
+    div []
+        [ div
+            [ class "grid grid-cols-3 grid-rows-3"
+            , class "justify-center items-center justify-items-center"
+            ]
+            [ viewSeat Index1 [ class "row-span-3" ]
+            , viewSeat Index2 []
+            , viewSeat Index3 [ class "row-span-3" ]
+            , p []
+                [ let
+                    leader =
+                        case Vector.get model.state.leader model.state.seats of
+                            Seat.Empty ->
+                                "empty"
+
+                            Seat.Taken user ->
+                                User.name user
+                  in
+                  text (leader ++ " is leader")
+                ]
+            , viewSeat Index0 []
+            ]
+        , Hand.view model.state.hand
         ]
 
 
@@ -107,4 +122,5 @@ decode : Decoder State
 decode =
     Decode.succeed State
         |> Decode.required "seats" (Vector.decode Seat.decoder)
-        |> Decode.required "hand" (Decode.list Card.decode)
+        |> Decode.required "hand" Hand.decode
+        |> Decode.required "leader" Index.decode

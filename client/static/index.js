@@ -14,7 +14,7 @@ app.ports.open.subscribe((path) => {
 });
 
 app.ports.send.subscribe((msg) => socket?.send(JSON.stringify(msg)));
-app.ports.closePort.subscribe((_) => {
+app.ports.closePort?.subscribe((_) => {
   socket?.close();
   socket = null;
 });
