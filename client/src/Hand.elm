@@ -1,8 +1,9 @@
 module Hand exposing (Hand, decode, view)
 
 import Card exposing (Card)
-import Html exposing (Html, button, div)
+import Html exposing (Html, button, li, ul)
 import Html.Attributes exposing (class)
+import Html.Events exposing (onClick)
 import Json.Decode as Decode exposing (Decoder)
 
 
@@ -16,13 +17,17 @@ decode =
         Decode.list Card.decode
 
 
-view : Hand -> Html msg
-view (Hand cards) =
+view : (Card -> msg) -> Hand -> Html msg
+view playCard (Hand cards) =
     let
         viewCard c =
-            button
-                [ class "w-40 -ml-12 hover:z-10" ]
-                [ Card.view c ]
+            li [ class "w-40 -ml-12 first:ml-0" ]
+                [ button
+                    [ class "w-full hover:z-10"
+                    , onClick (playCard c)
+                    ]
+                    [ Card.view c ]
+                ]
     in
-    div [ class "flex flex-row justify-center items-center pl-12 mb-4" ] <|
-        List.map viewCard cards
+    ul [ class "flex flex-row justify-center items-center mb-4 list-none" ]
+        (List.map viewCard cards)

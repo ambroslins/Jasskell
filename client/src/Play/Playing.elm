@@ -9,15 +9,19 @@ module Play.Playing exposing
     , view
     )
 
+import Card exposing (Card)
 import Hand exposing (Hand)
 import Html exposing (Html, div, p, text)
 import Html.Attributes exposing (class)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as Decode
+import Json.Encode as Encode
 import Seat exposing (Seat(..))
 import User
+import Variant exposing (Variant)
 import Vector as Vector exposing (Vector)
 import Vector.Index as Index exposing (Index(..))
+import WebSocket
 
 
 
@@ -32,6 +36,7 @@ type alias Model =
 type alias State =
     { seats : Vector Seat
     , hand : Hand
+    , variant : Variant
     , leader : Index
     }
 
@@ -47,14 +52,18 @@ init state =
 
 
 type Msg
-    = Msg
+    = PlayCard Card
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        Msg ->
-            ( model, Cmd.none )
+        PlayCard card ->
+            ( model
+            , WebSocket.send <|
+                Encode.object
+                    [ ( "move", Encode.object [ ( "play-card", Card.encode card ) ] ) ]
+            )
 
 
 updateState : State -> Model -> Model
@@ -69,10 +78,13 @@ updateState state model =
 view : Model -> Html Msg
 view model =
     let
+        state =
+            model.state
+
         viewSeat index attributes =
             let
                 seat =
-                    Vector.get index model.state.seats
+                    Vector.get index state.seats
             in
             div
                 (attributes
@@ -96,21 +108,24 @@ view model =
             [ viewSeat Index1 [ class "row-span-3" ]
             , viewSeat Index2 []
             , viewSeat Index3 [ class "row-span-3" ]
-            , p []
-                [ let
-                    leader =
-                        case Vector.get model.state.leader model.state.seats of
-                            Seat.Empty ->
-                                "empty"
+            , div []
+                [ text ("Variant: " ++ Variant.toString state.variant)
+                , p []
+                    [ let
+                        leader =
+                            case Vector.get state.leader state.seats of
+                                Seat.Empty ->
+                                    "empty"
 
-                            Seat.Taken user ->
-                                User.name user
-                  in
-                  text (leader ++ " is leader")
+                                Seat.Taken user ->
+                                    User.name user
+                      in
+                      text (leader ++ " is leader")
+                    ]
                 ]
             , viewSeat Index0 []
             ]
-        , Hand.view model.state.hand
+        , Hand.view PlayCard state.hand
         ]
 
 
@@ -123,4 +138,5 @@ decode =
     Decode.succeed State
         |> Decode.required "seats" (Vector.decode Seat.decoder)
         |> Decode.required "hand" Hand.decode
+        |> Decode.required "variant" Variant.decode
         |> Decode.required "leader" Index.decode

@@ -56,11 +56,15 @@ init state =
 type Msg
     = SelectVariant Variant
     | DeclareVariant
+    | NoOp
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        NoOp ->
+            ( model, Cmd.none )
+
         SelectVariant variant ->
             ( { model | selectedVariant = Just variant }, Cmd.none )
 
@@ -127,7 +131,7 @@ view model =
                 text "You are not eldest"
             , viewSeat Index0 []
             ]
-        , Hand.view model.state.hand
+        , Hand.view (always NoOp) model.state.hand
         ]
 
 
