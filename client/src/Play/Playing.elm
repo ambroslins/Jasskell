@@ -38,6 +38,7 @@ type alias State =
     , hand : Hand
     , variant : Variant
     , leader : Index
+    , cards : Vector (Maybe Card)
     }
 
 
@@ -122,10 +123,31 @@ view model =
                       in
                       text (leader ++ " is leader")
                     ]
+                , viewPlayedCards state.cards
                 ]
             , viewSeat Index0 []
             ]
         , Hand.view PlayCard state.hand
+        ]
+
+
+viewPlayedCards : Vector (Maybe Card) -> Html msg
+viewPlayedCards cards =
+    let
+        viewCard index =
+            case Vector.get index cards of
+                Nothing ->
+                    []
+
+                Just card ->
+                    [ Card.view card ]
+    in
+    div
+        [ class "grid grid-rows-2 grid-cols-3" ]
+        [ div [ class "row-span-2 flex items-center" ] (viewCard Index1)
+        , div [] (viewCard Index2)
+        , div [ class "row-span-2 flex items-center" ] (viewCard Index3)
+        , div [] (viewCard Index0)
         ]
 
 
@@ -140,3 +162,5 @@ decode =
         |> Decode.required "hand" Hand.decode
         |> Decode.required "variant" Variant.decode
         |> Decode.required "leader" Index.decode
+        |> Decode.required "played-cards"
+            (Vector.decode <| Decode.nullable Card.decode)

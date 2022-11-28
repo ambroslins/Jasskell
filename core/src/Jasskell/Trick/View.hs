@@ -26,11 +26,11 @@ data TrickView n = MakeTrickView
   deriving (Eq, Show)
 
 playedCards :: KnownNat n => TrickView n -> Vector n (Maybe Card)
-playedCards trickView =
-  Vector.rotate (leader trickView) $
+playedCards MakeTrickView {leader, cards} =
+  Vector.rotate (negate leader) $
     Vector.unfoldrN
       (maybe (Nothing, []) (first Just) . uncons)
-      (cards trickView)
+      cards
 
 makeViews ::
   KnownNat n =>
