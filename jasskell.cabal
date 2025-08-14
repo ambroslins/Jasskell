@@ -56,7 +56,7 @@ common warnings
   ghc-options: -Wall
 
 common extensions
-  default-extensions:
+  default-extensions: OverloadedStrings
 
 library
   -- Import common warning flags.
@@ -71,7 +71,8 @@ library
     Jasskell.GameView
     Jasskell.Player
     Jasskell.Round
-    Jasskell.Session
+    Jasskell.Server
+    Jasskell.Table
     Jasskell.Trick
     Jasskell.Variant
     MyLib
@@ -84,7 +85,7 @@ library
 
   -- Other library packages from which modules are imported.
   build-depends:
-    , base        ^>=4.21.0.0
+    , base                  ^>=4.21.0.0
     , bytestring
     , containers
     , lucid2
@@ -92,8 +93,11 @@ library
     , stm
     , text
     , twain
+    , unordered-containers
     , wai
+    , wai-websockets
     , warp
+    , websockets
 
   -- Directories containing source files.
   hs-source-dirs:   src
@@ -117,6 +121,7 @@ executable jasskell
   -- Other library packages from which modules are imported.
   build-depends:
     , base      ^>=4.21.0.0
+    , envparse
     , jasskell
 
   -- Directories containing source files.

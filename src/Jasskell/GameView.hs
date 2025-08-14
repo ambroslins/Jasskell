@@ -11,7 +11,7 @@ import Prelude hiding (round)
 data GameView = GameView
   { variant :: !(Maybe Variant),
     hand :: !CardSet,
-    table :: !(Vector4 (Maybe Card)),
+    playedCards :: !(Vector4 (Maybe Card)),
     leader :: !Index4,
     currentPlayer :: !Index4,
     shoved :: !Bool

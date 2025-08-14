@@ -1,8 +1,10 @@
-module Jasskell.Player where
+module Jasskell.Player
+  ( Player,
+    name,
+  )
+where
 
 import Data.Text (Text)
 
-data Player = Player
-  { name :: Text,
-    sendMessage :: Text -> IO ()
-  }
+newtype Player = Player {name :: Text}
+  deriving (Eq, Show)

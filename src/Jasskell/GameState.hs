@@ -3,14 +3,18 @@ module Jasskell.GameState
     rounds,
     variant,
     hands,
-    table,
+    playedCards,
     tricks,
     leader,
     shoved,
     new,
+    currentPlayer,
     trickLeader,
+    DeclareError (..),
     declareVariant,
+    ShoveError (..),
     shove,
+    UnplayableCardReason (..),
     isCardPlayable,
     playCard,
     closeTrick,
@@ -43,7 +47,7 @@ data GameState = GameState
     rounds :: ![Round],
     variant :: !(Maybe Variant),
     hands :: !(Vector4 CardSet),
-    table :: !(Vector4 (Maybe Card)),
+    playedCards :: !(Vector4 (Maybe Card)),
     tricks :: ![Trick],
     leader :: !Index4,
     shoved :: !Bool
@@ -57,7 +61,7 @@ new gen =
       rounds = [],
       variant = Nothing,
       hands,
-      table = Vector4.replicate Nothing,
+      playedCards = Vector4.replicate Nothing,
       tricks = [],
       leader =
         fromMaybe
@@ -84,24 +88,27 @@ currentPlayer game = case closeTrick game of
     foldl'
       (\i mc -> if isJust mc then i + 1 else i)
       (trickLeader game)
-      (table game)
+      (playedCards game)
 
-declareVariant :: Variant -> GameState -> Maybe GameState
-declareVariant v r = case variant r of
-  Nothing -> Just r {variant = Just v}
-  Just _ -> Nothing
+data DeclareError = VariantAlreadyDeclared
+  deriving (Eq, Show)
+
+declareVariant :: Variant -> GameState -> Either DeclareError GameState
+declareVariant v gs = case variant gs of
+  Just _ -> Left VariantAlreadyDeclared
+  Nothing -> Right gs {variant = Just v}
 
 data ShoveError
-  = VariantAlreadyDefined
-  | AlreadyShoved
+  = AlreadyShoved
+  | VariantAlreadyDefined
   deriving (Eq, Show)
 
 shove :: GameState -> Either ShoveError GameState
-shove r = case variant r of
+shove gs = case variant gs of
   Just _ -> Left VariantAlreadyDefined
   Nothing
-    | shoved r -> Left AlreadyShoved
-    | otherwise -> pure r {shoved = True}
+    | shoved gs -> Left AlreadyShoved
+    | otherwise -> Right gs {shoved = True}
 
 data UnplayableCardReason
   = NoVariant
@@ -117,7 +124,7 @@ isCardPlayable game card
   | Just _ <- closeTrick game = pure ()
   | otherwise = case variant g of
       Nothing -> Left NoVariant
-      Just v -> case catMaybes $ toList $ Vector4.rotate (leader g) (table g) of
+      Just v -> case catMaybes $ toList $ Vector4.rotate (leader g) (playedCards g) of
         [] -> pure ()
         c : cs -> case v of
           Trump trump
@@ -152,7 +159,7 @@ playCard card game = case variant g of
   Just _ ->
     isCardPlayable g card
       $> g
-        { table = Vector4.set current (Just card) (table g),
+        { playedCards = Vector4.set current (Just card) (playedCards g),
           hands = Vector4.modify current (Card.delete card) (hands g)
         }
   where
@@ -162,11 +169,11 @@ playCard card game = case variant g of
 closeTrick :: GameState -> Maybe GameState
 closeTrick g = do
   v <- variant g
-  t <- sequence (table g)
+  cs <- sequence (playedCards g)
   pure
     g
-      { table = Vector4.replicate Nothing,
-        tricks = Trick.close v (trickLeader g) t : tricks g,
+      { playedCards = Vector4.replicate Nothing,
+        tricks = Trick.close v (trickLeader g) cs : tricks g,
         variant = Just $ Variant.next v
       }
 
@@ -183,7 +190,7 @@ closeRound game = do
         rounds = round : rounds g,
         variant = Nothing,
         hands = newHands,
-        table = Vector4.replicate Nothing,
+        playedCards = Vector4.replicate Nothing,
         tricks = [],
         leader = leader g + 1,
         shoved = False
@@ -194,7 +201,7 @@ view player game =
   GameView
     { variant = variant game,
       hand = Vector4.index player (hands game),
-      table = Vector4.rotate player (table game),
+      playedCards = Vector4.rotate player (playedCards game),
       leader = leader game - player,
       currentPlayer = currentPlayer game - player,
       shoved = shoved game
