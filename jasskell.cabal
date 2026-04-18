@@ -78,8 +78,11 @@ library
     Jasskell.GameState
     Jasskell.GameView
     Jasskell.Id
+    Jasskell.Main
     Jasskell.Player
     Jasskell.Server
+    Jasskell.Skeleton
+    Jasskell.Static
     Jasskell.Table
     Jasskell.User
     Jasskell.Variant
@@ -100,9 +103,13 @@ library
     , binary
     , bytestring
     , containers
+    , crypton
     , directory
+    , envparse
+    , file-embed
     , http-types
     , lucid2
+    , ram
     , random
     , stm
     , text
@@ -134,7 +141,6 @@ executable jasskell
   -- Other library packages from which modules are imported.
   build-depends:
     , base      ^>=4.21.0.0
-    , envparse
     , jasskell
 
   -- Directories containing source files.

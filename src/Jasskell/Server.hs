@@ -10,15 +10,16 @@ import Control.Concurrent.STM (TVar)
 import Control.Concurrent.STM qualified as STM
 import Data.IntMap (IntMap)
 import Data.IntMap qualified as IntMap
+import Jasskell.Skeleton (skeleton)
+import Jasskell.Static qualified as Static
 import Jasskell.Table (Table)
+import Lucid (renderBS)
 import Network.Wai.Handler.Warp qualified as Warp
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets qualified as WS
 import Web.Twain qualified as Twain
 
-data ServerConfig = ServerConfig
-  { port :: !Int
-  }
+newtype ServerConfig = ServerConfig {port :: Int}
 
 data Server = Server
   { config :: !ServerConfig,
@@ -34,7 +35,10 @@ run server@Server {config} =
     foldr
       ($)
       (Twain.notFound $ Twain.send $ Twain.html "Not found...")
-      (websocketsOr WS.defaultConnectionOptions websocketApp : routes)
+      ( websocketsOr WS.defaultConnectionOptions websocketApp
+          : Static.handlers
+          : routes
+      )
 
 websocketApp :: WS.ServerApp
 websocketApp pending = pure ()
@@ -46,4 +50,4 @@ routes =
 
 getRoot :: Twain.ResponderM ()
 getRoot = do
-  Twain.send $ Twain.html "Hi from Jass!"
+  Twain.send $ Twain.html $ renderBS $ skeleton "Jasskell" "Hi from Jass!"
