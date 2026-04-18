@@ -30,11 +30,11 @@ instance Bounded Index4 where
 instance Num Index4 where
   Index4 i + Index4 j = Index4 $ (i + j) .&. 3
   Index4 i * Index4 j = Index4 $ (i * j) .&. 3
-  Index4 i - Index4 j = Index4 $ (i - j) .&. 3
+  Index4 i - Index4 j = Index4 $ (i - j) `mod` 4
   abs = id
   signum (Index4 i) = Index4 $ if i == 0 then 0 else 1
-  negate (Index4 i) = Index4 $ negate i .&. 3
-  fromInteger = Index4 . (.&. 3) . fromInteger
+  negate (Index4 i) = Index4 $ negate i `mod` 4
+  fromInteger = Index4 . (`mod` 4) . fromInteger
 
 make :: a -> a -> a -> a -> Vector4 a
 make = Vector4

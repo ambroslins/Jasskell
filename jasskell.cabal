@@ -63,6 +63,7 @@ common extensions
     NoFieldSelectors
     OverloadedRecordDot
     OverloadedStrings
+    StrictData
 
 library
   -- Import common warning flags.
@@ -70,14 +71,17 @@ library
 
   -- Modules exported by the library.
   exposed-modules:
+    Data.IntMap.Coercible
     Data.Vector4
     Jasskell.Card
     Jasskell.Card.Suit
     Jasskell.GameState
     Jasskell.GameView
+    Jasskell.Id
     Jasskell.Player
     Jasskell.Server
     Jasskell.Table
+    Jasskell.User
     Jasskell.Variant
     MyLib
 

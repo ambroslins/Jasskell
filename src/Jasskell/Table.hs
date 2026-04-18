@@ -1,7 +1,10 @@
 module Jasskell.Table
-  ( Table,
+  ( TableManager,
+    withManager,
+    Table,
     new,
-    join,
+    lookup,
+    withEntry,
     JoinError (..),
     Message (..),
     Event (..),
@@ -9,48 +12,109 @@ module Jasskell.Table
   )
 where
 
+import Control.Concurrent.Async (Async)
+import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.STM (STM)
 import Control.Concurrent.STM qualified as STM
-import Data.Foldable (forM_, toList)
-import Data.Functor (($>))
-import Data.Maybe (mapMaybe)
-import Data.Text (Text)
-import Data.Vector4 (Index4, Vector4)
-import Data.Vector4 qualified as Vector4
+import Control.Exception (bracket)
+import Data.Foldable (for_)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+import Data.IntMap.Coercible (IntMap)
+import Data.IntMap.Coercible qualified as IntMap
+import Data.Vector4 (Vector4)
 import Jasskell.Card (Card)
 import Jasskell.GameState (DeclareError, GameState, ShoveError, UnplayableCardReason)
-import Jasskell.GameState qualified as GameState
-import Jasskell.Player (Player (..))
+import Jasskell.Id (Id (..))
+import Jasskell.Id qualified as Id
+import Jasskell.User (User (..), UserId)
 import Jasskell.Variant (Variant)
-import System.Random qualified as Random
+import Prelude hiding (lookup)
 
-newtype Table = Table (STM.TVar TableState)
+type TableId = Id Table
 
-data TableState = TableState
-  { seats :: !(Vector4 Seat),
-    gameState :: !GameState
+newtype TableManager = TableManager {tables :: IORef (IntMap TableId Table)}
+
+withManager :: (TableManager -> IO a) -> IO a
+withManager f = do
+  tm <- TableManager <$> newIORef IntMap.empty
+  -- TODO: reaper thread
+  -- TODO: stop all tables on cleanup
+  f tm
+
+lookup :: TableId -> TableManager -> IO (Maybe Table)
+lookup tableId tm = IntMap.lookup tableId <$> readIORef tm.tables
+
+type ClientId = Id Client
+
+data Client = Client
+  { id :: ClientId,
+    user :: User,
+    messageBox :: STM.TMVar ServerMessage
   }
 
-data Seat
-  = Empty
-  | Taken !Player !(STM.TMVar Event)
-  | Disconnected Text
+data ServerMessage
 
-new :: Random.StdGen -> IO Table
-new gen =
-  Table
-    <$> STM.newTVarIO
-      TableState
-        { seats = Vector4.replicate Empty,
-          gameState = GameState.new gen
-        }
+data ClientMessage
 
-players :: TableState -> [(Index4, Player, STM.TMVar Event)]
-players ts = mapMaybe go . zip [0 ..] . toList $ ts.seats
+data Event
+  = UserJoined UserId
+  | UserLeft UserId
+  | ClientMessage
+  deriving (Eq, Show)
+
+data Table = Table
+  { id :: TableId,
+    eventQueue :: STM.TBQueue Event,
+    clients :: STM.TVar (IntMap UserId Client),
+    status :: STM.TVar TableStatus,
+    async :: Async ()
+  }
+
+new :: TableManager -> IO TableId
+new tm = do
+  tableId <- Id.new
+  eventQueue <- STM.newTBQueueIO 16
+  clients <- STM.newTVarIO IntMap.empty
+  status <- STM.newTVarIO $ Waiting 0
+  async <- Async.async $ pure () -- TODO: table loop
+  let table = Table {id = tableId, eventQueue, clients, status, async}
+  atomicModifyIORef' tm.tables ((,()) . IntMap.insert tableId table)
+  pure tableId
+
+withEntry :: Table -> User -> ((ClientMessage -> STM ()) -> STM ServerMessage -> IO a) -> IO a
+withEntry table user handle = bracket enter leave run
   where
-    go (i, s) = case s of
-      Taken p var -> Just (i, p, var)
-      _ -> Nothing
+    enter = do
+      clientId <- Id.new
+      messageBox <- STM.newEmptyTMVarIO
+      let client = Client {id = clientId, user, messageBox}
+      STM.atomically $ do
+        -- TODO: notify old client if necessary
+        STM.modifyTVar' table.clients (IntMap.insert user.id client)
+      pure client
+    leave client = STM.atomically $ do
+      clients <- STM.readTVar table.clients
+      let deleteIfSameClient = \case
+            Nothing -> Nothing
+            Just c
+              | c.id == client.id -> Just Nothing
+              | otherwise -> Nothing
+      for_ (IntMap.alterF deleteIfSameClient user.id clients) $ STM.writeTVar table.clients
+    run client =
+      let send = undefined
+          receive = STM.takeTMVar client.messageBox
+       in handle send receive
+
+data TableStatus
+  = Waiting Int
+  | Playing
+  | Done
+  deriving (Eq, Show)
+
+data TableState = TableState
+  { players :: Vector4 (Maybe UserId),
+    gameState :: GameState
+  }
 
 data Message
   = DeclareVariant Variant
@@ -67,60 +131,5 @@ data UpdateResult
   | UnplayableCard !UnplayableCardReason
   deriving (Show)
 
-data Event = Event
-  deriving (Show)
-
 data JoinError = TableIsFull
   deriving (Show)
-
-join ::
-  Table ->
-  Player ->
-  STM (Either JoinError (Message -> STM UpdateResult, STM Event))
-join t@(Table var) p = do
-  ts <- STM.readTVar var
-  case Vector4.findIndex canTake ts.seats of
-    Nothing -> pure $ Left TableIsFull
-    Just i -> do
-      msgVar <- STM.newEmptyTMVar
-      writeAndBroadcast
-        var
-        ts {seats = Vector4.set i (Taken p msgVar) ts.seats}
-      pure $ Right (updateTableState t i, STM.takeTMVar msgVar)
-  where
-    canTake = \case
-      Empty -> True
-      Disconnected name -> name == p.name
-      Taken _ _ -> False
-
-writeAndBroadcast :: STM.TVar TableState -> TableState -> STM ()
-writeAndBroadcast !var !ts = do
-  STM.writeTVar var ts
-  forM_ (players ts) $ \(_, _, eventVar) ->
-    STM.writeTMVar eventVar Event
-
-updateTableState :: Table -> Index4 -> Message -> STM UpdateResult
-updateTableState (Table var) i msg = do
-  ts <- STM.readTVar var
-  let move :: (e -> UpdateResult) -> (GameState -> Either e GameState) -> STM UpdateResult
-      move toError update
-        | GameState.currentPlayer ts.gameState /= i = pure NotYourTurn
-        | otherwise = case update ts.gameState of
-            Left e -> pure $ toError e
-            Right gs -> writeAndBroadcast var ts {gameState = gs} $> Ok
-  case msg of
-    DeclareVariant v ->
-      move DeclareError $ GameState.declareVariant v
-    Shove ->
-      move ShoveError GameState.shove
-    PlayCard card ->
-      move UnplayableCard $ GameState.playCard card
-    Disconnect ->
-      let name = case Vector4.index i ts.seats of
-            Empty -> error "Jasskell.Table.uppdateTableState: disconnect from empty seat"
-            Taken p _ -> p.name
-            Disconnected n -> n
-       in writeAndBroadcast
-            var
-            ts {seats = Vector4.set i (Disconnected name) ts.seats}
-            $> Ok
