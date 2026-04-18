@@ -1,12 +1,5 @@
 module Jasskell.GameState
   ( GameState,
-    rounds,
-    variant,
-    hands,
-    playedCards,
-    tricks,
-    leader,
-    shoved,
     new,
     currentPlayer,
     trickLeader,
@@ -33,10 +26,6 @@ import Jasskell.Card (Card, CardSet, Suit)
 import Jasskell.Card qualified as Card
 import Jasskell.GameView (GameView (GameView))
 import Jasskell.GameView qualified as GameView
-import Jasskell.Round (Round)
-import Jasskell.Round qualified as Round
-import Jasskell.Trick (Trick)
-import Jasskell.Trick qualified as Trick
 import Jasskell.Variant (Variant (..))
 import Jasskell.Variant qualified as Variant
 import System.Random qualified as Random
@@ -51,6 +40,22 @@ data GameState = GameState
     tricks :: ![Trick],
     leader :: !Index4,
     shoved :: !Bool
+  }
+  deriving (Show)
+
+data Round = Round
+  { variant :: !Variant,
+    tricks :: ![Trick],
+    leader :: !Index4,
+    shoved :: !Bool
+  }
+  deriving (Show)
+
+data Trick = Trick
+  { cards :: !(Vector4 Card),
+    leader :: !Index4,
+    winner :: !Index4,
+    points :: !Int
   }
   deriving (Show)
 
@@ -73,30 +78,31 @@ new gen =
     (hands, gen') = Card.deal gen
 
 trickLeader :: GameState -> Index4
-trickLeader g = case variant g of
+trickLeader gs = case gs.variant of
   Nothing
-    | shoved g -> leader g + 2
-    | otherwise -> leader g
-  Just _ -> case tricks g of
-    [] -> leader g
-    t : _ -> Trick.winner t
+    | gs.shoved -> gs.leader + 2
+    | otherwise -> gs.leader
+  Just _ -> case gs.tricks of
+    [] -> gs.leader
+    t : _ -> t.winner
 
 currentPlayer :: GameState -> Index4
 currentPlayer game = case closeTrick game of
-  Just g -> trickLeader g
+  Just gs -> trickLeader gs
   Nothing ->
     foldl'
       (\i mc -> if isJust mc then i + 1 else i)
       (trickLeader game)
-      (playedCards game)
+      game.playedCards
 
 data DeclareError = VariantAlreadyDeclared
   deriving (Eq, Show)
 
 declareVariant :: Variant -> GameState -> Either DeclareError GameState
-declareVariant v gs = case variant gs of
+declareVariant v gs = case gs.variant of
   Just _ -> Left VariantAlreadyDeclared
-  Nothing -> Right gs {variant = Just v}
+  -- We need to update some other field to make the record update unambiguous.
+  Nothing -> Right gs {variant = Just v, randomGen = gs.randomGen}
 
 data ShoveError
   = AlreadyShoved
@@ -104,11 +110,12 @@ data ShoveError
   deriving (Eq, Show)
 
 shove :: GameState -> Either ShoveError GameState
-shove gs = case variant gs of
+shove gs = case gs.variant of
   Just _ -> Left VariantAlreadyDefined
   Nothing
-    | shoved gs -> Left AlreadyShoved
-    | otherwise -> Right gs {shoved = True}
+    | gs.shoved -> Left AlreadyShoved
+    -- We need to update some other field to make the record update unambiguous.
+    | otherwise -> Right gs {shoved = True, randomGen = gs.randomGen}
 
 data UnplayableCardReason
   = NoVariant
@@ -122,9 +129,9 @@ isCardPlayable :: GameState -> Card -> Either UnplayableCardReason ()
 isCardPlayable game card
   | not (Card.member card hand) = Left NotInHand
   | Just _ <- closeTrick game = pure ()
-  | otherwise = case variant g of
+  | otherwise = case gs.variant of
       Nothing -> Left NoVariant
-      Just v -> case catMaybes $ toList $ Vector4.rotate (leader g) (playedCards g) of
+      Just v -> case catMaybes $ toList $ Vector4.rotate gs.leader gs.playedCards of
         [] -> pure ()
         c : cs -> case v of
           Trump trump
@@ -148,61 +155,80 @@ isCardPlayable game card
             followers = Card.filter (isOfSuit lead) hand
             highest = foldl' (Card.max lead v) c cs
   where
-    g = fromMaybe game (closeTrick game)
-    current = currentPlayer g
-    hand = Vector4.index current (hands g)
+    gs = fromMaybe game (closeTrick game)
+    current = currentPlayer gs
+    hand = Vector4.index current gs.hands
     isOfSuit s c = Card.suit c == s
 
 playCard :: Card -> GameState -> Either UnplayableCardReason GameState
-playCard card game = case variant g of
+playCard card game = case gs.variant of
   Nothing -> Left NoVariant
   Just _ ->
-    isCardPlayable g card
-      $> g
-        { playedCards = Vector4.set current (Just card) (playedCards g),
-          hands = Vector4.modify current (Card.delete card) (hands g)
+    isCardPlayable gs card
+      $> gs
+        { playedCards = Vector4.set current (Just card) gs.playedCards,
+          hands = Vector4.modify current (Card.delete card) gs.hands
         }
   where
-    g = fromMaybe game (closeTrick game)
-    current = currentPlayer g
+    gs = fromMaybe game (closeTrick game)
+    current = currentPlayer gs
 
 closeTrick :: GameState -> Maybe GameState
-closeTrick g = do
-  v <- variant g
-  cs <- sequence (playedCards g)
+closeTrick gs = do
+  v <- gs.variant
+  cs <- sequence gs.playedCards
+  let leader = trickLeader gs
+      leadSuit = Card.suit $ Vector4.index leader cs
+      trick =
+        Trick
+          { leader,
+            cards = cs,
+            winner =
+              leader
+                + Vector4.maxIndexBy
+                  (Card.compare leadSuit v)
+                  (Vector4.rotate leader cs),
+            points = foldl' (\p c -> p + Card.points v c) 0 cs
+          }
   pure
-    g
+    gs
       { playedCards = Vector4.replicate Nothing,
-        tricks = Trick.close v (trickLeader g) cs : tricks g,
+        tricks = trick : gs.tricks,
         variant = Just $ Variant.next v
       }
 
 closeRound :: GameState -> Maybe GameState
 closeRound game = do
-  let g = fromMaybe game (closeTrick game)
-  v <- variant g
-  guard $ all Card.null (hands g)
-  let round = Round.close (leader g) (shoved g) v (reverse $ tricks g)
-      (newHands, gen) = Card.deal (randomGen g)
+  let gs = fromMaybe game (closeTrick game)
+  v <- gs.variant
+  guard $ all Card.null gs.hands
+  let round =
+        Round
+          { leader = gs.leader,
+            shoved = gs.shoved,
+            variant = v,
+            tricks = reverse gs.tricks
+          }
+      (newHands, gen) = Card.deal gs.randomGen
   pure
     GameState
       { randomGen = gen,
-        rounds = round : rounds g,
+        rounds = round : gs.rounds,
         variant = Nothing,
         hands = newHands,
         playedCards = Vector4.replicate Nothing,
         tricks = [],
-        leader = leader g + 1,
+        leader = gs.leader + 1,
         shoved = False
       }
 
 view :: Index4 -> GameState -> GameView
-view player game =
+view player gs =
   GameView
-    { variant = variant game,
-      hand = Vector4.index player (hands game),
-      playedCards = Vector4.rotate player (playedCards game),
-      leader = leader game - player,
-      currentPlayer = currentPlayer game - player,
-      shoved = shoved game
+    { variant = gs.variant,
+      hand = Vector4.index player gs.hands,
+      playedCards = Vector4.rotate player gs.playedCards,
+      leader = gs.leader - player,
+      currentPlayer = currentPlayer gs - player,
+      shoved = gs.shoved
     }

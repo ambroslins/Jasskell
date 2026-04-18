@@ -20,8 +20,7 @@ import Data.Vector4 qualified as Vector4
 import Jasskell.Card (Card)
 import Jasskell.GameState (DeclareError, GameState, ShoveError, UnplayableCardReason)
 import Jasskell.GameState qualified as GameState
-import Jasskell.Player (Player)
-import Jasskell.Player qualified as Player
+import Jasskell.Player (Player (..))
 import Jasskell.Variant (Variant)
 import System.Random qualified as Random
 
@@ -47,7 +46,7 @@ new gen =
         }
 
 players :: TableState -> [(Index4, Player, STM.TMVar Event)]
-players = mapMaybe go . zip [0 ..] . toList . seats
+players ts = mapMaybe go . zip [0 ..] . toList $ ts.seats
   where
     go (i, s) = case s of
       Taken p var -> Just (i, p, var)
@@ -80,18 +79,18 @@ join ::
   STM (Either JoinError (Message -> STM UpdateResult, STM Event))
 join t@(Table var) p = do
   ts <- STM.readTVar var
-  case Vector4.findIndex canTake (seats ts) of
+  case Vector4.findIndex canTake ts.seats of
     Nothing -> pure $ Left TableIsFull
     Just i -> do
       msgVar <- STM.newEmptyTMVar
       writeAndBroadcast
         var
-        ts {seats = Vector4.set i (Taken p msgVar) (seats ts)}
+        ts {seats = Vector4.set i (Taken p msgVar) ts.seats}
       pure $ Right (updateTableState t i, STM.takeTMVar msgVar)
   where
     canTake = \case
       Empty -> True
-      Disconnected name -> name == Player.name p
+      Disconnected name -> name == p.name
       Taken _ _ -> False
 
 writeAndBroadcast :: STM.TVar TableState -> TableState -> STM ()
@@ -105,8 +104,8 @@ updateTableState (Table var) i msg = do
   ts <- STM.readTVar var
   let move :: (e -> UpdateResult) -> (GameState -> Either e GameState) -> STM UpdateResult
       move toError update
-        | GameState.currentPlayer (gameState ts) /= i = pure NotYourTurn
-        | otherwise = case update (gameState ts) of
+        | GameState.currentPlayer ts.gameState /= i = pure NotYourTurn
+        | otherwise = case update ts.gameState of
             Left e -> pure $ toError e
             Right gs -> writeAndBroadcast var ts {gameState = gs} $> Ok
   case msg of
@@ -117,11 +116,11 @@ updateTableState (Table var) i msg = do
     PlayCard card ->
       move UnplayableCard $ GameState.playCard card
     Disconnect ->
-      let name = case Vector4.index i (seats ts) of
+      let name = case Vector4.index i ts.seats of
             Empty -> error "Jasskell.Table.uppdateTableState: disconnect from empty seat"
-            Taken p _ -> Player.name p
+            Taken p _ -> p.name
             Disconnected n -> n
        in writeAndBroadcast
             var
-            ts {seats = Vector4.set i (Disconnected name) (seats ts)}
+            ts {seats = Vector4.set i (Disconnected name) ts.seats}
             $> Ok

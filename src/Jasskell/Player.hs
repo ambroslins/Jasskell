@@ -1,6 +1,5 @@
 module Jasskell.Player
-  ( Player,
-    name,
+  ( Player (..),
   )
 where
 

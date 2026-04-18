@@ -30,7 +30,7 @@ new c = Server c <$> STM.newTVarIO IntMap.empty
 
 run :: Server -> IO ()
 run server@Server {config} =
-  Warp.run (port config) $
+  Warp.run config.port $
     foldr
       ($)
       (Twain.notFound $ Twain.send $ Twain.html "Not found...")
