@@ -4,15 +4,17 @@ module Jasskell.Server
   )
 where
 
-import Control.Concurrent (threadDelay)
-import Control.Monad (forM_)
+import Control.Concurrent.Async qualified as Async
+import Control.Concurrent.STM qualified as STM
 import Control.Monad.IO.Class (liftIO)
+import Data.ByteString.Char8 qualified as BS
 import Data.Text qualified as Text
 import Jasskell.Id qualified as Id
 import Jasskell.Skeleton (skeleton)
 import Jasskell.Static qualified as Static
 import Jasskell.Table (Table (..), TableId, TableManager)
 import Jasskell.Table qualified as Table
+import Jasskell.User (User (..))
 import Lucid
 import Lucid.Htmx (hxSwap_, hxTarget_, hxWsConnect_)
 import Network.Wai.Handler.Warp qualified as Warp
@@ -24,22 +26,46 @@ newtype ServerConfig = ServerConfig {port :: Int}
 
 run :: ServerConfig -> IO ()
 run config =
-  Table.withManager $ \tableManager ->
+  Table.withManager $ \tm ->
     Warp.run config.port $
       foldr
         ($)
         (Twain.notFound $ Twain.send $ Twain.html "Not found...")
-        ( websocketsOr WS.defaultConnectionOptions websocketApp
+        ( websocketsOr WS.defaultConnectionOptions (websocketApp tm)
             : Static.handlers
-            : routes tableManager
+            : routes tm
         )
 
-websocketApp :: WS.ServerApp
-websocketApp pending = do
-  connection <- WS.acceptRequest pending
-  forM_ [1 ..] $ \i -> do
-    WS.sendTextData connection ("<p>" <> Text.show @Int i <> "</p>")
-    threadDelay 1_000_000
+websocketApp :: TableManager -> WS.ServerApp
+websocketApp tm pending = do
+  let request = WS.pendingRequest pending
+  case BS.stripPrefix "/tables/" (WS.requestPath request) of
+    Nothing ->
+      WS.rejectRequestWith pending $
+        WS.defaultRejectRequest {WS.rejectCode = 404}
+    Just t -> case Id.decodeByteString t of
+      Left _ ->
+        WS.rejectRequestWith pending $
+          WS.defaultRejectRequest {WS.rejectCode = 400}
+      Right tableId ->
+        Table.lookup tableId tm >>= \case
+          Nothing ->
+            WS.rejectRequestWith pending $
+              WS.defaultRejectRequest {WS.rejectCode = 404}
+          Just table -> do
+            connection <- WS.acceptRequest pending
+            userId <- Id.new
+            let user = User {id = userId, name = "TODO"}
+            Table.withEntry table user $ \_send receive ->
+              let sendLoop = do
+                    msg <- WS.receiveData connection
+                    putStrLn $ "got message: " <> Text.unpack msg
+                    sendLoop
+                  receiveLoop = do
+                    msg <- STM.atomically receive
+                    WS.sendTextData connection $ Text.show msg
+                    receiveLoop
+               in Async.race_ sendLoop receiveLoop
 
 routes :: TableManager -> [Twain.Middleware]
 routes tm =
@@ -49,7 +75,7 @@ routes tm =
   ]
 
 getRoot :: TableManager -> Twain.ResponderM ()
-getRoot tm =
+getRoot _tm =
   Twain.send $ Twain.html $ renderBS $ skeleton "Jasskell" $ do
     header_ [id_ "top", class_ "container nav"] $ do
       a_ [href_ "#top"] "Jass"

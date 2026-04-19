@@ -53,7 +53,8 @@ data Client = Client
     messageBox :: STM.TMVar ServerMessage
   }
 
-data ServerMessage
+data ServerMessage = ServerMessage
+  deriving (Eq, Show)
 
 data ClientMessage
 

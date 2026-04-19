@@ -5,6 +5,7 @@ module Jasskell.Id
     encodeByteString,
     encodeText,
     decodeText,
+    decodeByteString,
     new,
     utcTime,
   )
