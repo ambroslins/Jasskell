@@ -1,7 +1,8 @@
 module Jasskell.Table
   ( TableManager,
     withManager,
-    Table,
+    TableId,
+    Table (id),
     new,
     lookup,
     withEntry,

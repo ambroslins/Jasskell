@@ -60,6 +60,7 @@ common extensions
   default-language:   GHC2024
   default-extensions:
     DuplicateRecordFields
+    MultilineStrings
     NoFieldSelectors
     OverloadedRecordDot
     OverloadedStrings
@@ -86,6 +87,7 @@ library
     Jasskell.Table
     Jasskell.User
     Jasskell.Variant
+    Lucid.Htmx
     MyLib
 
   -- Modules included in this library but not exported.

@@ -1,6 +1,13 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Jasskell.Static (Asset (path, sha256Base64), handlers, style, htmx) where
+module Jasskell.Static
+  ( Asset (path, sha256Base64),
+    handlers,
+    style,
+    htmx,
+    htmxWebSockets,
+  )
+where
 
 import Crypto.Hash qualified
 import Crypto.Hash.Algorithms (SHA256)
@@ -28,6 +35,7 @@ handlers :: Twain.Middleware
 handlers =
   handleAsset style
     . handleAsset htmx
+    . handleAsset htmxWebSockets
 
 handleAsset :: Asset -> Twain.Middleware
 handleAsset asset =
@@ -46,6 +54,9 @@ style = makeAsset "style" css $(embedFileRelative "static/style.css")
 
 htmx :: Asset
 htmx = makeAsset "htmx" js $(embedFileRelative "static/htmx-4.0.0-beta2.min.js")
+
+htmxWebSockets :: Asset
+htmxWebSockets = makeAsset "hx-ws" js $(embedFileRelative "static/hx-ws-4.0.0-beta2.min.js")
 
 makeAsset :: ByteString -> ContentType -> ByteString -> Asset
 makeAsset name contentType content =

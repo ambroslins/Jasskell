@@ -16,4 +16,9 @@ skeleton title body = do
           integrity_ $ "sha256-" <> Static.htmx.sha256Base64
         ]
         ("" :: String)
+      script_
+        [ src_ Static.htmxWebSockets.path,
+          integrity_ $ "sha256-" <> Static.htmxWebSockets.sha256Base64
+        ]
+        ("" :: String)
     body_ body
