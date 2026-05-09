@@ -5,7 +5,7 @@ module Jasskell.Table
     Table (id),
     new,
     lookup,
-    withEntry,
+    withClient,
     JoinError (..),
     Message (..),
     Event (..),
@@ -23,6 +23,7 @@ import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.IntMap.Coercible (IntMap)
 import Data.IntMap.Coercible qualified as IntMap
 import Data.Vector4 (Vector4)
+import Data.Vector4 qualified as Vector4
 import Jasskell.Card (Card)
 import Jasskell.GameState (DeclareError, GameState, ShoveError, UnplayableCardReason)
 import Jasskell.Id (Id (..))
@@ -53,8 +54,8 @@ data Client = Client
     messageBox :: STM.TMVar ServerMessage
   }
 
-data ServerMessage = ServerMessage
-  deriving (Eq, Show)
+data ServerMessage = ServerMessage TableState
+  deriving (Show)
 
 data ClientMessage
 
@@ -78,13 +79,34 @@ new tm = do
   eventQueue <- STM.newTBQueueIO 16
   clients <- STM.newTVarIO IntMap.empty
   status <- STM.newTVarIO $ Waiting 0
-  async <- Async.async $ pure () -- TODO: table loop
+  async <- Async.async $ tableLoop eventQueue clients status
   let table = Table {id = tableId, eventQueue, clients, status, async}
   atomicModifyIORef' tm.tables ((,()) . IntMap.insert tableId table)
   pure tableId
 
-withEntry :: Table -> User -> ((ClientMessage -> STM ()) -> STM ServerMessage -> IO a) -> IO a
-withEntry table user handle = bracket enter leave run
+tableLoop :: STM.TBQueue Event -> STM.TVar (IntMap UserId Client) -> STM.TVar TableStatus -> IO ()
+tableLoop eventQueue clientsVar _statusVar = go inital
+  where
+    inital = TableState {players = Vector4.replicate Nothing}
+    broadcast msg = do
+      clients <- STM.atomically $ STM.readTVar clientsVar
+      IntMap.forWithKey_ clients $ \_userId client ->
+        STM.atomically $ STM.writeTMVar client.messageBox msg
+    go state = do
+      event <- STM.atomically $ STM.readTBQueue eventQueue
+      case event of
+        UserJoined userId ->
+          let findSeat = \case
+                Nothing -> True
+                Just u -> u == userId
+           in case Vector4.findIndex findSeat state.players of
+                Nothing -> go state -- spectator
+                Just i ->
+                  let newState = state {players = Vector4.set i (Just userId) state.players}
+                   in broadcast (ServerMessage newState) >> go newState
+
+withClient :: Table -> User -> ((ClientMessage -> STM ()) -> STM ServerMessage -> IO a) -> IO a
+withClient table user handle = bracket enter leave run
   where
     enter = do
       clientId <- Id.new
@@ -93,6 +115,7 @@ withEntry table user handle = bracket enter leave run
       STM.atomically $ do
         -- TODO: notify old client if necessary
         STM.modifyTVar' table.clients (IntMap.insert user.id client)
+        STM.writeTBQueue table.eventQueue (UserJoined user.id)
       pure client
     leave client = STM.atomically $ do
       clients <- STM.readTVar table.clients
@@ -114,9 +137,9 @@ data TableStatus
   deriving (Eq, Show)
 
 data TableState = TableState
-  { players :: Vector4 (Maybe UserId),
-    gameState :: GameState
+  { players :: Vector4 (Maybe UserId)
   }
+  deriving (Show)
 
 data Message
   = DeclareVariant Variant

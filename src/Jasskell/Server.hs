@@ -56,7 +56,7 @@ websocketApp tm pending = do
             connection <- WS.acceptRequest pending
             userId <- Id.new
             let user = User {id = userId, name = "TODO"}
-            Table.withEntry table user $ \_send receive ->
+            Table.withClient table user $ \_send receive ->
               let sendLoop = do
                     msg <- WS.receiveData connection
                     putStrLn $ "got message: " <> Text.unpack msg

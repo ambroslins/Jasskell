@@ -11,9 +11,11 @@ module Data.IntMap.Coercible
     fromList,
     toList,
     keys,
+    forWithKey_,
   )
 where
 
+import Control.Monad (void)
 import Data.Coerce (Coercible, coerce)
 import Data.IntMap.Strict qualified as Impl
 import Prelude hiding (lookup)
@@ -55,3 +57,6 @@ toList (IntMap m) = coerce $ Impl.toList m
 
 keys :: (Coercible Int k) => IntMap k v -> [k]
 keys (IntMap m) = coerce $ Impl.keys m
+
+forWithKey_ :: (Coercible Int k, Applicative f) => IntMap k v -> (k -> v -> f b) -> f ()
+forWithKey_ (IntMap m) f = void $ Impl.traverseWithKey (f . coerce) m
