@@ -79,6 +79,7 @@ library
     Jasskell.GameState
     Jasskell.GameView
     Jasskell.Id
+    Jasskell.Logger
     Jasskell.Main
     Jasskell.Player
     Jasskell.Server
@@ -108,14 +109,17 @@ library
     , crypton
     , directory
     , envparse
+    , fast-logger
     , file-embed
     , http-types
     , lucid2
+    , mtl
     , ram
     , random
     , stm
     , text
     , time
+    , transformers
     , twain
     , unordered-containers
     , wai

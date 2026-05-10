@@ -10,6 +10,7 @@ import Control.Monad.IO.Class (liftIO)
 import Data.ByteString.Char8 qualified as BS
 import Data.Text qualified as Text
 import Jasskell.Id qualified as Id
+import Jasskell.Logger (Logger, requestLogger)
 import Jasskell.Skeleton (skeleton)
 import Jasskell.Static qualified as Static
 import Jasskell.Table (Table (..), TableId, TableManager)
@@ -24,17 +25,18 @@ import Web.Twain qualified as Twain
 
 newtype ServerConfig = ServerConfig {port :: Int}
 
-run :: ServerConfig -> IO ()
-run config =
+run :: ServerConfig -> Logger -> IO ()
+run config logger =
   Table.withManager $ \tm ->
     Warp.run config.port $
-      foldr
-        ($)
-        (Twain.notFound $ Twain.send $ Twain.html "Not found...")
-        ( websocketsOr WS.defaultConnectionOptions (websocketApp tm)
-            : Static.handlers
-            : routes tm
-        )
+      websocketsOr WS.defaultConnectionOptions (websocketApp tm) $
+        requestLogger logger $
+          foldr
+            ($)
+            (Twain.notFound $ Twain.send $ Twain.html "Not found...")
+            ( Static.handlers
+                : routes tm
+            )
 
 websocketApp :: TableManager -> WS.ServerApp
 websocketApp tm pending = do

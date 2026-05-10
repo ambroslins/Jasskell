@@ -1,6 +1,7 @@
 module Jasskell.Main where
 
 import Env qualified
+import Jasskell.Logger (Level (Debug), withStderrLogger)
 import Jasskell.Server (ServerConfig (ServerConfig))
 import Jasskell.Server qualified as Server
 
@@ -9,4 +10,4 @@ main = do
   config <-
     Env.parse (Env.header "jasskell 0.1.0") $
       ServerConfig <$> Env.var Env.auto "PORT" (Env.def 8080)
-  Server.run config
+  withStderrLogger Debug $ \logger -> Server.run config logger
