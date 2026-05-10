@@ -38,7 +38,7 @@ import System.Log.FastLogger
   )
 import Prelude hiding (log)
 
-newtype Logger = Logger (UTCTime -> Level -> Text -> [Pair] -> IO ())
+newtype Logger = Logger (IO UTCTime -> Level -> Text -> [Pair] -> IO ())
 
 data Level = Debug | Info | Warning | Error
   deriving (Eq, Show, Ord)
@@ -63,8 +63,7 @@ instance (Monad m) => MonadLogger (ReaderT Logger m) where
 log :: (MonadIO m, MonadLogger m) => Level -> Text -> [Pair] -> m ()
 log level msg pairs = do
   (Logger logger) <- askLogger
-  time <- liftIO getCurrentTime
-  liftIO $ logger time level msg pairs
+  liftIO $ logger getCurrentTime level msg pairs
 
 logDebug :: (MonadIO m, MonadLogger m) => Text -> [Pair] -> m ()
 logDebug = log Debug
@@ -104,7 +103,8 @@ withStderrLogger :: Level -> (Logger -> IO a) -> IO a
 withStderrLogger minLevel action =
   bracket (newFastLogger1 $ LogStderr defaultBufSize) snd $
     \(logger, _cleanup) ->
-      action $ Logger $ \time level msg pairs -> when (level >= minLevel) $ do
+      action $ Logger $ \getTime level msg pairs -> when (level >= minLevel) $ do
+        time <- getTime
         threadId <- myThreadId
         logger $ fmtMessage time level threadId msg pairs
 
@@ -131,5 +131,5 @@ requestLogger (Logger logger) app req respond = do
             "size" =: size,
             "duration" =: (realToFrac dt :: Milli)
           ]
-    logger end level "request" pairs
+    logger (pure end) level "request" pairs
     respond response
