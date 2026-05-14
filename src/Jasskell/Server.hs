@@ -7,10 +7,14 @@ where
 import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.STM qualified as STM
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Reader (ReaderT (runReaderT))
+import Control.Monad.Trans (lift)
 import Data.ByteString.Char8 qualified as BS
 import Data.Text qualified as Text
 import Jasskell.Id qualified as Id
-import Jasskell.Logger (Logger, requestLogger)
+import Jasskell.Logger (Logger, logDebug, requestLogger, (=:))
+import Jasskell.Session (SessionRegistry)
+import Jasskell.Session qualified as Session
 import Jasskell.Skeleton (skeleton)
 import Jasskell.Static qualified as Static
 import Jasskell.Table (Table (..), TableId, TableManager)
@@ -26,7 +30,8 @@ import Web.Twain qualified as Twain
 newtype ServerConfig = ServerConfig {port :: Int}
 
 run :: ServerConfig -> Logger -> IO ()
-run config logger =
+run config logger = do
+  sessionRegistry <- Session.newRegistry
   Table.withManager $ \tm ->
     Warp.run config.port $
       websocketsOr WS.defaultConnectionOptions (websocketApp tm) $
@@ -35,7 +40,7 @@ run config logger =
             ($)
             (Twain.notFound $ Twain.send $ Twain.html "Not found...")
             ( Static.handlers
-                : routes tm
+                : routes tm sessionRegistry logger
             )
 
 websocketApp :: TableManager -> WS.ServerApp
@@ -69,16 +74,23 @@ websocketApp tm pending = do
                     receiveLoop
                in Async.race_ sendLoop receiveLoop
 
-routes :: TableManager -> [Twain.Middleware]
-routes tm =
-  [ Twain.get "/" $ getRoot tm,
+routes :: TableManager -> SessionRegistry -> Logger -> [Twain.Middleware]
+routes tm sr logger =
+  [ Twain.get "/" $ runReaderT (getRoot tm sr) logger,
     Twain.post "/tables" $ postTables tm,
     Twain.get "/tables/:table-id" $ getTable tm
   ]
 
-getRoot :: TableManager -> Twain.ResponderM ()
-getRoot _tm =
-  Twain.send $ Twain.html $ renderBS $ skeleton "Jasskell" $ do
+getRoot :: TableManager -> SessionRegistry -> ReaderT Logger Twain.ResponderM ()
+getRoot _tm sr = do
+  msession <- lift $ Session.getSession sr
+  logDebug "get root" ["session" =: show msession]
+  setCookie <- case msession of
+    Nothing -> do
+      (_, sc) <- Session.newSession sr "test"
+      pure $ Twain.withCookie' sc
+    Just _ -> pure id
+  lift $ Twain.send $ setCookie $ Twain.html $ renderBS $ skeleton "Jasskell" $ do
     header_ [id_ "top", class_ "container nav"] $ do
       a_ [href_ "#top"] "Jass"
       div_ $

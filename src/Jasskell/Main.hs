@@ -1,7 +1,7 @@
 module Jasskell.Main where
 
 import Env qualified
-import Jasskell.Logger (Level (Debug), withStderrLogger)
+import Jasskell.Logger (Level (..), withStderrLogger)
 import Jasskell.Server (ServerConfig (ServerConfig))
 import Jasskell.Server qualified as Server
 

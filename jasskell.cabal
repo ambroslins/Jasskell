@@ -83,6 +83,7 @@ library
     Jasskell.Main
     Jasskell.Player
     Jasskell.Server
+    Jasskell.Session
     Jasskell.Skeleton
     Jasskell.Static
     Jasskell.Table
@@ -106,11 +107,13 @@ library
     , binary
     , bytestring
     , containers
+    , cookie
     , crypton
     , directory
     , envparse
     , fast-logger
     , file-embed
+    , hashable
     , http-types
     , lucid2
     , mtl
@@ -122,6 +125,7 @@ library
     , transformers
     , twain
     , unordered-containers
+    , uuid
     , wai
     , wai-app-static
     , wai-websockets

@@ -66,23 +66,19 @@ new :: (MonadIO m) => m (Id a)
 new = do
   ts <- liftIO $ systemMilliseconds <$> getSystemTime
   r <- Random.uniformWord32 Random.globalStdGen
-  pure . Id $ fromIntegral @Word64 $ (fromIntegral ts `shiftL` 24) .|. fromIntegral (r .&. 0x00ff_ffff)
+  pure . Id $ fromIntegral @Word64 $ (fromIntegral ts `shiftL` 20) .|. fromIntegral (r .&. 0x000f_ffff)
 
 systemMilliseconds :: SystemTime -> Int64
 systemMilliseconds st =
-  (systemSeconds st - epoch) * 1000
+  systemSeconds st * 1000
     + fromIntegral (systemNanoseconds st) `div` 1_000_000
 
 utcTime :: Id a -> UTCTime
 utcTime (Id i) =
   systemToUTCTime $
     MkSystemTime
-      { systemSeconds = seconds + epoch,
+      { systemSeconds = seconds,
         systemNanoseconds = fromIntegral ms * 1_000_000
       }
   where
-    (seconds, ms) = fromIntegral (i `shiftR` 24) `divMod` 1000
-
--- '2025-01-01' in seconds since unix epoch
-epoch :: Int64
-epoch = 1735689600
+    (seconds, ms) = fromIntegral (i `shiftR` 20) `quotRem` 1000
