@@ -66,7 +66,9 @@ new :: (MonadIO m) => m (Id a)
 new = do
   ts <- liftIO $ systemMilliseconds <$> getSystemTime
   r <- Random.uniformWord32 Random.globalStdGen
-  pure . Id $ fromIntegral @Word64 $ (fromIntegral ts `shiftL` 20) .|. fromIntegral (r .&. 0x000f_ffff)
+  let high = fromIntegral ts `shiftL` 20 :: Word64
+      low = fromIntegral (r .&. 0x000f_fff)
+  pure . Id . fromIntegral $ high .|. low
 
 systemMilliseconds :: SystemTime -> Int64
 systemMilliseconds st =

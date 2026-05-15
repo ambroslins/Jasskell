@@ -6,13 +6,14 @@ where
 
 import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.STM qualified as STM
+import Control.Exception (AssertionFailed (AssertionFailed), throwIO)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT (runReaderT))
 import Control.Monad.Trans (lift)
 import Data.ByteString.Char8 qualified as BS
 import Data.Text qualified as Text
 import Jasskell.Id qualified as Id
-import Jasskell.Logger (Logger, logDebug, requestLogger, (=:))
+import Jasskell.Logger (Logger, requestLogger)
 import Jasskell.Session (SessionRegistry)
 import Jasskell.Session qualified as Session
 import Jasskell.Skeleton (skeleton)
@@ -84,7 +85,6 @@ routes tm sr logger =
 getRoot :: TableManager -> SessionRegistry -> ReaderT Logger Twain.ResponderM ()
 getRoot _tm sr = do
   msession <- lift $ Session.getSession sr
-  logDebug "get root" ["session" =: show msession]
   setCookie <- case msession of
     Nothing -> do
       (_, sc) <- Session.newSession sr "test"
