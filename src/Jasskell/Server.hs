@@ -9,7 +9,6 @@ import Data.Text qualified as Text
 import Jasskell.App (AppT, Env (..), runAppT)
 import Jasskell.Id qualified as Id
 import Jasskell.Logger (requestLogger)
-import Jasskell.Session (SessionRegistry)
 import Jasskell.Session qualified as Session
 import Jasskell.Skeleton (skeleton)
 import Jasskell.Static qualified as Static
@@ -23,7 +22,7 @@ import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets qualified as WS
 import Web.Twain qualified as Twain
 
-application :: Env -> SessionRegistry -> TableManager -> Wai.Application
+application :: Env -> Session.Registry -> TableManager -> Wai.Application
 application env sessionRegistry tableManager =
   websocketsOr WS.defaultConnectionOptions (websocketApp tableManager) $
     requestLogger env.logger $
@@ -62,22 +61,16 @@ websocketApp tm pending = do
                     receiveLoop
                in Async.race_ sendLoop receiveLoop
 
-routes :: Env -> TableManager -> SessionRegistry -> [Twain.Middleware]
+routes :: Env -> TableManager -> Session.Registry -> [Twain.Middleware]
 routes env tm sr =
   [ Twain.get "/" $ runAppT env $ getRoot tm sr,
     Twain.post "/tables" $ runAppT env $ postTables tm,
     Twain.get "/tables/:table-id" $ runAppT env $ getTable tm
   ]
 
-getRoot :: TableManager -> SessionRegistry -> AppT Twain.ResponderM ()
-getRoot _tm sr = do
-  msession <- lift $ Session.getSession sr
-  setCookie <- case msession of
-    Nothing -> do
-      (_, sc) <- Session.newSession sr "test"
-      pure $ Twain.withCookie' sc
-    Just _ -> pure id
-  lift $ Twain.send $ setCookie $ Twain.html $ renderBS $ skeleton "Jasskell" $ do
+getRoot :: TableManager -> Session.Registry -> AppT Twain.ResponderM ()
+getRoot _tm _sr = do
+  lift $ Twain.send $ Twain.html $ renderBS $ skeleton "Jasskell" $ do
     header_ [id_ "top", class_ "container nav"] $ do
       a_ [href_ "#top"] "Jass"
       div_ $

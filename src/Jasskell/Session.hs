@@ -2,18 +2,21 @@ module Jasskell.Session
   ( SessionId,
     Nickname (toText),
     Session (nickname),
-    SessionRegistry,
+    Registry,
     newRegistry,
-    newSession,
-    getSession,
+    new,
+    get,
+    Error (..),
   )
 where
 
-import Control.Monad (void)
+import Control.Monad (unless, void)
+import Control.Monad.Except (throwError)
 import Control.Monad.IO.Class (MonadIO (..))
 import Crypto.Hash (Digest, hash)
 import Crypto.Hash.Algorithms (SHA256)
 import Crypto.Random (getRandomBytes)
+import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString.Base64.URL qualified as Base64
 import Data.ByteString.Char8 qualified as BS
@@ -26,7 +29,6 @@ import GHC.IORef (atomicModifyIORef'_)
 import Jasskell.Id (Id)
 import Jasskell.Id qualified as Id
 import Web.Cookie (SetCookie (..), defaultSetCookie, sameSiteStrict)
-import Web.Twain qualified as Twain
 
 type SessionId = Id Session
 
@@ -40,23 +42,26 @@ data Session = Session
   }
   deriving (Show)
 
-newtype SessionRegistry = SessionRegistry (IORef (IntMap SessionId Session))
+newtype Registry = Registry (IORef (IntMap SessionId Session))
 
-newRegistry :: (MonadIO m) => m SessionRegistry
-newRegistry = liftIO $ SessionRegistry <$> newIORef IntMap.empty
+newRegistry :: (MonadIO m) => m Registry
+newRegistry = liftIO $ Registry <$> newIORef IntMap.empty
 
-newSession :: (MonadIO m) => SessionRegistry -> Nickname -> m (Session, SetCookie)
-newSession (SessionRegistry sessionsRef) nickname = liftIO $ do
+new :: (MonadIO m) => Registry -> Nickname -> m (Session, SetCookie)
+new (Registry sessionsRef) nickname = liftIO $ do
   sessionId <- Id.new
   secret <- getRandomBytes @IO @ByteString 32
   let !session = Session {sessionId, secretHash = hash secret, nickname}
   void $ atomicModifyIORef'_ sessionsRef (IntMap.insert sessionId session)
   pure (session, makeSessionCookie sessionId secret)
 
+cookieName :: ByteString
+cookieName = "session"
+
 makeSessionCookie :: SessionId -> ByteString -> SetCookie
 makeSessionCookie sessionId secret =
   defaultSetCookie
-    { setCookieName = "session",
+    { setCookieName = cookieName,
       setCookieValue =
         BS.intercalate
           "."
@@ -68,22 +73,22 @@ makeSessionCookie sessionId secret =
       setCookieSameSite = Just sameSiteStrict
     }
 
-getSession :: SessionRegistry -> Twain.ResponderM (Maybe Session)
-getSession (SessionRegistry sessionsRef) =
-  Twain.cookieParamMaybe "session" >>= \case
-    Nothing -> pure Nothing
-    Just value -> case parseSessionCookie value of
-      Left _ -> pure Nothing
-      Right (sessionId, secret) -> do
-        sessions <- liftIO $ readIORef sessionsRef
-        case IntMap.lookup sessionId sessions of
-          Nothing -> pure Nothing
-          Just session
-            | hash secret == session.secretHash -> pure $ Just session
-            | otherwise -> pure Nothing
+data Error
+  = ParseError String
+  | NotFound
+  | WrongSecret
+
+get :: (MonadIO m) => Registry -> ByteString -> m (Either Error Session)
+get (Registry sessionsRef) cookie = do
+  sessions <- liftIO $ readIORef sessionsRef
+  pure $ do
+    (sessionId, secret) <- first ParseError $ parseSessionCookie cookie
+    session <- maybe (throwError NotFound) pure $ IntMap.lookup sessionId sessions
+    unless (hash secret == session.secretHash) $ throwError WrongSecret
+    pure session
 
 parseSessionCookie :: ByteString -> Either String (SessionId, ByteString)
-parseSessionCookie value = case BS.split '.' value of
+parseSessionCookie cookie = case BS.split '.' cookie of
   [idBase64, secretBase64] -> do
     sessionId <- Id.decodeByteString idBase64
     secret <- Base64.decode secretBase64
