@@ -1,19 +1,14 @@
-module Jasskell.Server
-  ( ServerConfig (..),
-    run,
-  )
-where
+module Jasskell.Server (application) where
 
 import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (AssertionFailed (AssertionFailed), throwIO)
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Reader (ReaderT (runReaderT))
 import Control.Monad.Trans (lift)
 import Data.ByteString.Char8 qualified as BS
 import Data.Text qualified as Text
+import Jasskell.App (AppT, Env (..), runAppT)
 import Jasskell.Id qualified as Id
-import Jasskell.Logger (Logger, requestLogger)
+import Jasskell.Logger (requestLogger)
 import Jasskell.Session (SessionRegistry)
 import Jasskell.Session qualified as Session
 import Jasskell.Skeleton (skeleton)
@@ -23,26 +18,18 @@ import Jasskell.Table qualified as Table
 import Jasskell.User (User (..))
 import Lucid
 import Lucid.Htmx (hxSwap_, hxTarget_, hxWsConnect_)
-import Network.Wai.Handler.Warp qualified as Warp
+import Network.Wai qualified as Wai
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets qualified as WS
 import Web.Twain qualified as Twain
 
-newtype ServerConfig = ServerConfig {port :: Int}
-
-run :: ServerConfig -> Logger -> IO ()
-run config logger = do
-  sessionRegistry <- Session.newRegistry
-  Table.withManager $ \tm ->
-    Warp.run config.port $
-      websocketsOr WS.defaultConnectionOptions (websocketApp tm) $
-        requestLogger logger $
-          foldr
-            ($)
-            (Twain.notFound $ Twain.send $ Twain.html "Not found...")
-            ( Static.handlers
-                : routes tm sessionRegistry logger
-            )
+application :: Env -> SessionRegistry -> TableManager -> Wai.Application
+application env sessionRegistry tableManager =
+  websocketsOr WS.defaultConnectionOptions (websocketApp tableManager) $
+    requestLogger env.logger $
+      foldr ($) (Twain.notFound $ Twain.send $ Twain.html "Not found...") $
+        Static.handlers
+          : routes env tableManager sessionRegistry
 
 websocketApp :: TableManager -> WS.ServerApp
 websocketApp tm pending = do
@@ -75,14 +62,14 @@ websocketApp tm pending = do
                     receiveLoop
                in Async.race_ sendLoop receiveLoop
 
-routes :: TableManager -> SessionRegistry -> Logger -> [Twain.Middleware]
-routes tm sr logger =
-  [ Twain.get "/" $ runReaderT (getRoot tm sr) logger,
-    Twain.post "/tables" $ postTables tm,
-    Twain.get "/tables/:table-id" $ getTable tm
+routes :: Env -> TableManager -> SessionRegistry -> [Twain.Middleware]
+routes env tm sr =
+  [ Twain.get "/" $ runAppT env $ getRoot tm sr,
+    Twain.post "/tables" $ runAppT env $ postTables tm,
+    Twain.get "/tables/:table-id" $ runAppT env $ getTable tm
   ]
 
-getRoot :: TableManager -> SessionRegistry -> ReaderT Logger Twain.ResponderM ()
+getRoot :: TableManager -> SessionRegistry -> AppT Twain.ResponderM ()
 getRoot _tm sr = do
   msession <- lift $ Session.getSession sr
   setCookie <- case msession of
@@ -106,14 +93,14 @@ getRoot _tm sr = do
           input_ [type_ "checkbox", name_ "private"]
           button_ [type_ "submit", class_ "primary"] "Create"
 
-postTables :: TableManager -> Twain.ResponderM ()
-postTables tm = do
+postTables :: TableManager -> AppT Twain.ResponderM ()
+postTables tm = lift $ do
   _public <- Twain.paramMaybe @Bool "public"
   tableId <- liftIO $ Table.new tm
   Twain.send $ Twain.redirect303 $ "/tables/" <> Id.encodeText tableId
 
-getTable :: TableManager -> Twain.ResponderM ()
-getTable tm = do
+getTable :: TableManager -> AppT Twain.ResponderM ()
+getTable tm = lift $ do
   tableId <- Twain.param @TableId "table-id"
   liftIO (Table.lookup tableId tm) >>= \case
     Nothing -> Twain.send $ Twain.status Twain.notFound404 $ Twain.text "table not found"

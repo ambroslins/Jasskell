@@ -74,6 +74,7 @@ library
   exposed-modules:
     Data.IntMap.Coercible
     Data.Vector4
+    Jasskell.App
     Jasskell.Card
     Jasskell.Card.Suit
     Jasskell.GameState
