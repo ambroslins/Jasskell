@@ -5,6 +5,7 @@ module Jasskell.App
   )
 where
 
+import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Reader
   ( MonadIO (liftIO),
     MonadReader,
@@ -24,6 +25,7 @@ newtype AppT m a = AppT (ReaderT Env m a)
       Applicative,
       Monad,
       MonadIO,
+      MonadUnliftIO,
       MonadReader Env
     )
 

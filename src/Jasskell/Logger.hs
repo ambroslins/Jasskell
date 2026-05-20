@@ -27,8 +27,10 @@ import Control.Exception.Annotation
   )
 import Control.Exception.Context (getAllExceptionAnnotations)
 import Control.Monad (when)
+import Control.Monad.Except (ExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (ReaderT, ask)
+import Control.Monad.Trans (lift)
 import Data.Aeson (ToJSON (toEncoding), fromEncoding)
 import Data.ByteString.Builder (Builder)
 import Data.ByteString.Char8 qualified as BS
@@ -70,6 +72,9 @@ instance MonadLogger ((->) Logger) where
 
 instance (Monad m) => MonadLogger (ReaderT Logger m) where
   askLogger = ask
+
+instance (Monad m, MonadLogger m) => MonadLogger (ExceptT e m) where
+  askLogger = lift askLogger
 
 log :: (MonadIO m, MonadLogger m) => Level -> Text -> [Pair] -> m ()
 log level msg pairs = do

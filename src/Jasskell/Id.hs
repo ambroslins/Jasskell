@@ -29,7 +29,7 @@ import System.Random.Stateful qualified as Random
 import Web.Twain (HttpError (..), ParsableParam (..), badRequest400)
 
 newtype Id a = Id Int
-  deriving (Eq, Show)
+  deriving newtype (Eq, Show)
 
 toInt :: Id a -> Int
 toInt (Id i) = i

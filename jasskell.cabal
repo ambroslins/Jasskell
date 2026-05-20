@@ -125,6 +125,8 @@ library
     , time
     , transformers
     , twain
+    , unliftio
+    , unliftio-core
     , unordered-containers
     , uuid
     , wai
