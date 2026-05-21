@@ -82,13 +82,11 @@ library
     Jasskell.Id
     Jasskell.Logger
     Jasskell.Main
-    Jasskell.Player
     Jasskell.Server
     Jasskell.Session
     Jasskell.Skeleton
     Jasskell.Static
     Jasskell.Table
-    Jasskell.User
     Jasskell.Variant
     Lucid.Htmx
     MyLib

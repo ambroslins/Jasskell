@@ -16,7 +16,6 @@ import Jasskell.Skeleton (skeleton)
 import Jasskell.Static qualified as Static
 import Jasskell.Table (Table (..), TableId, TableManager)
 import Jasskell.Table qualified as Table
-import Jasskell.User (User (..))
 import Lucid
 import Lucid.Htmx (hxPost_, hxSwap_, hxTarget_, hxWsConnect_)
 import Network.Wai qualified as Wai
@@ -73,58 +72,6 @@ websocketApp env sr tm pending = runAppT env . rejectOnError . runExceptT $ do
         Right () -> pure ()
     parseTableId path = do
       t <- BS.stripPrefix "/tables/" path
-      either (const Nothing) Just $ Id.decodeByteString t
-    parseSessionCookie headers = do
-      cookies <- lookup Twain.hCookie headers
-      lookup Session.cookieName $ parseCookies cookies
-
-{-
-let request = WS.pendingRequest pending
-case BS.stripPrefix "/tables/" (WS.requestPath request) of
-  Nothing ->
-    WS.rejectRequestWith pending $
-      WS.defaultRejectRequest {WS.rejectCode = 404}
-  Just t -> case Id.decodeByteString t of
-    Left _ ->
-      WS.rejectRequestWith pending $
-        WS.defaultRejectRequest {WS.rejectCode = 400}
-    Right tableId ->
-      Table.lookup tableId tm >>= \case
-        Nothing ->
-          WS.rejectRequestWith pending $
-            WS.defaultRejectRequest {WS.rejectCode = 404}
-        Just table -> do
-          connection <- WS.acceptRequest pending
-          userId <- Id.new
-          let user = User {id = userId, name = "TODO"}
-          Table.withClient table user $ \_send receive ->
-            let sendLoop = do
-                  msg <- WS.receiveData connection
-                  putStrLn $ "got message: " <> Text.unpack msg
-                  sendLoop
-                receiveLoop = do
-                  msg <- STM.atomically receive
-                  WS.sendTextData connection $ Text.show msg
-                  receiveLoop
-             in Async.race_ sendLoop receiveLoop
-where
-  parsePath path = do
-    t <- BS.stripPrefix "/tables" path
-    either (const Nothing) Just $ Id.decodeByteString t
-  -}
-
-parseWebsocketRequest :: WS.RequestHead -> Either WS.RejectRequest (TableId, BS.ByteString)
-parseWebsocketRequest request = do
-  tableId <- case parsePathParam (WS.requestPath request) of
-    Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
-    Just t -> pure t
-  sessionCookie <- case parseSessionCookie (WS.requestHeaders request) of
-    Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 401}
-    Just sc -> pure sc
-  pure (tableId, sessionCookie)
-  where
-    parsePathParam path = do
-      t <- BS.stripPrefix "/tables" path
       either (const Nothing) Just $ Id.decodeByteString t
     parseSessionCookie headers = do
       cookies <- lookup Twain.hCookie headers
