@@ -129,7 +129,7 @@ requestLogger (Logger logger) app req respond = do
   start <- getMonotonicTimeNSec
   let logResponse result = do
         end <- getMonotonicTimeNSec
-        let !dt = fromIntegral (end - start) * 1e-9 :: Double
+        let !durationMs = fromIntegral (end - start) * 1e-6 :: Double
             (!status, !size, rest) = case result of
               Left (ExceptionWithContext ctx (SomeException e)) ->
                 (500, Nothing, ["exception" =: show e, "context" =: showContext ctx])
@@ -150,7 +150,7 @@ requestLogger (Logger logger) app req respond = do
             : "query" =: decodeUtf8Lenient (Wai.rawQueryString req)
             : "status" =: status
             : "size" =: size
-            : "duration" =: dt
+            : "duration_ms" =: durationMs
             : rest
 
       respondWithLog response = do
