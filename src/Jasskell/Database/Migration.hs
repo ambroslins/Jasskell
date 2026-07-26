@@ -57,14 +57,15 @@ runMigrations pool = do
 migrations :: [Migration]
 migrations =
   [ Migration
-      "create sessions"
+      "create players"
       """
-      create table sessions (
-        id int8 primary key, -- public session id
-        secret_sha256 bytea not null,
+      -- A player IS a session. There are no accounts.
+      create table players (
+        player_id int8 primary key,
+        secret_sha256 bytea not null, -- session secret hash
         nickname text not null,
         created_at timestamptz not null default now(),
-        expires_at timestamptz not null default now() + '14 day'::interval
+        expires_at timestamptz not null default now() + '30 days'::interval
       );
       """
   ]

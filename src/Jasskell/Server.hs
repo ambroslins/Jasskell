@@ -10,8 +10,8 @@ import Data.Text qualified as Text
 import Jasskell.App (AppT, Env (..), runAppT)
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
-import Jasskell.Session (Session)
-import Jasskell.Session qualified as Session
+import Jasskell.Player (Player)
+import Jasskell.Player qualified as Player
 import Jasskell.Skeleton (skeleton)
 import Jasskell.Static qualified as Static
 import Jasskell.Table (Table (..), TableId, TableManager)
@@ -43,8 +43,8 @@ websocketApp env tm pending = runAppT env . rejectOnError . runExceptT $ do
   sessionCookie <- case parseSessionCookie (WS.requestHeaders request) of
     Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 401}
     Just sc -> pure sc
-  session <-
-    lift (Session.get sessionCookie) >>= \case
+  player <-
+    lift (Player.fromSessionCookie sessionCookie) >>= \case
       Left err -> do
         logError "invalid session cookie" ["error" =: show err]
         throwError $ WS.defaultRejectRequest {WS.rejectCode = 401}
@@ -54,8 +54,8 @@ websocketApp env tm pending = runAppT env . rejectOnError . runExceptT $ do
       Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
       Just t -> pure t
   connection <- liftIO $ WS.acceptRequest pending
-  logDebug "got websocket connection" ["session-id" =: Id.encodeText session.id]
-  liftIO $ Table.withClient table session $ \_send receive -> do
+  logDebug "got websocket connection" ["player_id" =: Id.encodeText player.id]
+  liftIO $ Table.withClient table player $ \_send receive -> do
     let sendLoop = do
           msg <- WS.receiveData connection
           putStrLn $ "got message: " <> Text.unpack msg
@@ -77,7 +77,7 @@ websocketApp env tm pending = runAppT env . rejectOnError . runExceptT $ do
       either (const Nothing) Just $ Id.decodeByteString t
     parseSessionCookie headers = do
       cookies <- lookup Twain.hCookie headers
-      lookup Session.cookieName $ parseCookies cookies
+      lookup Player.sessionCookieName $ parseCookies cookies
 
 routes :: Env -> TableManager -> [Twain.Middleware]
 routes env tm =
@@ -117,11 +117,11 @@ getTable tm = do
   liftIO (Table.lookup tableId tm) >>= \case
     Nothing -> lift . Twain.send . Twain.status Twain.notFound404 $ Twain.text "table not found"
     Just table -> do
-      msession <- getSession
+      mplayer <- getPlayerSession
       lift . Twain.send . Twain.html . renderBS . skeleton "Jass Table" $ do
         h1_ $ toHtml $ "Found table: " <> Id.encodeText table.id
         main_ $
-          case msession of
+          case mplayer of
             Nothing -> form_
               [ hxPost_ $ "/tables/" <> Id.encodeText table.id <> "/join",
                 hxTarget_ "main"
@@ -131,11 +131,11 @@ getTable tm = do
                   "Nickname"
                   input_ [name_ "nickname"]
                 button_ [type_ "submit"] "Submit"
-            Just session -> viewTable session table.id
+            Just player -> viewTable player table.id
 
-viewTable :: Session.Session -> TableId -> Html ()
-viewTable session tableId = do
-  h2_ $ toHtml $ "Hello: " <> session.nickname.toText
+viewTable :: Player -> TableId -> Html ()
+viewTable player tableId = do
+  h2_ $ toHtml $ "Hello: " <> player.nickname.toText
   div_ [hxWsConnect_ $ "/tables/" <> Id.encodeText tableId, hxSwap_ "innerHTML", hxTarget_ "this"] $
     p_ "connecting"
 
@@ -143,22 +143,22 @@ postTableJoin :: TableManager -> AppT Twain.ResponderM ()
 postTableJoin _tm = do
   tableId <- lift $ Twain.param @TableId "table-id"
   nickname <- lift $ Twain.param "nickname"
-  msession <- getSession
-  case msession of
+  mplayer <- getPlayerSession
+  case mplayer of
     Just _ -> error "TODO: change nickname"
     Nothing -> do
-      (session, setCookie) <- Session.new nickname
+      (player, setCookie) <- Player.newSession nickname
       lift . Twain.send . Twain.withCookie' setCookie . Twain.html . renderBS $
-        viewTable session tableId
+        viewTable player tableId
 
-getSession :: AppT Twain.ResponderM (Maybe Session)
-getSession =
-  lift (Twain.cookieParamMaybe Session.cookieName) >>= \case
+getPlayerSession :: AppT Twain.ResponderM (Maybe Player)
+getPlayerSession =
+  lift (Twain.cookieParamMaybe Player.sessionCookieName) >>= \case
     Nothing -> pure Nothing
     Just sessionCookie ->
-      Session.get sessionCookie >>= \case
+      Player.fromSessionCookie sessionCookie >>= \case
         Left err -> do
           logWarning "invalid session cookie" ["error" =: show err]
-          lift . Twain.send . Twain.status Twain.status401 . Twain.expireCookie Session.cookieName $
+          lift . Twain.send . Twain.status Twain.status401 . Twain.expireCookie Player.sessionCookieName $
             Twain.text "Unauthorized"
-        Right session -> pure $ Just session
+        Right player -> pure $ Just player

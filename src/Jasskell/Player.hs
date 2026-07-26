@@ -1,13 +1,13 @@
 {-# LANGUAGE QuasiQuotes #-}
 
-module Jasskell.Session
-  ( SessionId,
+module Jasskell.Player
+  ( PlayerId,
     Nickname (toText),
-    Session (id, nickname),
+    Player (id, nickname),
     SessionError (..),
-    cookieName,
-    new,
-    get,
+    sessionCookieName,
+    newSession,
+    fromSessionCookie,
   )
 where
 
@@ -36,48 +36,48 @@ import Jasskell.Id qualified as Id
 import Web.Cookie (SetCookie (..), defaultSetCookie, sameSiteStrict)
 import Web.Twain qualified as Twain
 
-type SessionId = Id Session
+type PlayerId = Id Player
 
 newtype Nickname = Nickname {toText :: Text}
   deriving newtype (Eq, Ord, Show, IsString, Twain.ParsableParam)
 
-data Session = Session
-  { id :: SessionId,
+data Player = Player
+  { id :: PlayerId,
     nickname :: Nickname
   }
   deriving (Show)
 
-new :: (MonadIO m) => Nickname -> AppT m (Session, SetCookie)
-new nickname = do
+newSession :: (MonadIO m) => Nickname -> AppT m (Player, SetCookie)
+newSession nickname = do
   sessionId <- Id.new
   secret <- liftIO $ getRandomBytes 32
   let !secretSHA256 = hash @ByteString @SHA256 secret
-      !session = Session {id = sessionId, nickname}
-  useDB $ Hasql.statement (sessionId, nickname, secretSHA256) insertSession
-  pure (session, makeSessionCookie sessionId secret)
+      !player = Player {id = sessionId, nickname}
+  useDB $ Hasql.statement (sessionId, nickname, secretSHA256) insertPlayer
+  pure (player, makeSessionCookie sessionId secret)
 
-insertSession :: Hasql.Statement (SessionId, Nickname, Digest SHA256) ()
-insertSession =
+insertPlayer :: Hasql.Statement (PlayerId, Nickname, Digest SHA256) ()
+insertPlayer =
   lmap
-    ( \(sessionId, nickname, secretSHA256) ->
-        (Id.toInt64 sessionId, nickname.toText, convert secretSHA256)
+    ( \(playerId, nickname, secretSHA256) ->
+        (Id.toInt64 playerId, nickname.toText, convert secretSHA256)
     )
     [resultlessStatement|
-      insert into sessions (id, nickname, secret_sha256)
+      insert into players (player_id, nickname, secret_sha256)
       values ($1::int8, $2::text, $3::bytea)
     |]
 
-cookieName :: (IsString s) => s
-cookieName = "session"
+sessionCookieName :: (IsString s) => s
+sessionCookieName = "session"
 
-makeSessionCookie :: SessionId -> ByteString -> SetCookie
-makeSessionCookie sessionId secret =
+makeSessionCookie :: PlayerId -> ByteString -> SetCookie
+makeSessionCookie playerId secret =
   defaultSetCookie
-    { setCookieName = cookieName,
+    { setCookieName = sessionCookieName,
       setCookieValue =
         BS.intercalate
           "."
-          [ Id.encodeByteString sessionId,
+          [ Id.encodeByteString playerId,
             Base64.encode secret
           ],
       setCookieHttpOnly = True,
@@ -88,25 +88,25 @@ makeSessionCookie sessionId secret =
 
 data SessionError
   = InvalidSessionCookie String
-  | SessionNotFound SessionId
+  | PlayerNotFound PlayerId
   | SessionSecretHashMismatch
   deriving (Eq, Show)
 
-get :: (MonadIO m) => ByteString -> AppT m (Either SessionError Session)
-get cookie = runExceptT $ do
-  (sessionId, secret) <- case parseSessionCookie cookie of
+fromSessionCookie :: (MonadIO m) => ByteString -> AppT m (Either SessionError Player)
+fromSessionCookie cookie = runExceptT $ do
+  (playerId, secret) <- case parseSessionCookie cookie of
     Left e -> throwError $ InvalidSessionCookie e
     Right x -> pure x
   (nickname, secretSHA256) <-
-    lift (useDB $ Hasql.statement sessionId selectSessionById)
+    lift (useDB $ Hasql.statement playerId selectPlayerById)
       >>= \case
-        Nothing -> throwError $ SessionNotFound sessionId
+        Nothing -> throwError $ PlayerNotFound playerId
         Just x -> pure x
   unless (hash secret == secretSHA256) $ throwError SessionSecretHashMismatch
-  pure $! Session {id = sessionId, nickname}
+  pure $! Player {id = playerId, nickname}
 
-selectSessionById :: Hasql.Statement SessionId (Maybe (Nickname, Digest SHA256))
-selectSessionById =
+selectPlayerById :: Hasql.Statement PlayerId (Maybe (Nickname, Digest SHA256))
+selectPlayerById =
   lmap Id.toInt64 $
     Hasql.refineResult
       ( \case
@@ -117,14 +117,14 @@ selectSessionById =
       )
       [maybeStatement|
         select nickname::text, secret_sha256::bytea
-        from sessions
-        where id = $1::int8
+        from players
+        where player_id = $1::int8 and expires_at > now()
       |]
 
-parseSessionCookie :: ByteString -> Either String (SessionId, ByteString)
+parseSessionCookie :: ByteString -> Either String (PlayerId, ByteString)
 parseSessionCookie cookie = case BS.split '.' cookie of
   [idBase64, secretBase64] -> do
-    sessionId <- Id.decodeByteString idBase64
+    playerId <- Id.decodeByteString idBase64
     secret <- Base64.decode secretBase64
-    pure (sessionId, secret)
+    pure (playerId, secret)
   _ -> Left "invalid session cookie"

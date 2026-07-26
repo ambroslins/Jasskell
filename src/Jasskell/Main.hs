@@ -28,7 +28,7 @@ configParser =
         <*> var auto "DATABASE_PORT" (def 5432)
         <*> var auto "DATABASE_USER" (def "postgres")
         <*> var auto "DATABASE_PASSWORD" (def "postgres")
-        <*> var auto "DATABASE_NAME" (def "jaskell")
+        <*> var auto "DATABASE_NAME" (def "jasskell")
         <*> var auto "DATABASE_POOL_SIZE" (def 3)
 
 main :: IO ()
