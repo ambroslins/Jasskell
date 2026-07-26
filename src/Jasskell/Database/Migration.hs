@@ -57,11 +57,15 @@ runMigrations pool = do
 migrations :: [Migration]
 migrations =
   [ Migration
-      "test"
+      "create sessions"
       """
-      create table foo (
-        name text primary key
-      )
+      create table sessions (
+        id int8 primary key, -- public session id
+        secret_sha256 bytea not null,
+        nickname text not null,
+        created_at timestamptz not null default now(),
+        expires_at timestamptz not null default now() + '14 day'::interval
+      );
       """
   ]
 

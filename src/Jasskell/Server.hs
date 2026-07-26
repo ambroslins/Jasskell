@@ -9,7 +9,7 @@ import Data.ByteString.Char8 qualified as BS
 import Data.Text qualified as Text
 import Jasskell.App (AppT, Env (..), runAppT)
 import Jasskell.Id qualified as Id
-import Jasskell.Logger (logDebug, logError, logWarning, requestLogger, (=:))
+import Jasskell.Logger
 import Jasskell.Session (Session)
 import Jasskell.Session qualified as Session
 import Jasskell.Skeleton (skeleton)
@@ -24,16 +24,18 @@ import Network.WebSockets qualified as WS
 import Web.Cookie (parseCookies)
 import Web.Twain qualified as Twain
 
-application :: Env -> Session.Registry -> TableManager -> Wai.Application
-application env sessionRegistry tableManager =
-  websocketsOr WS.defaultConnectionOptions (websocketApp env sessionRegistry tableManager) $
-    requestLogger env.logger $
-      foldr ($) (Twain.notFound $ Twain.send $ Twain.html "Not found...") $
-        Static.handlers
-          : routes env tableManager sessionRegistry
+application :: Env -> TableManager -> Wai.Application
+application env tableManager =
+  websocketsOr
+    WS.defaultConnectionOptions
+    (websocketApp env tableManager)
+    $ requestLogger env.logger
+    $ foldr ($) (Twain.notFound $ Twain.send $ Twain.html "Not found...")
+    $ Static.handlers
+      : routes env tableManager
 
-websocketApp :: Env -> Session.Registry -> TableManager -> WS.ServerApp
-websocketApp env sr tm pending = runAppT env . rejectOnError . runExceptT $ do
+websocketApp :: Env -> TableManager -> WS.ServerApp
+websocketApp env tm pending = runAppT env . rejectOnError . runExceptT $ do
   let request = WS.pendingRequest pending
   tableId <- case parseTableId (WS.requestPath request) of
     Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
@@ -42,9 +44,9 @@ websocketApp env sr tm pending = runAppT env . rejectOnError . runExceptT $ do
     Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 401}
     Just sc -> pure sc
   session <-
-    Session.get sr sessionCookie >>= \case
+    lift (Session.get sessionCookie) >>= \case
       Left err -> do
-        logError "invalid session cookie" ["error" =: err]
+        logError "invalid session cookie" ["error" =: show err]
         throwError $ WS.defaultRejectRequest {WS.rejectCode = 401}
       Right s -> pure s
   table <-
@@ -77,16 +79,16 @@ websocketApp env sr tm pending = runAppT env . rejectOnError . runExceptT $ do
       cookies <- lookup Twain.hCookie headers
       lookup Session.cookieName $ parseCookies cookies
 
-routes :: Env -> TableManager -> Session.Registry -> [Twain.Middleware]
-routes env tm sr =
-  [ Twain.get "/" $ runAppT env $ getRoot tm sr,
+routes :: Env -> TableManager -> [Twain.Middleware]
+routes env tm =
+  [ Twain.get "/" $ runAppT env $ getRoot tm,
     Twain.post "/tables" $ runAppT env $ postTables tm,
-    Twain.get "/tables/:table-id" $ runAppT env $ getTable tm sr,
-    Twain.post "/tables/:table-id/join" $ runAppT env $ postTableJoin tm sr
+    Twain.get "/tables/:table-id" $ runAppT env $ getTable tm,
+    Twain.post "/tables/:table-id/join" $ runAppT env $ postTableJoin tm
   ]
 
-getRoot :: TableManager -> Session.Registry -> AppT Twain.ResponderM ()
-getRoot _tm _sr = do
+getRoot :: TableManager -> AppT Twain.ResponderM ()
+getRoot _tm = do
   lift $ Twain.send $ Twain.html $ renderBS $ skeleton "Jasskell" $ do
     header_ [id_ "top", class_ "container nav"] $ do
       a_ [href_ "#top"] "Jass"
@@ -109,13 +111,13 @@ postTables tm = lift $ do
   tableId <- liftIO $ Table.new tm
   Twain.send $ Twain.redirect303 $ "/tables/" <> Id.encodeText tableId
 
-getTable :: TableManager -> Session.Registry -> AppT Twain.ResponderM ()
-getTable tm sr = do
+getTable :: TableManager -> AppT Twain.ResponderM ()
+getTable tm = do
   tableId <- lift $ Twain.param @TableId "table-id"
   liftIO (Table.lookup tableId tm) >>= \case
     Nothing -> lift . Twain.send . Twain.status Twain.notFound404 $ Twain.text "table not found"
     Just table -> do
-      msession <- getSession sr
+      msession <- getSession
       lift . Twain.send . Twain.html . renderBS . skeleton "Jass Table" $ do
         h1_ $ toHtml $ "Found table: " <> Id.encodeText table.id
         main_ $
@@ -137,26 +139,26 @@ viewTable session tableId = do
   div_ [hxWsConnect_ $ "/tables/" <> Id.encodeText tableId, hxSwap_ "innerHTML", hxTarget_ "this"] $
     p_ "connecting"
 
-postTableJoin :: TableManager -> Session.Registry -> AppT Twain.ResponderM ()
-postTableJoin _tm sr = do
+postTableJoin :: TableManager -> AppT Twain.ResponderM ()
+postTableJoin _tm = do
   tableId <- lift $ Twain.param @TableId "table-id"
   nickname <- lift $ Twain.param "nickname"
-  msession <- getSession sr
+  msession <- getSession
   case msession of
     Just _ -> error "TODO: change nickname"
     Nothing -> do
-      (session, setCookie) <- Session.new sr nickname
+      (session, setCookie) <- Session.new nickname
       lift . Twain.send . Twain.withCookie' setCookie . Twain.html . renderBS $
         viewTable session tableId
 
-getSession :: Session.Registry -> AppT Twain.ResponderM (Maybe Session)
-getSession registry =
+getSession :: AppT Twain.ResponderM (Maybe Session)
+getSession =
   lift (Twain.cookieParamMaybe Session.cookieName) >>= \case
     Nothing -> pure Nothing
     Just sessionCookie ->
-      Session.get registry sessionCookie >>= \case
+      Session.get sessionCookie >>= \case
         Left err -> do
-          logWarning "invalid session cookie" ["error" =: err]
+          logWarning "invalid session cookie" ["error" =: show err]
           lift . Twain.send . Twain.status Twain.status401 . Twain.expireCookie Session.cookieName $
             Twain.text "Unauthorized"
         Right session -> pure $ Just session

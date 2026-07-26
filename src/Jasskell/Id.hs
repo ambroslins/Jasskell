@@ -2,6 +2,8 @@ module Jasskell.Id
   ( Id (..),
     toInt,
     fromInt,
+    toInt64,
+    fromInt64,
     encodeByteString,
     encodeText,
     decodeText,
@@ -36,6 +38,12 @@ toInt (Id i) = i
 
 fromInt :: Int -> Id a
 fromInt = Id
+
+toInt64 :: Id a -> Int64
+toInt64 (Id i) = fromIntegral i
+
+fromInt64 :: Int64 -> Id a
+fromInt64 = Id . fromIntegral
 
 word64ToByteString :: Word64 -> ByteString
 word64ToByteString = BS.toStrict . Put.runPut . Put.putWord64be

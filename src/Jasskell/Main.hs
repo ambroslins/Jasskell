@@ -8,12 +8,11 @@ import Jasskell.Database qualified as DB
 import Jasskell.Database.Migration (runMigrations)
 import Jasskell.Logger (Level (..), withStderrLogger)
 import Jasskell.Server qualified as Server
-import Jasskell.Session qualified as Session
 import Jasskell.Table qualified as Table
 import Network.Wai.Handler.Warp qualified as Warp
 
 data Config = Config
-  { port :: !Int,
+  { port :: Int,
     database :: DB.Config
   }
 
@@ -36,9 +35,8 @@ main :: IO ()
 main = do
   config <- Envparse.parse (Envparse.header "jasskell 0.1.0") configParser
   withStderrLogger Debug $ \logger ->
-    DB.withPool config.database $ \pool -> do
-      runReaderT (runMigrations pool) logger
-      let env = Env {logger}
-      sessionRegistry <- Session.newRegistry
+    DB.withPool config.database $ \db -> do
+      runReaderT (runMigrations db) logger
+      let env = Env {db, logger}
       Table.withManager $ \tableManager ->
-        Warp.run config.port $ Server.application env sessionRegistry tableManager
+        Warp.run config.port $ Server.application env tableManager

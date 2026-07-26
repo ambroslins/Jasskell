@@ -41,4 +41,5 @@ withPool config run =
         <> Hasql.dbname config.name
 
 use :: (MonadIO m) => (Hasql.Pool.UsageError -> m a) -> Pool -> Hasql.Session a -> m a
-use onError (Pool pool) session = liftIO (Hasql.Pool.use pool session) >>= either onError pure
+use onError (Pool pool) session =
+  liftIO (Hasql.Pool.use pool session) >>= either onError pure
