@@ -8,6 +8,7 @@ import Hasql.Connection.Settings qualified as Hasql
 import Hasql.Pool qualified
 import Hasql.Pool.Config qualified
 import Hasql.Session qualified as Hasql
+import Pqi.Ffi qualified
 import UnliftIO (bracket)
 
 data Config = Config
@@ -25,7 +26,7 @@ newtype Pool = Pool Hasql.Pool.Pool
 withPool :: (MonadUnliftIO m) => Config -> (Pool -> m a) -> m a
 withPool config run =
   bracket
-    (liftIO $ Hasql.Pool.acquire poolConfig)
+    (liftIO $ Hasql.Pool.acquire Pqi.Ffi.adapter poolConfig)
     (liftIO . Hasql.Pool.release)
     (run . Pool)
   where

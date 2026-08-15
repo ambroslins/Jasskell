@@ -67,6 +67,15 @@ migrations =
         created_at timestamptz not null default now(),
         expires_at timestamptz not null default now() + '30 days'::interval
       );
+      """,
+    Migration
+      "create tables"
+      """
+      create table tables (
+        table_id int8 primary key,
+        created_by int8 not null, -- references players
+        created_at timestamptz not null default now()
+      )
       """
   ]
 

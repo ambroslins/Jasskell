@@ -122,6 +122,7 @@ library
     , http-types
     , lucid2
     , mtl
+    , pqi-ffi
     , profunctors
     , ram
     , random

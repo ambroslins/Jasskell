@@ -1,26 +1,27 @@
 module Jasskell.Server (application) where
 
-import Control.Concurrent.Async qualified as Async
-import Control.Concurrent.STM qualified as STM
-import Control.Monad.Except (runExceptT, throwError)
+import Control.Monad.Except (ExceptT (..), runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans (lift)
 import Data.ByteString.Char8 qualified as BS
+import Data.Text (Text)
 import Data.Text qualified as Text
-import Jasskell.App (AppT, Env (..), runAppT)
+import Jasskell.App (AppT, Env (..), hoistAppT, runAppT)
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
 import Jasskell.Player (Player)
 import Jasskell.Player qualified as Player
 import Jasskell.Skeleton (skeleton)
 import Jasskell.Static qualified as Static
-import Jasskell.Table (Table (..), TableId, TableManager)
+import Jasskell.Table (Connection (..), JoinError (..), TableId, TableManager)
 import Jasskell.Table qualified as Table
 import Lucid
 import Lucid.Htmx (hxPost_, hxSwap_, hxTarget_, hxWsConnect_)
 import Network.Wai qualified as Wai
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets qualified as WS
+import UnliftIO.Async qualified as Async
+import UnliftIO.STM (atomically)
 import Web.Cookie (parseCookies)
 import Web.Twain qualified as Twain
 
@@ -35,7 +36,7 @@ application env tableManager =
       : routes env tableManager
 
 websocketApp :: Env -> TableManager -> WS.ServerApp
-websocketApp env tm pending = runAppT env . rejectOnError . runExceptT $ do
+websocketApp env tm pending = rejectOnError . runExceptT . runAppT env $ do
   let request = WS.pendingRequest pending
   tableId <- case parseTableId (WS.requestPath request) of
     Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
@@ -44,31 +45,31 @@ websocketApp env tm pending = runAppT env . rejectOnError . runExceptT $ do
     Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 401}
     Just sc -> pure sc
   player <-
-    lift (Player.fromSessionCookie sessionCookie) >>= \case
+    Player.fromSessionCookie sessionCookie >>= \case
       Left err -> do
         logError "invalid session cookie" ["error" =: show err]
         throwError $ WS.defaultRejectRequest {WS.rejectCode = 401}
       Right s -> pure s
-  table <-
-    liftIO (Table.lookup tableId tm) >>= \case
-      Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
-      Just t -> pure t
-  connection <- liftIO $ WS.acceptRequest pending
-  logDebug "got websocket connection" ["player_id" =: Id.encodeText player.id]
-  liftIO $ Table.withClient table player $ \_send receive -> do
-    let sendLoop = do
-          msg <- WS.receiveData connection
-          putStrLn $ "got message: " <> Text.unpack msg
-          sendLoop
-        receiveLoop = do
-          msg <- STM.atomically receive
-          WS.sendTextData connection $ Text.show msg
-          receiveLoop
-     in Async.race_ sendLoop receiveLoop
+  hoistAppT ExceptT $
+    Table.join player tableId tm $
+      runExceptT . \case
+        Left TableNotFound -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
+        Right Connection {receive} -> lift $ do
+          connection <- liftIO $ WS.acceptRequest pending
+          logDebug "accepted websocket request" []
+          let sendLoop = do
+                msg <- liftIO $ WS.receiveData @Text connection
+                logDebug "got message" ["message" =: msg]
+                sendLoop
+              receiveLoop = do
+                msg <- atomically receive
+                liftIO $ WS.sendTextData connection $ Text.show msg
+                receiveLoop
+          Async.race_ sendLoop receiveLoop
   where
     rejectOnError m =
       m >>= \case
-        Left rr -> do
+        Left rr -> runAppT env $ do
           logError "reject websocket request" ["code" =: WS.rejectCode rr]
           liftIO $ WS.rejectRequestWith pending rr
         Right () -> pure ()
@@ -82,9 +83,9 @@ websocketApp env tm pending = runAppT env . rejectOnError . runExceptT $ do
 routes :: Env -> TableManager -> [Twain.Middleware]
 routes env tm =
   [ Twain.get "/" $ runAppT env $ getRoot tm,
-    Twain.post "/tables" $ runAppT env $ postTables tm,
-    Twain.get "/tables/:table-id" $ runAppT env $ getTable tm,
-    Twain.post "/tables/:table-id/join" $ runAppT env $ postTableJoin tm
+    Twain.post "/tables" $ runAppT env postTables,
+    Twain.get "/tables/:table-id" $ runAppT env getTable,
+    Twain.post "/tables/:table-id/join" $ runAppT env postTableJoin
   ]
 
 getRoot :: TableManager -> AppT Twain.ResponderM ()
@@ -105,33 +106,31 @@ getRoot _tm = do
           input_ [type_ "checkbox", name_ "private"]
           button_ [type_ "submit", class_ "primary"] "Create"
 
-postTables :: TableManager -> AppT Twain.ResponderM ()
-postTables tm = lift $ do
-  _public <- Twain.paramMaybe @Bool "public"
-  tableId <- liftIO $ Table.new tm
-  Twain.send $ Twain.redirect303 $ "/tables/" <> Id.encodeText tableId
+postTables :: AppT Twain.ResponderM ()
+postTables = do
+  _public <- lift $ Twain.paramMaybe @Bool "public"
+  randomPlayerId <- Id.new
+  tableId <- Table.create randomPlayerId
+  lift $ Twain.send $ Twain.redirect303 $ "/tables/" <> Id.encodeText tableId
 
-getTable :: TableManager -> AppT Twain.ResponderM ()
-getTable tm = do
+getTable :: AppT Twain.ResponderM ()
+getTable = do
   tableId <- lift $ Twain.param @TableId "table-id"
-  liftIO (Table.lookup tableId tm) >>= \case
-    Nothing -> lift . Twain.send . Twain.status Twain.notFound404 $ Twain.text "table not found"
-    Just table -> do
-      mplayer <- getPlayerSession
-      lift . Twain.send . Twain.html . renderBS . skeleton "Jass Table" $ do
-        h1_ $ toHtml $ "Found table: " <> Id.encodeText table.id
-        main_ $
-          case mplayer of
-            Nothing -> form_
-              [ hxPost_ $ "/tables/" <> Id.encodeText table.id <> "/join",
-                hxTarget_ "main"
-              ]
-              $ do
-                label_ [] $ do
-                  "Nickname"
-                  input_ [name_ "nickname"]
-                button_ [type_ "submit"] "Submit"
-            Just player -> viewTable player table.id
+  mplayer <- getPlayerSession
+  lift . Twain.send . Twain.html . renderBS . skeleton "Jass Table" $ do
+    h1_ $ toHtml $ "Found table: " <> Id.encodeText tableId
+    main_ $
+      case mplayer of
+        Nothing -> form_
+          [ hxPost_ $ "/tables/" <> Id.encodeText tableId <> "/join",
+            hxTarget_ "main"
+          ]
+          $ do
+            label_ [] $ do
+              "Nickname"
+              input_ [name_ "nickname"]
+            button_ [type_ "submit"] "Submit"
+        Just player -> viewTable player tableId
 
 viewTable :: Player -> TableId -> Html ()
 viewTable player tableId = do
@@ -139,8 +138,8 @@ viewTable player tableId = do
   div_ [hxWsConnect_ $ "/tables/" <> Id.encodeText tableId, hxSwap_ "innerHTML", hxTarget_ "this"] $
     p_ "connecting"
 
-postTableJoin :: TableManager -> AppT Twain.ResponderM ()
-postTableJoin _tm = do
+postTableJoin :: AppT Twain.ResponderM ()
+postTableJoin = do
   tableId <- lift $ Twain.param @TableId "table-id"
   nickname <- lift $ Twain.param "nickname"
   mplayer <- getPlayerSession

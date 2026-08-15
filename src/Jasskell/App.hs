@@ -4,11 +4,13 @@ module Jasskell.App
   ( Env (..),
     AppT,
     runAppT,
+    hoistAppT,
     useDB,
     useDBCatch,
   )
 where
 
+import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Reader
   ( MonadIO (liftIO),
@@ -19,6 +21,7 @@ import Control.Monad.Reader
   )
 import Control.Monad.Trans (MonadTrans (..))
 import Crypto.Random (MonadRandom (..))
+import Data.Coerce (coerce)
 import Data.Text (Text)
 import Hasql.Errors
   ( ServerError (..),
@@ -43,7 +46,8 @@ newtype AppT m a = AppT (ReaderT Env m a)
       Monad,
       MonadIO,
       MonadUnliftIO,
-      MonadReader Env
+      MonadReader Env,
+      MonadError e
     )
 
 instance (MonadIO m) => MonadRandom (AppT m) where
@@ -57,6 +61,9 @@ instance MonadTrans AppT where
 
 runAppT :: Env -> AppT m a -> m a
 runAppT env (AppT m) = runReaderT m env
+
+hoistAppT :: (m a -> n b) -> AppT m a -> AppT n b
+hoistAppT hoist (AppT (ReaderT m)) = coerce $ hoist . m
 
 useDB :: (MonadIO m) => Hasql.Session a -> AppT m a
 useDB session = do
