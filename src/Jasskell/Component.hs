@@ -14,8 +14,8 @@ card as c = div_ (class_ "card" : as) $ do
     suit = case Card.suit c of
       Bells -> Icon.bell []
       Acorns -> Icon.acorn []
-      _ -> "?"
-
+      Leaves -> Icon.leaf []
+      Hearts -> Icon.heart []
     rank = case Card.rank c of
       Six -> "6"
       Seven -> "7"

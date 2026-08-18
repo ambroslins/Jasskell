@@ -98,13 +98,19 @@ getRoot _tm = do
     header_ [id_ "top", class_ "container nav"] $ do
       a_ [href_ "#top"] $
         span_
-          [style_ "font-size: 3rem; font-weight: 600; letter-spacing: 0.2rem"]
+          [style_ "font-size: 2rem; font-weight: 600; letter-spacing: 0.15rem"]
           "Jass"
-    main_ $ do
+    main_ [] $ do
       section_ [id_ "hero", class_ "container"] $ do
-        h1_ "Hero Section"
-        Component.card [style_ "position: absolute; transform: rotate(-15deg);"] $ Card.make Bells Six
-        Component.card [style_ "position: absolute; transform: rotate(15deg);"] $ Card.make Acorns King
+        div_ $ do
+          h1_ "Hero Section"
+          a_ [href_ "#play"] $ button_ [class_ "primary"] "Play"
+        div_ [id_ "hero-deck"] $ do
+          Component.card [style_ "transform: rotate(-30deg);"] $ Card.make Bells Six
+          Component.card [style_ "transform: rotate(-15deg);"] $ Card.make Acorns Nine
+          Component.card [style_ "transform: rotate(0deg);"] $ Card.make Leaves Under
+          Component.card [style_ "transform: rotate(15deg);"] $ Card.make Hearts King
+          Component.card [style_ "transform: rotate(30deg);"] $ Card.make Bells Ace
       section_ [id_ "tables", class_ "container"] $ do
         h2_ "Tables"
       section_ [id_ "create", class_ "container"] $ do

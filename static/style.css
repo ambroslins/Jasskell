@@ -1,6 +1,6 @@
 :root {
   --background-color: #eaeee8;
-  --primary-color: #6e8c74;
+  --primary-color: #5e7c64;
   --text-color: #1f241f;
   --card-height: 10rem;
 }
@@ -39,7 +39,7 @@ button {
   font-size: 1.5rem;
   padding: 0 1rem;
   border: 1px solid var(--text-color);
-  border-radius: 1rem;
+  border-radius: 0.25rem;
 }
 
 button.small {
@@ -67,6 +67,7 @@ header.nav {
   justify-content: space-between;
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
+  border-bottom: 1px solid #dde0dd;
 }
 
 section {
@@ -103,5 +104,25 @@ section {
 
   .suit {
     font-size: 2em;
+  }
+}
+
+#hero {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20ch, auto));
+  gap: 2rem;
+  align-items: center;
+
+}
+
+#hero-deck {
+  display: grid;
+  grid-template: 1fr / 1fr;
+  place-content: center;
+  place-items: center;
+
+  .card {
+    grid-row: 1 / 1;
+    grid-column: 1 / 1;
   }
 }
