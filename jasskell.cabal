@@ -64,10 +64,12 @@ library
     Jasskell.App
     Jasskell.Card
     Jasskell.Card.Suit
+    Jasskell.Component
     Jasskell.Database
     Jasskell.Database.Migration
     Jasskell.GameState
     Jasskell.GameView
+    Jasskell.Icon
     Jasskell.Id
     Jasskell.Logger
     Jasskell.Main

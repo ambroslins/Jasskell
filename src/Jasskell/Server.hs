@@ -7,6 +7,10 @@ import Data.ByteString.Char8 qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Jasskell.App (AppT, Env (..), hoistAppT, runAppT)
+import Jasskell.Card (Rank (..), Suit (..))
+import Jasskell.Card qualified as Card
+import Jasskell.Component qualified as Component
+import Jasskell.Icon qualified as Icon
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
 import Jasskell.Player (Player)
@@ -92,12 +96,15 @@ getRoot :: TableManager -> AppT Twain.ResponderM ()
 getRoot _tm = do
   lift $ Twain.send $ Twain.html $ renderBS $ skeleton "Jasskell" $ do
     header_ [id_ "top", class_ "container nav"] $ do
-      a_ [href_ "#top"] "Jass"
-      div_ $
-        button_ [class_ "secondary small"] "Sign in"
+      a_ [href_ "#top"] $
+        span_
+          [style_ "font-size: 3rem; font-weight: 600; letter-spacing: 0.2rem"]
+          "Jass"
     main_ $ do
       section_ [id_ "hero", class_ "container"] $ do
         h1_ "Hero Section"
+        Component.card [style_ "position: absolute; transform: rotate(-15deg);"] $ Card.make Bells Six
+        Component.card [style_ "position: absolute; transform: rotate(15deg);"] $ Card.make Acorns King
       section_ [id_ "tables", class_ "container"] $ do
         h2_ "Tables"
       section_ [id_ "create", class_ "container"] $ do
