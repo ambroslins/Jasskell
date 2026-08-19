@@ -1,16 +1,17 @@
 module Jasskell.Server (application) where
 
+import Control.Monad (when)
 import Control.Monad.Except (ExceptT (..), runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans (lift)
 import Data.ByteString.Char8 qualified as BS
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Jasskell.App (AppT, Env (..), hoistAppT, runAppT)
 import Jasskell.Card (Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
 import Jasskell.Component qualified as Component
-import Jasskell.Icon qualified as Icon
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
 import Jasskell.Player (Player)
@@ -94,6 +95,7 @@ routes env tm =
 
 getRoot :: TableManager -> AppT Twain.ResponderM ()
 getRoot _tm = do
+  mplayer <- getPlayerSession
   lift $ Twain.send $ Twain.html $ renderBS $ skeleton "Jasskell" $ do
     header_ [id_ "top", class_ "container nav"] $ do
       a_ [href_ "#top"] $
@@ -111,20 +113,31 @@ getRoot _tm = do
           Component.card [style_ "transform: rotate(0deg);"] $ Card.make Leaves Under
           Component.card [style_ "transform: rotate(15deg);"] $ Card.make Hearts King
           Component.card [style_ "transform: rotate(30deg);"] $ Card.make Bells Ace
-      section_ [id_ "tables", class_ "container"] $ do
-        h2_ "Tables"
-      section_ [id_ "create", class_ "container"] $ do
-        h2_ "Create"
+      section_ [id_ "play", class_ "container"] $ do
+        div_ [id_ "table-list"] $ do
+          h3_ "Table List"
         form_ [method_ "post", action_ "/tables"] $ do
-          input_ [type_ "checkbox", name_ "private"]
+          when (isNothing mplayer) $ do
+            label_ $ do
+              "Nickname"
+              input_ [type_ "text", name_ "nickname"]
+          label_ $ do
+            "Private"
+            input_ [type_ "checkbox", name_ "private"]
           button_ [type_ "submit", class_ "primary"] "Create"
 
 postTables :: AppT Twain.ResponderM ()
 postTables = do
-  _public <- lift $ Twain.paramMaybe @Bool "public"
-  randomPlayerId <- Id.new
-  tableId <- Table.create randomPlayerId
-  lift $ Twain.send $ Twain.redirect303 $ "/tables/" <> Id.encodeText tableId
+  _private <- lift $ Twain.paramMaybe @Bool "private"
+  (playerId, addCookie) <-
+    getPlayerSession >>= \case
+      Just p -> pure (p.id, id)
+      Nothing -> do
+        nickname <- lift $ Twain.param "nickname"
+        (p, setCookie) <- Player.newSession nickname
+        pure (p.id, Twain.withCookie' setCookie)
+  tableId <- Table.create playerId
+  lift $ Twain.send $ addCookie . Twain.redirect303 $ "/tables/" <> Id.encodeText tableId
 
 getTable :: AppT Twain.ResponderM ()
 getTable = do

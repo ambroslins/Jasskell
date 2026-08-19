@@ -71,7 +71,7 @@ header.nav {
 }
 
 section {
-  border-bottom: 1px solid #808080;
+  border-bottom: 1px solid #dde0dd;
   height: 50vh;
 }
 
@@ -124,5 +124,16 @@ section {
   .card {
     grid-row: 1 / 1;
     grid-column: 1 / 1;
+  }
+}
+
+#play {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  align-items: center;
+
+  * {
+    flex: 1 1 var(20ch);
   }
 }
