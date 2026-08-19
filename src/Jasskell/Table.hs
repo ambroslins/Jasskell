@@ -16,16 +16,18 @@ module Jasskell.Table
 where
 
 import Control.Concurrent.STM qualified as STM
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bifunctor (bimap)
 import Data.IntMap.Coercible (IntMap)
 import Data.IntMap.Coercible qualified as IntMap
-import Data.Profunctor (Profunctor (lmap))
+import Data.Maybe (isNothing)
+import Data.Profunctor (Profunctor (lmap), dimap)
+import Data.Time (UTCTime, getCurrentTime)
 import Data.Vector4 (Vector4)
 import Data.Vector4 qualified as Vector4
 import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
-import Hasql.TH (resultlessStatement)
+import Hasql.TH (maybeStatement, resultlessStatement)
 import Jasskell.App
 import Jasskell.Card (Card)
 import Jasskell.GameState (DeclareError, GameState, ShoveError, UnplayableCardReason)
@@ -64,8 +66,9 @@ newtype TableManager = TableManager
 
 data Table = Table
   { id :: TableId,
+    creator :: PlayerId,
     eventQueue :: TBQueue Event,
-    clients :: TVar (IntMap PlayerId Client),
+    clients :: TVar (IntMap PlayerId ClientState),
     thread :: Async ()
   }
   deriving (Eq)
@@ -81,8 +84,13 @@ data Client = Client
   { player :: Player,
     messageBox :: TMVar ServerMessage
   }
+  deriving (Eq)
 
-newtype ServerMessage = ServerMessage TableState
+data ClientState
+  = Connected Client
+  | Disconnected UTCTime
+
+newtype ServerMessage = Snapshot TableState
   deriving (Show)
 
 data ClientMessage
@@ -142,46 +150,71 @@ join player tableId manager handler = do
               Nothing -> pure ()
               Just _old -> undefined -- TODO: force leave player
             STM.writeTVar table.clients $!
-              IntMap.insert player.id client clients
-          release _ = atomically $ do
-            clients <- STM.readTVar table.clients
-            let softDelete c
-                  | c.messageBox == client.messageBox = Nothing
-                  | otherwise = Just c
-            STM.writeTVar table.clients $!
-              IntMap.update softDelete player.id clients
+              IntMap.insert player.id (Connected client) clients
+            STM.writeTBQueue table.eventQueue $ PlayerJoined player.id
+          release _ = do
+            lastSeen <- liftIO getCurrentTime
+            let disconnect = \case
+                  Connected c | c == client -> Disconnected lastSeen
+                  cs -> cs
+            atomically $ do
+              STM.modifyTVar' table.clients $
+                IntMap.adjust disconnect player.id
+              STM.writeTBQueue table.eventQueue $ PlayerLeft player.id
       bracket acquire release $ \() -> handler (Right connection)
 
 spawnTable :: (MonadUnliftIO m) => TableId -> TableManager -> AppT m (Maybe Table)
-spawnTable tableId manager = do
-  -- TODO: query database
-  eventQueue <- newTBQueueIO 16
-  clients <- newTVarIO IntMap.empty
-  modifyMVarMasked manager.tables $ \tables ->
-    case IntMap.lookup tableId tables of
-      Just t -> pure (tables, Just t)
-      Nothing -> do
-        thread <- asyncWithUnmask $ \unmask ->
-          unmask (tableLoop eventQueue clients) `finally` deregister
-        let !t = Table {id = tableId, eventQueue, clients, thread}
-            !ts = IntMap.insert tableId t tables
-        pure (ts, Just t)
+spawnTable tableId manager =
+  useDB (Hasql.statement tableId selectTableById) >>= \case
+    Nothing -> pure Nothing
+    Just creator -> do
+      eventQueue <- newTBQueueIO 16
+      clients <- newTVarIO IntMap.empty
+      modifyMVarMasked manager.tables $ \tables ->
+        case IntMap.lookup tableId tables of
+          Just t -> pure (tables, Just t)
+          Nothing -> do
+            thread <- asyncWithUnmask $ \unmask ->
+              unmask (tableLoop creator eventQueue clients) `finally` deregister
+            let !t = Table {id = tableId, creator, eventQueue, clients, thread}
+                !ts = IntMap.insert tableId t tables
+            pure (ts, Just t)
   where
     deregister =
       modifyMVar_ manager.tables (evaluate . IntMap.delete tableId)
 
-tableLoop :: (MonadIO m) => TBQueue Event -> TVar (IntMap PlayerId Client) -> AppT m ()
-tableLoop eventQueue clientsVar = go initial
+selectTableById :: Hasql.Statement TableId (Maybe PlayerId)
+selectTableById =
+  dimap
+    Id.toInt64
+    (fmap Id.fromInt64)
+    [maybeStatement|
+      select created_by::int8
+      from tables where table_id = $1::int8
+    |]
+
+tableLoop :: (MonadIO m) => PlayerId -> TBQueue Event -> TVar (IntMap PlayerId ClientState) -> AppT m ()
+tableLoop creator eventQueue clientsVar = go initial
   where
     initial = Waiting $ Vector4.replicate Nothing
-    _broadcast msg = do
-      clients <- readTVarIO @IO clientsVar
-      IntMap.forWithKey_ clients $ \_userId client ->
-        atomically $ STM.writeTMVar client.messageBox msg
+    broadcast msg = do
+      clients <- readTVarIO clientsVar
+      IntMap.forWithKey_ clients $ \_userId cs -> case cs of
+        Connected client -> atomically $ STM.writeTMVar client.messageBox msg
+        Disconnected _ -> pure ()
     go state = do
       event <- atomically $ STM.readTBQueue eventQueue
       logDebug "got event" ["event" =: show event]
-      go state
+      s <- case state of
+        Waiting seats -> case event of
+          PlayerJoined playerId
+            | playerId == creator && all isNothing seats ->
+                pure $ Waiting $ Vector4.set 0 (Just playerId) seats
+          _ -> pure state
+        _ -> pure state
+
+      broadcast $ Snapshot s
+      go s
 
 data TableState
   = Waiting (Vector4 (Maybe PlayerId))

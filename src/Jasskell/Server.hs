@@ -3,6 +3,7 @@ module Jasskell.Server (application) where
 import Control.Monad (when)
 import Control.Monad.Except (ExceptT (..), runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Unlift (liftIOOp)
 import Control.Monad.Trans (lift)
 import Data.ByteString.Char8 qualified as BS
 import Data.Maybe (isNothing)
@@ -61,16 +62,17 @@ websocketApp env tm pending = rejectOnError . runExceptT . runAppT env $ do
         Left TableNotFound -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
         Right Connection {receive} -> lift $ do
           connection <- liftIO $ WS.acceptRequest pending
-          logDebug "accepted websocket request" []
-          let sendLoop = do
-                msg <- liftIO $ WS.receiveData @Text connection
-                logDebug "got message" ["message" =: msg]
-                sendLoop
-              receiveLoop = do
-                msg <- atomically receive
-                liftIO $ WS.sendTextData connection $ Text.show msg
-                receiveLoop
-          Async.race_ sendLoop receiveLoop
+          liftIOOp (WS.withPingThread connection 30 (pure ())) $ do
+            logDebug "accepted websocket request" []
+            let sendLoop = do
+                  msg <- liftIO $ WS.receiveData @Text connection
+                  logDebug "got message" ["message" =: msg]
+                  sendLoop
+                receiveLoop = do
+                  msg <- atomically receive
+                  liftIO $ WS.sendTextData connection $ Text.show msg
+                  receiveLoop
+            Async.race_ sendLoop receiveLoop
   where
     rejectOnError m =
       m >>= \case

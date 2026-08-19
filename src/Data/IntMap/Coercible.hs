@@ -5,6 +5,7 @@ module Data.IntMap.Coercible
     insert,
     lookup,
     delete,
+    adjust,
     update,
     alter,
     alterF,
@@ -39,6 +40,9 @@ lookup k (IntMap m) = Impl.lookup (coerce k) m
 
 delete :: (Coercible Int k) => k -> IntMap k v -> IntMap k v
 delete k (IntMap m) = IntMap $ Impl.delete (coerce k) m
+
+adjust :: (Coercible Int k) => (v -> v) -> k -> IntMap k v -> IntMap k v
+adjust f k (IntMap m) = IntMap $ Impl.adjust f (coerce k) m
 
 update :: (Coercible Int k) => (v -> Maybe v) -> k -> IntMap k v -> IntMap k v
 update f k (IntMap m) = IntMap $ Impl.update f (coerce k) m

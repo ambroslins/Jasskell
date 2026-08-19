@@ -45,7 +45,7 @@ data Player = Player
   { id :: PlayerId,
     nickname :: Nickname
   }
-  deriving (Show)
+  deriving (Eq, Show)
 
 newSession :: (MonadIO m) => Nickname -> AppT m (Player, SetCookie)
 newSession nickname = do
