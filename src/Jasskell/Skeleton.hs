@@ -9,6 +9,7 @@ skeleton title body = do
   html_ [lang_ "en"] $ do
     head_ $ do
       meta_ [charset_ "utf-8"]
+      meta_ [name_ "htmx-config", content_ "ws.pauseOnBackground:false"]
       title_ $ toHtml title
       link_ [rel_ "stylesheet", href_ Static.style.path]
       script_
