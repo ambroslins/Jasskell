@@ -13,13 +13,8 @@ skeleton title body = do
       title_ $ toHtml title
       link_ [rel_ "stylesheet", href_ Static.style.path]
       script_
-        [ src_ Static.htmx.path,
-          integrity_ $ "sha256-" <> Static.htmx.sha256Base64
-        ]
-        ("" :: String)
-      script_
-        [ src_ Static.htmxWebSockets.path,
-          integrity_ $ "sha256-" <> Static.htmxWebSockets.sha256Base64
+        [ src_ Static.script.path,
+          integrity_ $ "sha256-" <> Static.script.sha256Base64
         ]
         ("" :: String)
     body_ body

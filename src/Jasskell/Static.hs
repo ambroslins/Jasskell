@@ -4,8 +4,7 @@ module Jasskell.Static
   ( Asset (path, sha256Base64),
     handlers,
     style,
-    htmx,
-    htmxWebSockets,
+    script,
   )
 where
 
@@ -15,7 +14,8 @@ import Data.ByteArray (convert)
 import Data.ByteString (ByteString)
 import Data.ByteString.Base64.URL qualified as Base64URL
 import Data.ByteString.Char8 qualified as BS
-import Data.ByteString.Lazy.Char8 qualified as LazyBS
+import Data.ByteString.Lazy (LazyByteString)
+import Data.ByteString.Lazy qualified as LBS
 import Data.FileEmbed (embedFileRelative)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
@@ -24,18 +24,17 @@ import Web.Twain qualified as Twain
 import Web.Twain.Types qualified as Twain
 
 data Asset = Asset
-  { content :: !ByteString,
-    pathBS :: !ByteString,
-    contentType :: !ContentType,
-    path :: !Text,
-    sha256Base64 :: !Text
+  { content :: LazyByteString,
+    pathBS :: ByteString,
+    contentType :: ContentType,
+    path :: Text,
+    sha256Base64 :: Text
   }
 
 handlers :: Twain.Middleware
 handlers =
   handleAsset style
-    . handleAsset htmx
-    . handleAsset htmxWebSockets
+    . handleAsset script
 
 handleAsset :: Asset -> Twain.Middleware
 handleAsset asset =
@@ -47,28 +46,32 @@ handleAsset asset =
       [ (Twain.hCacheControl, "public, max-age=31536000, immutable"),
         (Twain.hContentType, asset.contentType.header)
       ]
-    $ LazyBS.fromStrict asset.content
+      asset.content
 
 style :: Asset
-style = makeAsset "style" css $(embedFileRelative "static/style.css")
+style = makeAsset "style" css [$(embedFileRelative "static/style.css")]
 
-htmx :: Asset
-htmx = makeAsset "htmx" js $(embedFileRelative "static/htmx-4.0.0-beta2.min.js")
+script :: Asset
+script =
+  makeAsset
+    "script"
+    js
+    [ $(embedFileRelative "static/htmx-4.0.0-beta2.min.js"),
+      $(embedFileRelative "static/hx-ws-4.0.0-beta2.min.js")
+    ]
 
-htmxWebSockets :: Asset
-htmxWebSockets = makeAsset "hx-ws" js $(embedFileRelative "static/hx-ws-4.0.0-beta2.min.js")
-
-makeAsset :: ByteString -> ContentType -> ByteString -> Asset
-makeAsset name contentType content =
+makeAsset :: ByteString -> ContentType -> [ByteString] -> Asset
+makeAsset name contentType chunks =
   Asset {content, path, pathBS, contentType, sha256Base64 = decodeUtf8 hash}
   where
+    content = LBS.fromChunks chunks
     pathBS =
       "/static/"
         <> BS.intercalate "." [name, BS.take 8 hash, contentType.extension]
     path = decodeUtf8 pathBS
     hash =
       Base64URL.encodeUnpadded . convert $
-        Crypto.Hash.hash @ByteString @SHA256 content
+        Crypto.Hash.hashlazy @SHA256 content
 
 matchRawPath :: ByteString -> Twain.PathPattern
 matchRawPath path = Twain.MatchPath $ \req ->
