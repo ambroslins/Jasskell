@@ -19,7 +19,7 @@ import Jasskell.Player (Player)
 import Jasskell.Player qualified as Player
 import Jasskell.Skeleton (skeleton)
 import Jasskell.Static qualified as Static
-import Jasskell.Table (Connection (..), JoinError (..), TableId, TableManager)
+import Jasskell.Table (Connection (..), TableId, TableManager)
 import Jasskell.Table qualified as Table
 import Lucid
 import Lucid.Htmx (hxPost_, hxSwap_, hxTarget_, hxWsConnect_)
@@ -59,8 +59,8 @@ websocketApp env tm pending = rejectOnError . runExceptT . runAppT env $ do
   hoistAppT ExceptT $
     Table.join player tableId tm $
       runExceptT . \case
-        Left TableNotFound -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
-        Right Connection {receive} -> lift $ do
+        Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
+        Just Connection {receive} -> lift $ do
           connection <- liftIO $ WS.acceptRequest pending
           liftIOOp (WS.withPingThread connection 30 (pure ())) $ do
             logDebug "accepted websocket request" []

@@ -8,10 +8,7 @@ module Jasskell.Table
     create,
     Connection (..),
     join,
-    JoinError (..),
-    Message (..),
     Event (..),
-    UpdateResult (..),
   )
 where
 
@@ -29,13 +26,11 @@ import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
 import Hasql.TH (maybeStatement, resultlessStatement)
 import Jasskell.App
-import Jasskell.Card (Card)
-import Jasskell.GameState (DeclareError, GameState, ShoveError, UnplayableCardReason)
+import Jasskell.GameState (GameState)
 import Jasskell.Id (Id (..))
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
-import Jasskell.Player (Player (..), PlayerId)
-import Jasskell.Variant (Variant)
+import Jasskell.Player (Nickname, Player (..), PlayerId)
 import UnliftIO (MonadUnliftIO, bracket, finally)
 import UnliftIO.Async (Async, asyncWithUnmask)
 import UnliftIO.Exception (evaluate)
@@ -90,21 +85,21 @@ data ClientState
   = Connected Client
   | Disconnected UTCTime
 
-newtype ServerMessage = Snapshot TableState
+data ServerMessage
+  = UpdateWaiting ViewWaiting
+  | UpdateSpectator ViewSpectator
+  | UpdatePlayer ViewPlayer
   deriving (Show)
 
-data ClientMessage
-  deriving (Eq, Show)
-
 data Connection = Connection
-  { send :: ClientMessage -> STM (),
-    receive :: STM ServerMessage
+  { receive :: STM ServerMessage,
+    takeSeat :: Vector4.Index4 -> STM ()
   }
 
 data Event
-  = PlayerJoined PlayerId
-  | PlayerLeft PlayerId
-  | PlayerMessage PlayerId ClientMessage
+  = PlayerJoined Player
+  | PlayerLeft Player
+  | TakeSeat Player Vector4.Index4
   deriving (Eq, Show)
 
 create :: (MonadIO m) => PlayerId -> AppT m TableId
@@ -127,23 +122,25 @@ join ::
   Player ->
   TableId ->
   TableManager ->
-  (Either JoinError Connection -> AppT m a) ->
+  (Maybe Connection -> AppT m a) ->
   AppT m a
 join player tableId manager handler = do
   tables <- readMVar manager.tables
   case IntMap.lookup tableId tables of
     Nothing ->
       spawnTable tableId manager >>= \case
-        Nothing -> handler $ Left TableNotFound
+        Nothing -> handler Nothing
         Just t -> go t
     Just t -> go t
   where
     go table = do
       messageBox <- newEmptyTMVarIO
       let client = Client {player, messageBox}
-          send msg = STM.writeTBQueue table.eventQueue (PlayerMessage player.id msg)
-          receive = STM.takeTMVar messageBox
-          connection = Connection {send, receive}
+          connection =
+            Connection
+              { receive = STM.takeTMVar messageBox,
+                takeSeat = STM.writeTBQueue table.eventQueue . TakeSeat player
+              }
           acquire = atomically $ do
             clients <- STM.readTVar table.clients
             case IntMap.lookup player.id clients of
@@ -151,7 +148,7 @@ join player tableId manager handler = do
               Just _old -> undefined -- TODO: force leave player
             STM.writeTVar table.clients $!
               IntMap.insert player.id (Connected client) clients
-            STM.writeTBQueue table.eventQueue $ PlayerJoined player.id
+            STM.writeTBQueue table.eventQueue $ PlayerJoined player
           release _ = do
             lastSeen <- liftIO getCurrentTime
             let disconnect = \case
@@ -160,8 +157,8 @@ join player tableId manager handler = do
             atomically $ do
               STM.modifyTVar' table.clients $
                 IntMap.adjust disconnect player.id
-              STM.writeTBQueue table.eventQueue $ PlayerLeft player.id
-      bracket acquire release $ \() -> handler (Right connection)
+              STM.writeTBQueue table.eventQueue $ PlayerLeft player
+      bracket acquire release $ \() -> handler (Just connection)
 
 spawnTable :: (MonadUnliftIO m) => TableId -> TableManager -> AppT m (Maybe Table)
 spawnTable tableId manager =
@@ -197,8 +194,7 @@ tableLoop :: (MonadIO m) => PlayerId -> TBQueue Event -> TVar (IntMap PlayerId C
 tableLoop creator eventQueue clientsVar = go initial
   where
     initial = Waiting $ Vector4.replicate Nothing
-    broadcast msg = do
-      clients <- readTVarIO clientsVar
+    broadcast clients msg = do
       IntMap.forWithKey_ clients $ \_userId cs -> case cs of
         Connected client -> atomically $ STM.writeTMVar client.messageBox msg
         Disconnected _ -> pure ()
@@ -207,34 +203,44 @@ tableLoop creator eventQueue clientsVar = go initial
       logDebug "got event" ["event" =: show event]
       s <- case state of
         Waiting seats -> case event of
-          PlayerJoined playerId
-            | playerId == creator && all isNothing seats ->
-                pure $ Waiting $ Vector4.set 0 (Just playerId) seats
+          PlayerJoined player
+            | player.id == creator && all isNothing seats ->
+                pure $ Waiting $ Vector4.set 0 (Just player) seats
+          TakeSeat player seatIndex
+            | any (maybe False $ \p -> p.id == player.id) seats -> pure state -- TODO: already seated
+            | Just _ <- Vector4.index seatIndex seats -> pure state -- TODO: already taken
+            | otherwise -> pure $ Waiting $ Vector4.set 0 (Just player) seats
           _ -> pure state
         _ -> pure state
 
-      broadcast $ Snapshot s
+      clients <- readTVarIO clientsVar
+      let Waiting seats = s -- TODO: partial
+      broadcast clients $
+        UpdateWaiting $
+          ViewWaiting
+            { seats = (fmap $ SeatView . (.nickname)) <$> seats,
+              yourSeat = Nothing
+            }
       go s
 
 data TableState
-  = Waiting (Vector4 (Maybe PlayerId))
-  | Playing (Vector4 PlayerId) GameState
+  = Waiting (Vector4 (Maybe Player))
+  | Playing (Vector4 Player) GameState
   deriving (Show)
 
-data Message
-  = DeclareVariant Variant
-  | Shove
-  | PlayCard Card
-  | Disconnect
+data ViewWaiting = ViewWaiting
+  { seats :: Vector4 (Maybe SeatView),
+    yourSeat :: Maybe Vector4.Index4
+  }
   deriving (Show)
 
-data UpdateResult
-  = Ok
-  | NotYourTurn
-  | DeclareError !DeclareError
-  | ShoveError !ShoveError
-  | UnplayableCard !UnplayableCardReason
+data SeatView = SeatView
+  { nickname :: Nickname
+  }
   deriving (Show)
 
-data JoinError = TableNotFound
+data ViewSpectator
+  deriving (Show)
+
+data ViewPlayer
   deriving (Show)
