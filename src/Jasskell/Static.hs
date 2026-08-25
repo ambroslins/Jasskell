@@ -82,7 +82,13 @@ readQuality bs = do
       pure $ fromIntegral i + fromIntegral frac / base
 
 style :: Asset
-style = makeAsset "style" css [$(embedFileRelative "static/style.css")]
+style =
+  makeAsset
+    "style"
+    css
+    [ $(embedFileRelative "static/pico-2.1.1.min.css"),
+      $(embedFileRelative "static/custom.css")
+    ]
 
 script :: Asset
 script =
