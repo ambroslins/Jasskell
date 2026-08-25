@@ -9,7 +9,7 @@ module Jasskell.Static
   )
 where
 
-import Control.Exception (evaluate, throwIO)
+import Control.Exception (throwIO)
 import Control.Monad (guard)
 import Crypto.Hash qualified
 import Crypto.Hash.Algorithms (SHA256)
@@ -30,7 +30,7 @@ import Web.Twain.Types qualified as Twain
 
 data Asset = Asset
   { content :: LazyByteString,
-    contentGzip :: LazyByteString,
+    contentGzip :: ~LazyByteString,
     pathBS :: ByteString,
     contentType :: ContentType,
     path :: Text,
@@ -89,15 +89,15 @@ script =
   makeAsset
     "script"
     js
-    [ $(embedFileRelative "static/htmx-4.0.0-beta2.min.js"),
-      $(embedFileRelative "static/hx-ws-4.0.0-beta2.min.js")
+    [ $(embedFileRelative "static/htmx-4.0.0-beta6.min.js"),
+      $(embedFileRelative "static/hx-ws-4.0.0-beta6.min.js")
     ]
 
 makeAsset :: ByteString -> ContentType -> [ByteString] -> Asset
 makeAsset name contentType chunks =
   Asset
     { content,
-      contentGzip = LBS.fromStrict $ gzipDeflate content,
+      contentGzip = gzipDeflate content,
       path = decodeUtf8 pathBS,
       pathBS,
       contentType,
@@ -127,14 +127,13 @@ css = ContentType {extension = "css", header = "text/css; charset=utf-8"}
 js :: ContentType
 js = ContentType {extension = "js", header = "application/javascript; charset=utf-8"}
 
-gzipDeflate :: LazyByteString -> ByteString
+gzipDeflate :: LazyByteString -> LazyByteString
 gzipDeflate content = unsafePerformIO $ do
   deflate <- Zlib.initDeflate 7 $ Zlib.WindowBits 31
   let go chunks dlist = case chunks of
         [] -> finalize <$> pop dlist (Zlib.finishDeflate deflate)
         c : cs -> Zlib.feedDeflate deflate c >>= pop dlist >>= go cs
-  deflatedChunks <- go (LBS.toChunks content) id
-  evaluate $ BS.concat deflatedChunks
+  LBS.fromChunks <$> go (LBS.toChunks content) id
   where
     pop dlist !popper =
       popper >>= \case
