@@ -1,28 +1,26 @@
+/* Colors for light color scheme (Default) */
+/* Can be forced with data-theme="light" */
+[data-theme=light],
+:root:not([data-theme=dark]),
+:host:not([data-theme=dark]) {
+  --pico-color: #1f241f;
+  --pico-background-color: #eaeee8;
+}
+
+/* Colors for dark color scheme (Auto) */
+/* Automatically enabled if user has Dark mode enabled */
+@media only screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme]),
+  :host:not([data-theme]) {
+  }
+}
+/* Colors for dark color scheme (Forced) */
+/* Enabled if forced with data-theme="dark" */
+[data-theme=dark] {
+}
+
 :root {
-  --background-color: #eaeee8;
-  --primary-color: #5e7c64;
-  --text-color: #1f241f;
   --card-height: 10rem;
-}
-
-html, body {
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  background: var(--background-color);
-  color: var(--text-color);
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-a {
-  text-decoration: none;
-  color: inherit;
 }
 
 svg.icon {
@@ -30,49 +28,6 @@ svg.icon {
   height: 1em;
   color: inherit;
   vertical-align: bottom;
-}
-
-button {
-  cursor: pointer;
-  background: var(--background-color);
-  height: 3rem;
-  font-size: 1.5rem;
-  padding: 0 1rem;
-  border: 1px solid var(--text-color);
-  border-radius: 0.25rem;
-}
-
-button.small {
-  height: 2rem;
-  font-size: 1rem;
-  padding: 0 0.875rem;
-}
-
-button.primary {
-  --text-color: var(--background-color);
-  background: var(--primary-color);
-  color: var(--background-color);
-}
-
-.container {
-  width: 100%;
-  max-width: 1024px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-}
-
-header.nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid #dde0dd;
-}
-
-section {
-  border-bottom: 1px solid #dde0dd;
-  height: 50vh;
 }
 
 .card {
@@ -87,7 +42,7 @@ section {
   align-items: center;
   justify-content: space-between;
   font-size: 1rem;
-  color: var(--primary-color);
+  color: var(--pico-color);
 
   .rank {
     font-weight: 700;
@@ -107,14 +62,6 @@ section {
   }
 }
 
-#hero {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20ch, auto));
-  gap: 2rem;
-  align-items: center;
-
-}
-
 #hero-deck {
   display: grid;
   grid-template: 1fr / 1fr;
@@ -127,13 +74,3 @@ section {
   }
 }
 
-#play {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2rem;
-  align-items: center;
-
-  * {
-    flex: 1 1 var(20ch);
-  }
-}
