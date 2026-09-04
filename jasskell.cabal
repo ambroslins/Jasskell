@@ -79,6 +79,7 @@ library
     Jasskell.Static
     Jasskell.Table
     Jasskell.Variant
+    Jasskell.View
     Lucid.Htmx
     MyLib
 
@@ -128,6 +129,7 @@ library
     wai-websockets,
     warp,
     websockets,
+    zlib,
 
   -- Directories containing source files.
   hs-source-dirs: src

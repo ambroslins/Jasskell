@@ -9,7 +9,7 @@ module Jasskell.Static
   )
 where
 
-import Control.Exception (throwIO)
+import Codec.Compression.GZip qualified as GZip
 import Control.Monad (guard)
 import Crypto.Hash qualified
 import Crypto.Hash.Algorithms (SHA256)
@@ -20,11 +20,9 @@ import Data.ByteString.Char8 qualified as BS
 import Data.ByteString.Lazy (LazyByteString)
 import Data.ByteString.Lazy qualified as LBS
 import Data.FileEmbed (embedFileRelative)
-import Data.Streaming.Zlib qualified as Zlib
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
 import Network.Wai (rawPathInfo)
-import System.IO.Unsafe (unsafePerformIO)
 import Web.Twain qualified as Twain
 import Web.Twain.Types qualified as Twain
 
@@ -48,18 +46,13 @@ handleAsset asset =
     do
       headers <- Twain.headers
       let acceptGzip = maybe False hasGzip $ lookup Twain.hAcceptEncoding headers
-          (content, encoding) =
-            if acceptGzip
-              then (asset.contentGzip, [(Twain.hContentEncoding, "gzip")])
-              else (asset.content, [])
-      Twain.send $
-        Twain.raw
-          Twain.status200
-          ( (Twain.hCacheControl, "public, max-age=31536000, immutable")
+          responseHeaders =
+            (Twain.hCacheControl, "public, max-age=31536000, immutable")
               : (Twain.hContentType, asset.contentType.header)
-              : encoding
-          )
-          content
+              : [(Twain.hContentEncoding, "gzip") | acceptGzip]
+      Twain.send $
+        Twain.raw Twain.status200 responseHeaders $
+          if acceptGzip then asset.contentGzip else asset.content
 
 hasGzip :: ByteString -> Bool
 hasGzip = any isGzip . BS.split ','
@@ -103,7 +96,7 @@ makeAsset :: ByteString -> ContentType -> [ByteString] -> Asset
 makeAsset name contentType chunks =
   Asset
     { content,
-      contentGzip = gzipDeflate content,
+      contentGzip = GZip.compressWith compressParams content,
       path = decodeUtf8 pathBS,
       pathBS,
       contentType,
@@ -117,6 +110,11 @@ makeAsset name contentType chunks =
     hash =
       Base64URL.encodeUnpadded . convert $
         Crypto.Hash.hashlazy @SHA256 content
+    compressParams =
+      GZip.defaultCompressParams
+        { GZip.compressLevel = GZip.compressionLevel 9,
+          GZip.compressMemoryLevel = GZip.maxMemoryLevel
+        }
 
 matchRawPath :: ByteString -> Twain.PathPattern
 matchRawPath path = Twain.MatchPath $ \req ->
@@ -132,19 +130,3 @@ css = ContentType {extension = "css", header = "text/css; charset=utf-8"}
 
 js :: ContentType
 js = ContentType {extension = "js", header = "application/javascript; charset=utf-8"}
-
-gzipDeflate :: LazyByteString -> LazyByteString
-gzipDeflate content = unsafePerformIO $ do
-  deflate <- Zlib.initDeflate 7 $ Zlib.WindowBits 31
-  let go chunks dlist = case chunks of
-        [] -> finalize <$> pop dlist (Zlib.finishDeflate deflate)
-        c : cs -> Zlib.feedDeflate deflate c >>= pop dlist >>= go cs
-  LBS.fromChunks <$> go (LBS.toChunks content) id
-  where
-    pop dlist !popper =
-      popper >>= \case
-        Zlib.PRDone -> pure dlist
-        Zlib.PRNext bs -> pop (dlist . (bs :)) popper
-        Zlib.PRError e -> throwIO e
-    finalize dlist = dlist []
-{-# NOINLINE gzipDeflate #-}
