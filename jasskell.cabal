@@ -94,6 +94,7 @@ library
     base ^>=4.21.0.0,
     base64-bytestring,
     binary,
+    brotli,
     bytestring,
     containers,
     cookie,

@@ -9,6 +9,7 @@ module Jasskell.Static
   )
 where
 
+import Codec.Compression.Brotli qualified as Brotli
 import Codec.Compression.GZip qualified as GZip
 import Control.Monad (guard)
 import Crypto.Hash qualified
@@ -29,6 +30,7 @@ import Web.Twain.Types qualified as Twain
 data Asset = Asset
   { content :: LazyByteString,
     contentGzip :: ~LazyByteString,
+    contentBrotli :: ~LazyByteString,
     pathBS :: ByteString,
     contentType :: ContentType,
     path :: Text,
@@ -40,39 +42,51 @@ handlers =
   handleAsset style
     . handleAsset script
 
+data EncodingWeights = EncodingWeights {brotli, gzip :: Float}
+  deriving (Show)
+
 handleAsset :: Asset -> Twain.Middleware
 handleAsset asset =
   Twain.get (matchRawPath asset.pathBS) $
     do
       headers <- Twain.headers
-      let acceptGzip = maybe False hasGzip $ lookup Twain.hAcceptEncoding headers
+      let weights = parseAcceptEncoding $ lookup Twain.hAcceptEncoding headers
+          (content, encoding)
+            | weights.brotli > weights.gzip || weights.brotli == 1.0 = (asset.contentBrotli, Just "br")
+            | weights.gzip > 0.0 = (asset.contentGzip, Just "gzip")
+            | otherwise = (asset.content, Nothing)
           responseHeaders =
             (Twain.hCacheControl, "public, max-age=31536000, immutable")
               : (Twain.hContentType, asset.contentType.header)
-              : [(Twain.hContentEncoding, "gzip") | acceptGzip]
-      Twain.send $
-        Twain.raw Twain.status200 responseHeaders $
-          if acceptGzip then asset.contentGzip else asset.content
+              : case encoding of
+                Nothing -> []
+                Just alg -> [(Twain.hContentEncoding, alg)]
+      Twain.send $ Twain.raw Twain.status200 responseHeaders content
 
-hasGzip :: ByteString -> Bool
-hasGzip = any isGzip . BS.split ','
+parseAcceptEncoding :: Maybe ByteString -> EncodingWeights
+parseAcceptEncoding = maybe none (foldl' go none . BS.split ',')
   where
-    isGzip alg = case BS.split ';' alg of
-      ["gzip"] -> True
-      ["gzip", readQuality -> Just q] -> q > 0.0
-      _ -> False
-
-readQuality :: ByteString -> Maybe Double
-readQuality bs = do
-  num <- BS.stripPrefix "q=" $ BS.strip bs
-  (i, rest) <- BS.readInt $ BS.strip num
-  if BS.null rest
-    then pure $ fromIntegral i
-    else do
-      (frac, trailing) <- BS.stripPrefix "." rest >>= BS.readInt
-      guard $ BS.null trailing
-      let !base = 10.0 ^^ BS.length trailing
-      pure $ fromIntegral i + fromIntegral frac / base
+    none = EncodingWeights {gzip = 0.0, brotli = 0.0}
+    go weights encoding = case parseEncodingType $ BS.strip encoding of
+      Just (alg, q)
+        | alg == "br" -> weights {brotli = q}
+        | alg == "gzip" -> weights {gzip = q}
+      _ -> weights
+    parseEncodingType encoding = case BS.split ';' encoding of
+      [alg] -> Just (alg, 1.0)
+      [alg, readQuality -> Just q] -> Just (alg, q)
+      _ -> Nothing
+    readQuality :: ByteString -> Maybe Float
+    readQuality bs = do
+      num <- BS.stripPrefix "q=" $ BS.strip bs
+      (i, rest) <- BS.readInt $ BS.strip num
+      if BS.null rest
+        then pure $ fromIntegral i
+        else do
+          (frac, trailing) <- BS.stripPrefix "." rest >>= BS.readInt
+          guard $ BS.null trailing
+          let !base = 10.0 ^^ BS.length trailing
+          pure $ fromIntegral i + fromIntegral frac / base
 
 style :: Asset
 style =
@@ -96,7 +110,8 @@ makeAsset :: ByteString -> ContentType -> [ByteString] -> Asset
 makeAsset name contentType chunks =
   Asset
     { content,
-      contentGzip = GZip.compressWith compressParams content,
+      contentGzip = GZip.compressWith gzipParams content,
+      contentBrotli = Brotli.compressWith brotliParams content,
       path = decodeUtf8 pathBS,
       pathBS,
       contentType,
@@ -110,10 +125,14 @@ makeAsset name contentType chunks =
     hash =
       Base64URL.encodeUnpadded . convert $
         Crypto.Hash.hashlazy @SHA256 content
-    compressParams =
+    gzipParams =
       GZip.defaultCompressParams
         { GZip.compressLevel = GZip.compressionLevel 9,
           GZip.compressMemoryLevel = GZip.maxMemoryLevel
+        }
+    brotliParams =
+      Brotli.defaultCompressParams
+        { Brotli.compressMode = Brotli.CompressionModeText
         }
 
 matchRawPath :: ByteString -> Twain.PathPattern
