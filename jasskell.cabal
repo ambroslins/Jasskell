@@ -68,18 +68,17 @@ library
     Jasskell.Database
     Jasskell.Database.Migration
     Jasskell.GameState
-    Jasskell.GameView
     Jasskell.Icon
     Jasskell.Id
     Jasskell.Logger
     Jasskell.Main
     Jasskell.Player
+    Jasskell.Render
     Jasskell.Server
     Jasskell.Skeleton
     Jasskell.Static
     Jasskell.Table
     Jasskell.Variant
-    Jasskell.View
     Lucid.Htmx
     MyLib
 

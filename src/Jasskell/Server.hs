@@ -1,22 +1,18 @@
 module Jasskell.Server (application) where
 
-import Control.Monad (when)
 import Control.Monad.Except (ExceptT (..), runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.IO.Unlift (liftIOOp)
 import Control.Monad.Trans (lift)
 import Data.ByteString.Char8 qualified as BS
-import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Jasskell.App (AppT, Env (..), hoistAppT, runAppT)
-import Jasskell.Card (Rank (..), Suit (..))
-import Jasskell.Card qualified as Card
-import Jasskell.Component qualified as Component
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
 import Jasskell.Player (Player)
 import Jasskell.Player qualified as Player
+import Jasskell.Render qualified as Render
 import Jasskell.Skeleton (skeleton)
 import Jasskell.Static qualified as Static
 import Jasskell.Table (Connection (..), TableId, TableManager)
@@ -98,35 +94,7 @@ routes env tm =
 getRoot :: TableManager -> AppT Twain.ResponderM ()
 getRoot _tm = do
   mplayer <- getPlayerSession
-  lift $ Twain.send $ Twain.html $ renderBS $ skeleton "Jasskell" $ do
-    header_ [id_ "top", class_ "container nav"] $ do
-      a_ [href_ "#top"] $
-        span_
-          [style_ "font-size: 2rem; font-weight: 600; letter-spacing: 0.15rem"]
-          "Jass"
-    main_ [] $ do
-      section_ [id_ "hero", class_ "container"] $ do
-        div_ $ do
-          h1_ "Hero Section"
-          a_ [href_ "#play"] $ button_ [class_ "primary"] "Play"
-        div_ [id_ "hero-deck"] $ do
-          Component.card [style_ "transform: rotate(-30deg);"] $ Card.make Bells Six
-          Component.card [style_ "transform: rotate(-15deg);"] $ Card.make Acorns Nine
-          Component.card [style_ "transform: rotate(0deg);"] $ Card.make Leaves Under
-          Component.card [style_ "transform: rotate(15deg);"] $ Card.make Hearts King
-          Component.card [style_ "transform: rotate(30deg);"] $ Card.make Bells Ace
-      section_ [id_ "play", class_ "container"] $ do
-        div_ [id_ "table-list"] $ do
-          h3_ "Table List"
-        form_ [method_ "post", action_ "/tables"] $ do
-          when (isNothing mplayer) $ do
-            label_ $ do
-              "Nickname"
-              input_ [type_ "text", name_ "nickname"]
-          label_ $ do
-            "Private"
-            input_ [type_ "checkbox", name_ "private"]
-          button_ [type_ "submit", class_ "primary"] "Create"
+  lift $ Twain.send $ Twain.html $ renderBS $ Render.index mplayer
 
 postTables :: AppT Twain.ResponderM ()
 postTables = do

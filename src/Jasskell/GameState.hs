@@ -24,8 +24,6 @@ import Data.Vector4 (Index4 (..), Vector4)
 import Data.Vector4 qualified as Vector4
 import Jasskell.Card (Card, CardSet, Suit)
 import Jasskell.Card qualified as Card
-import Jasskell.GameView (GameView (GameView))
-import Jasskell.GameView qualified as GameView
 import Jasskell.Variant (Variant (..))
 import Jasskell.Variant qualified as Variant
 import System.Random qualified as Random
@@ -221,6 +219,16 @@ closeRound game = do
         leader = gs.leader + 1,
         shoved = False
       }
+
+data GameView = GameView
+  { variant :: !(Maybe Variant),
+    hand :: !CardSet,
+    playedCards :: !(Vector4 (Maybe Card)),
+    leader :: !Index4,
+    currentPlayer :: !Index4,
+    shoved :: !Bool
+  }
+  deriving (Show)
 
 view :: Index4 -> GameState -> GameView
 view player gs =
