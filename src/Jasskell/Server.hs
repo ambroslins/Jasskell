@@ -4,6 +4,7 @@ import Control.Monad.Except (ExceptT (..), runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.IO.Unlift (liftIOOp)
 import Control.Monad.Trans (lift)
+import Data.ByteString.Builder (Builder)
 import Data.ByteString.Char8 qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -13,18 +14,15 @@ import Jasskell.Logger
 import Jasskell.Player (Player)
 import Jasskell.Player qualified as Player
 import Jasskell.Render qualified as Render
-import Jasskell.Skeleton (skeleton)
 import Jasskell.Static qualified as Static
 import Jasskell.Table (Connection (..), TableId, TableManager)
 import Jasskell.Table qualified as Table
-import Lucid
-import Lucid.Htmx (hxPost_, hxSwap_, hxTarget_, hxWsConnect_)
 import Network.Wai qualified as Wai
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets qualified as WS
 import UnliftIO.Async qualified as Async
 import UnliftIO.STM (atomically)
-import Web.Cookie (parseCookies)
+import Web.Cookie (SetCookie, parseCookies, renderSetCookieBS)
 import Web.Twain qualified as Twain
 
 application :: Env -> TableManager -> Wai.Application
@@ -91,10 +89,16 @@ routes env tm =
     Twain.post "/tables/:table-id/join" $ runAppT env postTableJoin
   ]
 
+sendHtml :: Twain.ResponseHeaders -> Builder -> AppT Twain.ResponderM ()
+sendHtml headers =
+  lift . Twain.send . Wai.responseBuilder Twain.status200 (ct : headers)
+  where
+    ct = (Twain.hContentType, "text/html; charset=utf-8")
+
 getRoot :: TableManager -> AppT Twain.ResponderM ()
 getRoot _tm = do
   mplayer <- getPlayerSession
-  lift $ Twain.send $ Twain.html $ renderBS $ Render.index mplayer
+  sendHtml [] . Render.page "Jasskell" $ Render.index mplayer
 
 postTables :: AppT Twain.ResponderM ()
 postTables = do
@@ -113,26 +117,9 @@ getTable :: AppT Twain.ResponderM ()
 getTable = do
   tableId <- lift $ Twain.param @TableId "table-id"
   mplayer <- getPlayerSession
-  lift . Twain.send . Twain.html . renderBS . skeleton "Jass Table" $ do
-    h1_ $ toHtml $ "Found table: " <> Id.encodeText tableId
-    main_ $
-      case mplayer of
-        Nothing -> form_
-          [ hxPost_ $ "/tables/" <> Id.encodeText tableId <> "/join",
-            hxTarget_ "main"
-          ]
-          $ do
-            label_ [] $ do
-              "Nickname"
-              input_ [name_ "nickname"]
-            button_ [type_ "submit"] "Submit"
-        Just player -> viewTable player tableId
-
-viewTable :: Player -> TableId -> Html ()
-viewTable player tableId = do
-  h2_ $ toHtml $ "Hello: " <> player.nickname.toText
-  div_ [hxWsConnect_ $ "/tables/" <> Id.encodeText tableId, hxSwap_ "innerHTML", hxTarget_ "this"] $
-    p_ "connecting"
+  sendHtml [] . Render.page "Jaskell" $ case mplayer of
+    Nothing -> Render.tableLogin tableId
+    Just player -> Render.tableConnect player tableId
 
 postTableJoin :: AppT Twain.ResponderM ()
 postTableJoin = do
@@ -143,8 +130,9 @@ postTableJoin = do
     Just _ -> error "TODO: change nickname"
     Nothing -> do
       (player, setCookie) <- Player.newSession nickname
-      lift . Twain.send . Twain.withCookie' setCookie . Twain.html . renderBS $
-        viewTable player tableId
+      sendHtml [setCookieHeader setCookie] $
+        Render.fragment $
+          Render.tableConnect player tableId
 
 getPlayerSession :: AppT Twain.ResponderM (Maybe Player)
 getPlayerSession =
@@ -157,3 +145,6 @@ getPlayerSession =
           lift . Twain.send . Twain.status Twain.status401 . Twain.expireCookie Player.sessionCookieName $
             Twain.text "Unauthorized"
         Right player -> pure $ Just player
+
+setCookieHeader :: SetCookie -> Twain.Header
+setCookieHeader setCookie = ("Set-Cookie", renderSetCookieBS setCookie)

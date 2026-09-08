@@ -194,9 +194,9 @@ tableLoop :: (MonadIO m) => PlayerId -> TBQueue Event -> TVar (IntMap PlayerId C
 tableLoop creator eventQueue clientsVar = go initial
   where
     initial = Waiting $ Vector4.replicate Nothing
-    broadcast clients msg = do
-      IntMap.forWithKey_ clients $ \_userId cs -> case cs of
-        Connected client -> atomically $ STM.writeTMVar client.messageBox msg
+    broadcast clients makeMsg = do
+      IntMap.forWithKey_ clients $ \playerId cs -> case cs of
+        Connected client -> atomically $ STM.writeTMVar client.messageBox (makeMsg playerId)
         Disconnected _ -> pure ()
     go state = do
       event <- atomically $ STM.readTBQueue eventQueue
@@ -214,13 +214,11 @@ tableLoop creator eventQueue clientsVar = go initial
         _ -> pure state
 
       clients <- readTVarIO clientsVar
-      let Waiting seats = s -- TODO: partial
-      broadcast clients $
-        UpdateWaiting $
-          ViewWaiting
-            { seats = (fmap $ SeatView . (.nickname)) <$> seats,
-              yourSeat = Nothing
-            }
+      broadcast clients $ case s of
+        Waiting seats -> \playerId ->
+          let isPlayer = maybe False (\p -> p.id == playerId)
+           in UpdateWaiting $ viewWaiting (Vector4.findIndex isPlayer seats) seats
+        Playing _ _ -> \_playerId -> undefined
       go s
 
 data TableState
@@ -229,15 +227,17 @@ data TableState
   deriving (Show)
 
 data ViewWaiting = ViewWaiting
-  { seats :: Vector4 (Maybe SeatView),
+  { seats :: Vector4 (Maybe Nickname),
     yourSeat :: Maybe Vector4.Index4
   }
   deriving (Show)
 
-data SeatView = SeatView
-  { nickname :: Nickname
-  }
-  deriving (Show)
+viewWaiting :: Maybe Vector4.Index4 -> Vector4 (Maybe Player) -> ViewWaiting
+viewWaiting perspective seats =
+  ViewWaiting
+    { seats = fmap (.nickname) <$> seats,
+      yourSeat = perspective
+    }
 
 data ViewSpectator
   deriving (Show)

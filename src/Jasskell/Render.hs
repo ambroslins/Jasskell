@@ -1,18 +1,33 @@
-module Jasskell.Render where
+module Jasskell.Render
+  ( fragment,
+    page,
+    index,
+    tableLogin,
+    tableConnect,
+  )
+where
 
 import Control.Monad (when)
+import Control.Monad.Identity (runIdentity)
+import Data.ByteString.Builder (Builder)
 import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Jasskell.Card (Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
 import Jasskell.Component qualified as Component
-import Jasskell.Player (Player)
+import Jasskell.Id qualified as Id
+import Jasskell.Player (Nickname (..), Player (..))
 import Jasskell.Static qualified as Static
+import Jasskell.Table (TableId)
 import Lucid
 import Lucid.Base (makeAttributes)
+import Lucid.Htmx
 
-page :: Text -> Html () -> Html ()
-page titel body = do
+fragment :: Html () -> Builder
+fragment = runIdentity . execHtmlT
+
+page :: Text -> Html () -> Builder
+page titel body = runIdentity . execHtmlT $ do
   html_ [lang_ "en", makeAttributes "data-theme" "light"] $ do
     head_ $ do
       meta_ [charset_ "utf-8"]
@@ -27,7 +42,7 @@ page titel body = do
     body_ body
 
 index :: Maybe Player -> Html ()
-index mplayer = page "Jasskell" $ do
+index mplayer = do
   header_ [id_ "top", class_ "container nav"] $ do
     a_ [href_ "#top"] $
       span_
@@ -56,3 +71,26 @@ index mplayer = page "Jasskell" $ do
           "Private"
           input_ [type_ "checkbox", name_ "private"]
         button_ [type_ "submit", class_ "primary"] "Create"
+
+tableLogin :: TableId -> Html ()
+tableLogin tableId =
+  form_
+    [ hxPost_ $ "/tables/" <> Id.encodeText tableId <> "/join",
+      hxTarget_ "this",
+      hxSwap_ "outerHTML"
+    ]
+    $ do
+      label_ [] $ do
+        "Nickname"
+        input_ [name_ "nickname"]
+      button_ [type_ "submit"] "Submit"
+
+tableConnect :: Player -> TableId -> Html ()
+tableConnect player tableId = do
+  h2_ $ toHtml $ "Hello: " <> player.nickname.toText
+  div_
+    [ hxWsConnect_ $ "/tables/" <> Id.encodeText tableId,
+      hxTarget_ "this",
+      hxSwap_ "innerHTML"
+    ]
+    $ p_ "connecting"

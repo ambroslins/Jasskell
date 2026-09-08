@@ -75,7 +75,6 @@ library
     Jasskell.Player
     Jasskell.Render
     Jasskell.Server
-    Jasskell.Skeleton
     Jasskell.Static
     Jasskell.Table
     Jasskell.Variant
