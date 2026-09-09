@@ -102,8 +102,8 @@ script =
   makeAsset
     "script"
     js
-    [ $(embedFileRelative "static/htmx-4.0.0-beta6.min.js"),
-      $(embedFileRelative "static/hx-ws-4.0.0-beta6.min.js")
+    [ $(embedFileRelative "static/htmx-4.0.0.min.js"),
+      $(embedFileRelative "static/hx-ws-4.0.0.min.js")
     ]
 
 makeAsset :: ByteString -> ContentType -> [ByteString] -> Asset
