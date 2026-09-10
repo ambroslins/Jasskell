@@ -4,10 +4,14 @@ import Control.Monad.Except (ExceptT (..), runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.IO.Unlift (liftIOOp)
 import Control.Monad.Trans (lift)
+import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.:))
 import Data.ByteString.Builder (Builder)
+import Data.ByteString.Builder qualified as Builder
 import Data.ByteString.Char8 qualified as BS
+import Data.ByteString.Lazy (LazyByteString)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Vector4 qualified as Vector4
 import Jasskell.App (AppT, Env (..), hoistAppT, runAppT)
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
@@ -15,7 +19,7 @@ import Jasskell.Player (Player)
 import Jasskell.Player qualified as Player
 import Jasskell.Render qualified as Render
 import Jasskell.Static qualified as Static
-import Jasskell.Table (Connection (..), TableId, TableManager)
+import Jasskell.Table (Command (..), Connection (..), Message (..), TableId, TableManager)
 import Jasskell.Table qualified as Table
 import Network.Wai qualified as Wai
 import Network.Wai.Handler.WebSockets (websocketsOr)
@@ -34,6 +38,16 @@ application env tableManager =
     $ foldr ($) (Twain.notFound $ Twain.send $ Twain.html "Not found...")
     $ Static.handlers
       : routes env tableManager
+
+data ClientMessage
+  = Sit Vector4.Index4
+  deriving (Eq, Show)
+
+instance FromJSON ClientMessage where
+  parseJSON = withObject "ClientMessage" $ \o ->
+    o .: "action" >>= \case
+      "sit" -> Sit . fromIntegral @Int <$> o .: "seat"
+      a -> fail $ "unkown action: " <> Text.unpack a
 
 websocketApp :: Env -> TableManager -> WS.ServerApp
 websocketApp env tm pending = rejectOnError . runExceptT . runAppT env $ do
@@ -54,18 +68,26 @@ websocketApp env tm pending = rejectOnError . runExceptT . runAppT env $ do
     Table.join player tableId tm $
       runExceptT . \case
         Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
-        Just Connection {receive} -> lift $ do
-          connection <- liftIO $ WS.acceptRequest pending
-          liftIOOp (WS.withPingThread connection 30 (pure ())) $ do
+        Just tableConn -> lift $ do
+          wsConn <- liftIO $ WS.acceptRequest pending
+          liftIOOp (WS.withPingThread wsConn 30 (pure ())) $ do
             logDebug "accepted websocket request" []
             let sendLoop = do
-                  msg <- liftIO $ WS.receiveData @Text connection
-                  logDebug "got message" ["message" =: msg]
+                  msg <- liftIO $ WS.receiveData @LazyByteString wsConn
+                  case eitherDecode msg of
+                    Left err -> logError "decode websocket message" ["error" =: err]
+                    Right cmd -> do
+                      logDebug "got command" ["message" =: show cmd]
+                      atomically $ tableConn.send cmd
                   sendLoop
                 receiveLoop = do
-                  msg <- atomically receive
-                  liftIO $ WS.sendTextData connection $ Text.show msg
-                  receiveLoop
+                  msg <- atomically tableConn.receive
+                  logDebug "got table message" ["message" =: show msg]
+                  case msg of
+                    ConnectionClosed -> liftIO $ WS.sendTextData @Text wsConn "closed"
+                    UpdateWaiting view -> do
+                      sendBuilder wsConn $ Render.fragment $ Render.viewWaiting view
+                      receiveLoop
             Async.race_ sendLoop receiveLoop
   where
     rejectOnError m =
@@ -80,6 +102,7 @@ websocketApp env tm pending = rejectOnError . runExceptT . runAppT env $ do
     parseSessionCookie headers = do
       cookies <- lookup Twain.hCookie headers
       lookup Player.sessionCookieName $ parseCookies cookies
+    sendBuilder c = liftIO . WS.sendTextData c . Builder.toLazyByteString
 
 routes :: Env -> TableManager -> [Twain.Middleware]
 routes env tm =

@@ -1,5 +1,6 @@
 module Data.Vector4 where
 
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Bits ((.&.))
 import Data.Coerce (coerce)
 import Prelude hiding (replicate)
@@ -15,7 +16,7 @@ instance Applicative Vector4 where
     Vector4 (f x0 y0) (f x1 y1) (f x2 y2) (f x3 y3)
 
 newtype Index4 = Index4 Int
-  deriving (Eq, Ord, Show)
+  deriving newtype (Eq, Ord, Show, ToJSON, FromJSON) -- TODO: handle invariant in json parser
 
 instance Enum Index4 where
   toEnum = Index4 . (.&. 3)
@@ -89,3 +90,9 @@ maxIndexBy cmp (Vector4 x0 x1 x2 x3) =
     maxBy (ix, x) (iy, y) = case cmp x y of
       LT -> (ix, x)
       _ -> (iy, y)
+
+imap :: (Index4 -> a -> b) -> Vector4 a -> Vector4 b
+imap f (Vector4 x0 x1 x2 x3) = Vector4 (f 0 x0) (f 1 x1) (f 2 x2) (f 3 x3)
+
+iforM_ :: (Monad m) => Vector4 a -> (Index4 -> a -> m b) -> m ()
+iforM_ v f = sequence_ $ imap f v

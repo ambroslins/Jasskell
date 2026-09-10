@@ -1,4 +1,5 @@
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Jasskell.Table
   ( TableManager,
@@ -6,14 +7,18 @@ module Jasskell.Table
     TableId,
     Table (id),
     create,
-    Connection (..),
     join,
-    Event (..),
+    Connection (..),
+    Message (..),
+    Command (..),
+    ViewWaiting (..),
   )
 where
 
 import Control.Concurrent.STM qualified as STM
+import Control.Monad (forM_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Aeson.TH qualified
 import Data.Bifunctor (bimap)
 import Data.IntMap.Coercible (IntMap)
 import Data.IntMap.Coercible qualified as IntMap
@@ -62,7 +67,7 @@ newtype TableManager = TableManager
 data Table = Table
   { id :: TableId,
     creator :: PlayerId,
-    eventQueue :: TBQueue Event,
+    inputQueue :: TBQueue Input,
     clients :: TVar (IntMap PlayerId ClientState),
     thread :: Async ()
   }
@@ -77,7 +82,7 @@ withManager f = do
 
 data Client = Client
   { player :: Player,
-    messageBox :: TMVar ServerMessage
+    messageBox :: TMVar Message
   }
   deriving (Eq)
 
@@ -85,21 +90,24 @@ data ClientState
   = Connected Client
   | Disconnected UTCTime
 
-data ServerMessage
+data Message
   = UpdateWaiting ViewWaiting
-  | UpdateSpectator ViewSpectator
-  | UpdatePlayer ViewPlayer
+  | ConnectionClosed
   deriving (Show)
 
 data Connection = Connection
-  { receive :: STM ServerMessage,
-    takeSeat :: Vector4.Index4 -> STM ()
+  { receive :: STM Message,
+    send :: Command -> STM ()
   }
 
-data Event
+data Command
+  = TakeSeat {seat :: Vector4.Index4}
+  deriving (Eq, Show)
+
+data Input
   = PlayerJoined Player
   | PlayerLeft Player
-  | TakeSeat Player Vector4.Index4
+  | PlayerCommand Player Command
   deriving (Eq, Show)
 
 create :: (MonadIO m) => PlayerId -> AppT m TableId
@@ -139,7 +147,7 @@ join player tableId manager handler = do
           connection =
             Connection
               { receive = STM.takeTMVar messageBox,
-                takeSeat = STM.writeTBQueue table.eventQueue . TakeSeat player
+                send = STM.writeTBQueue table.inputQueue . PlayerCommand player
               }
           acquire = atomically $ do
             clients <- STM.readTVar table.clients
@@ -148,7 +156,7 @@ join player tableId manager handler = do
               Just _old -> undefined -- TODO: force leave player
             STM.writeTVar table.clients $!
               IntMap.insert player.id (Connected client) clients
-            STM.writeTBQueue table.eventQueue $ PlayerJoined player
+            STM.writeTBQueue table.inputQueue $ PlayerJoined player
           release _ = do
             lastSeen <- liftIO getCurrentTime
             let disconnect = \case
@@ -157,7 +165,7 @@ join player tableId manager handler = do
             atomically $ do
               STM.modifyTVar' table.clients $
                 IntMap.adjust disconnect player.id
-              STM.writeTBQueue table.eventQueue $ PlayerLeft player
+              STM.writeTBQueue table.inputQueue $ PlayerLeft player
       bracket acquire release $ \() -> handler (Just connection)
 
 spawnTable :: (MonadUnliftIO m) => TableId -> TableManager -> AppT m (Maybe Table)
@@ -165,20 +173,23 @@ spawnTable tableId manager =
   useDB (Hasql.statement tableId selectTableById) >>= \case
     Nothing -> pure Nothing
     Just creator -> do
-      eventQueue <- newTBQueueIO 16
+      inputQueue <- newTBQueueIO 16
       clients <- newTVarIO IntMap.empty
       modifyMVarMasked manager.tables $ \tables ->
         case IntMap.lookup tableId tables of
           Just t -> pure (tables, Just t)
           Nothing -> do
+            let deregister = do
+                  modifyMVar_ manager.tables (evaluate . IntMap.delete tableId)
+                  cs <- readTVarIO clients
+                  forM_ cs $ \case
+                    Connected c -> atomically $ STM.writeTMVar c.messageBox ConnectionClosed
+                    Disconnected _ -> pure ()
             thread <- asyncWithUnmask $ \unmask ->
-              unmask (tableLoop creator eventQueue clients) `finally` deregister
-            let !t = Table {id = tableId, creator, eventQueue, clients, thread}
+              unmask (tableLoop creator inputQueue clients) `finally` deregister
+            let !t = Table {id = tableId, creator, inputQueue, clients, thread}
                 !ts = IntMap.insert tableId t tables
             pure (ts, Just t)
-  where
-    deregister =
-      modifyMVar_ manager.tables (evaluate . IntMap.delete tableId)
 
 selectTableById :: Hasql.Statement TableId (Maybe PlayerId)
 selectTableById =
@@ -190,8 +201,8 @@ selectTableById =
       from tables where table_id = $1::int8
     |]
 
-tableLoop :: (MonadIO m) => PlayerId -> TBQueue Event -> TVar (IntMap PlayerId ClientState) -> AppT m ()
-tableLoop creator eventQueue clientsVar = go initial
+tableLoop :: (MonadIO m) => PlayerId -> TBQueue Input -> TVar (IntMap PlayerId ClientState) -> AppT m ()
+tableLoop creator inputQueue clientsVar = go initial
   where
     initial = Waiting $ Vector4.replicate Nothing
     broadcast clients makeMsg = do
@@ -199,17 +210,17 @@ tableLoop creator eventQueue clientsVar = go initial
         Connected client -> atomically $ STM.writeTMVar client.messageBox (makeMsg playerId)
         Disconnected _ -> pure ()
     go state = do
-      event <- atomically $ STM.readTBQueue eventQueue
-      logDebug "got event" ["event" =: show event]
+      input <- atomically $ STM.readTBQueue inputQueue
+      logDebug "got table input" ["input" =: show input]
       s <- case state of
-        Waiting seats -> case event of
+        Waiting seats -> case input of
           PlayerJoined player
             | player.id == creator && all isNothing seats ->
                 pure $ Waiting $ Vector4.set 0 (Just player) seats
-          TakeSeat player seatIndex
-            | any (maybe False $ \p -> p.id == player.id) seats -> pure state -- TODO: already seated
-            | Just _ <- Vector4.index seatIndex seats -> pure state -- TODO: already taken
-            | otherwise -> pure $ Waiting $ Vector4.set 0 (Just player) seats
+          PlayerCommand player (TakeSeat seatIndex)
+            | any (maybe False $ \p -> p.id == player.id) seats -> error "already seated" -- TODO: already seated
+            | Just _ <- Vector4.index seatIndex seats -> error "already taken" -- TODO: already taken
+            | otherwise -> pure $ Waiting $ Vector4.set seatIndex (Just player) seats
           _ -> pure state
         _ -> pure state
 
@@ -244,3 +255,5 @@ data ViewSpectator
 
 data ViewPlayer
   deriving (Show)
+
+$(Data.Aeson.TH.deriveJSON Data.Aeson.TH.defaultOptions ''Command)

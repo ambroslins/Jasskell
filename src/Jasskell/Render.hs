@@ -4,6 +4,7 @@ module Jasskell.Render
     index,
     tableLogin,
     tableConnect,
+    viewWaiting,
   )
 where
 
@@ -12,13 +13,14 @@ import Control.Monad.Identity (runIdentity)
 import Data.ByteString.Builder (Builder)
 import Data.Maybe (isNothing)
 import Data.Text (Text)
+import Data.Vector4 qualified as Vector4
 import Jasskell.Card (Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
 import Jasskell.Component qualified as Component
 import Jasskell.Id qualified as Id
 import Jasskell.Player (Nickname (..), Player (..))
 import Jasskell.Static qualified as Static
-import Jasskell.Table (TableId)
+import Jasskell.Table (Command (..), TableId, ViewWaiting (..))
 import Lucid
 import Lucid.Base (makeAttributes)
 import Lucid.Htmx
@@ -90,7 +92,17 @@ tableConnect player tableId = do
   h2_ $ toHtml $ "Hello: " <> player.nickname.toText
   div_
     [ hxWsConnect_ $ "/tables/" <> Id.encodeText tableId,
-      hxTarget_ "this",
+      hxTarget_ "#message",
       hxSwap_ "innerHTML"
     ]
+    $ div_ [id_ "message"]
     $ p_ "connecting"
+
+viewWaiting :: ViewWaiting -> Html ()
+viewWaiting view = Vector4.iforM_ view.seats $ \i m -> case m of
+  Nothing -> div_ $ do
+    "Empty"
+    button_ [hxWsSend_, hxVals_ $ TakeSeat i] "Take"
+  Just nickname
+    | Just i == view.yourSeat -> div_ "You"
+    | otherwise -> div_ $ toHtml nickname.toText

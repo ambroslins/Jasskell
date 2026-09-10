@@ -1,8 +1,9 @@
 module Lucid.Htmx where
 
-import Data.Aeson (FromJSON (..), withObject, (.:))
-import Data.HashMap.Strict (HashMap)
+import Data.Aeson qualified as Aeson
+import Data.ByteString qualified as BS
 import Data.Text (Text)
+import Data.Text.Encoding qualified as Text
 import Lucid.Base (Attributes, makeAttributes)
 
 hxGet_ :: Text -> Attributes
@@ -47,16 +48,8 @@ hxExt_ = makeAttributes "hx-ext"
 hxWsConnect_ :: Text -> Attributes
 hxWsConnect_ = makeAttributes "hx-ws:connect"
 
-hxWsSend_ :: Text -> Attributes
-hxWsSend_ = makeAttributes "hx-ws:send"
+hxVals_ :: (Aeson.ToJSON a) => a -> Attributes
+hxVals_ = makeAttributes "hx-vals" . Text.decodeUtf8 . BS.toStrict . Aeson.encode
 
-data WsClientMessage a = WsClientMessage
-  { headers :: HashMap Text Text,
-    body :: a
-  }
-
-instance (FromJSON a) => FromJSON (WsClientMessage a) where
-  parseJSON = withObject "WsClientMessage" $ \o -> do
-    headers <- o .: "headers"
-    body <- o .: "body"
-    pure WsClientMessage {headers, body}
+hxWsSend_ :: Attributes
+hxWsSend_ = makeAttributes "hx-ws:send" ""
