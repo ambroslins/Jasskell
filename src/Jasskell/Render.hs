@@ -134,6 +134,14 @@ playerView view = do
       case Vector4.index i view.game.playedCards of
         Nothing -> div_ "-"
         Just c -> div_ . toHtml $ Card.abbreviation c
+  forM_ (Card.toList view.game.hand) $ \card ->
+    button_
+      [ hxWsSend_,
+        hxVals_ $ PlayCard card,
+        if card `Card.member` view.game.playableCards then mempty else disabled_ "true"
+      ]
+      $ toHtml
+      $ Card.abbreviation card
 
 spectatorView :: SpectatorView -> Html ()
 spectatorView = toHtml . show

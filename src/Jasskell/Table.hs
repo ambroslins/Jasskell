@@ -33,6 +33,7 @@ import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
 import Hasql.TH (maybeStatement, resultlessStatement)
 import Jasskell.App
+import Jasskell.Card (Card)
 import Jasskell.GameState (GameState, GameView)
 import Jasskell.GameState qualified as GameState
 import Jasskell.Id (Id (..))
@@ -104,6 +105,7 @@ data Command
   = TakeSeat Vector4.Index4
   | StartGame
   | DeclareVariant Variant
+  | PlayCard Card
   deriving (Eq, Show)
 
 data Message
@@ -246,6 +248,9 @@ tableLoop creator inputQueue clientsVar = go initial
             | otherwise -> case cmd of
                 DeclareVariant variant -> case GameState.declareVariant variant gameState of
                   Left e -> error $ "declare variant: " <> show e
+                  Right gs -> pure $ Playing seats gs
+                PlayCard card -> case GameState.playCard card gameState of
+                  Left e -> error $ "play card: " <> show e
                   Right gs -> pure $ Playing seats gs
           _ -> pure state
 
