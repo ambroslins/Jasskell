@@ -1,5 +1,8 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Jasskell.Variant (Variant (..), Direction (..), next) where
 
+import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Jasskell.Card.Suit (Suit)
 
 data Variant
@@ -16,3 +19,6 @@ next = \case
   Slalom BottomUp -> Slalom TopDown
   Slalom TopDown -> Slalom BottomUp
   v -> v
+
+$(deriveJSON defaultOptions ''Direction)
+$(deriveJSON defaultOptions ''Variant)

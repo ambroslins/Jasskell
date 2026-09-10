@@ -11,7 +11,9 @@ module Jasskell.Table
     Connection (..),
     Message (..),
     Command (..),
-    ViewWaiting (..),
+    WaitingView (..),
+    PlayerView (..),
+    SpectatorView (..),
   )
 where
 
@@ -31,11 +33,14 @@ import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
 import Hasql.TH (maybeStatement, resultlessStatement)
 import Jasskell.App
-import Jasskell.GameState (GameState)
+import Jasskell.GameState (GameState, GameView)
+import Jasskell.GameState qualified as GameState
 import Jasskell.Id (Id (..))
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
 import Jasskell.Player (Nickname, Player (..), PlayerId)
+import Jasskell.Variant (Variant)
+import System.Random qualified as Random
 import UnliftIO (MonadUnliftIO, bracket, finally)
 import UnliftIO.Async (Async, asyncWithUnmask)
 import UnliftIO.Exception (evaluate)
@@ -90,19 +95,23 @@ data ClientState
   = Connected Client
   | Disconnected UTCTime
 
-data Message
-  = UpdateWaiting ViewWaiting
-  | ConnectionClosed
-  deriving (Show)
-
 data Connection = Connection
   { receive :: STM Message,
     send :: Command -> STM ()
   }
 
 data Command
-  = TakeSeat {seat :: Vector4.Index4}
+  = TakeSeat Vector4.Index4
+  | StartGame
+  | DeclareVariant Variant
   deriving (Eq, Show)
+
+data Message
+  = UpdateWaiting WaitingView
+  | UpdatePlayer PlayerView
+  | UpdateSpectator SpectatorView
+  | ConnectionClosed
+  deriving (Show)
 
 data Input
   = PlayerJoined Player
@@ -217,19 +226,38 @@ tableLoop creator inputQueue clientsVar = go initial
           PlayerJoined player
             | player.id == creator && all isNothing seats ->
                 pure $ Waiting $ Vector4.set 0 (Just player) seats
-          PlayerCommand player (TakeSeat seatIndex)
-            | any (maybe False $ \p -> p.id == player.id) seats -> error "already seated" -- TODO: already seated
-            | Just _ <- Vector4.index seatIndex seats -> error "already taken" -- TODO: already taken
-            | otherwise -> pure $ Waiting $ Vector4.set seatIndex (Just player) seats
+            | otherwise -> pure state
+          PlayerLeft _ -> pure state
+          PlayerCommand player cmd -> case cmd of
+            TakeSeat seat
+              | any (maybe False $ \p -> p.id == player.id) seats -> error "already seated" -- TODO: already seated
+              | Just _ <- Vector4.index seat seats -> error "already taken" -- TODO: already taken
+              | otherwise -> pure $ Waiting $ Vector4.set seat (Just player) seats
+            StartGame -> case sequence seats of
+              Nothing -> error "game not full"
+              Just takenSeats -> do
+                stdGen <- Random.newStdGen
+                let gameState = GameState.new stdGen
+                pure $ Playing takenSeats gameState
+            _ -> pure state -- TODO: invalid command
+        Playing seats gameState -> case input of
+          PlayerCommand player cmd
+            | (Vector4.index (GameState.currentPlayer gameState) seats).id /= player.id -> error "not the current player"
+            | otherwise -> case cmd of
+                DeclareVariant variant -> case GameState.declareVariant variant gameState of
+                  Left e -> error $ "declare variant: " <> show e
+                  Right gs -> pure $ Playing seats gs
           _ -> pure state
-        _ -> pure state
 
       clients <- readTVarIO clientsVar
       broadcast clients $ case s of
         Waiting seats -> \playerId ->
           let isPlayer = maybe False (\p -> p.id == playerId)
-           in UpdateWaiting $ viewWaiting (Vector4.findIndex isPlayer seats) seats
-        Playing _ _ -> \_playerId -> undefined
+           in UpdateWaiting $ waitingViewFor (Vector4.findIndex isPlayer seats) seats
+        Playing seats gameState -> \playerId ->
+          case Vector4.findIndex (\p -> p.id == playerId) seats of
+            Nothing -> UpdateSpectator $ spectatorView seats gameState
+            Just i -> UpdatePlayer $ playerViewFor i seats gameState
       go s
 
 data TableState
@@ -237,23 +265,36 @@ data TableState
   | Playing (Vector4 Player) GameState
   deriving (Show)
 
-data ViewWaiting = ViewWaiting
+data WaitingView = WaitingView
   { seats :: Vector4 (Maybe Nickname),
     yourSeat :: Maybe Vector4.Index4
   }
   deriving (Show)
 
-viewWaiting :: Maybe Vector4.Index4 -> Vector4 (Maybe Player) -> ViewWaiting
-viewWaiting perspective seats =
-  ViewWaiting
+waitingViewFor :: Maybe Vector4.Index4 -> Vector4 (Maybe Player) -> WaitingView
+waitingViewFor perspective seats =
+  WaitingView
     { seats = fmap (.nickname) <$> seats,
       yourSeat = perspective
     }
 
-data ViewSpectator
+data PlayerView = PlayerView
+  { seats :: Vector4 Nickname,
+    game :: GameView
+  }
   deriving (Show)
 
-data ViewPlayer
+playerViewFor :: Vector4.Index4 -> Vector4 Player -> GameState -> PlayerView
+playerViewFor p seats gameState =
+  PlayerView
+    { seats = Vector4.rotate p $ (.nickname) <$> seats,
+      game = GameState.viewFor p gameState
+    }
+
+data SpectatorView = SpectatorView
   deriving (Show)
+
+spectatorView :: Vector4 Player -> GameState -> SpectatorView
+spectatorView _ _ = SpectatorView
 
 $(Data.Aeson.TH.deriveJSON Data.Aeson.TH.defaultOptions ''Command)

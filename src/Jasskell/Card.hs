@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Jasskell.Card
   ( Card,
     Suit (..),
@@ -23,13 +25,16 @@ module Jasskell.Card
     compare,
     max,
     points,
+    abbreviation,
   )
 where
 
+import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.Bits (Bits (complement), clearBit, setBit, shiftL, shiftR, testBit, (.&.), (.|.))
 import Data.Coerce (coerce)
 import Data.List qualified as List
 import Data.Ord (Down (..), comparing)
+import Data.Text (Text)
 import Data.Vector4 (Vector4 (..))
 import Data.Vector4 qualified as Vector4
 import Data.Word (Word32, Word64)
@@ -158,3 +163,25 @@ points v c = case v of
     Over -> 3
     King -> 4
     Ace -> 11
+
+abbreviation :: Card -> Text
+abbreviation c = s <> r
+  where
+    s = case suit c of
+      Bells -> "B"
+      Hearts -> "H"
+      Acorns -> "A"
+      Leaves -> "L"
+    r = case rank c of
+      Six -> "6"
+      Seven -> "7"
+      Eight -> "8"
+      Nine -> "9"
+      Ten -> "10"
+      Under -> "U"
+      Over -> "O"
+      King -> "K"
+      Ace -> "A"
+
+$(deriveJSON defaultOptions ''Rank)
+$(deriveJSON defaultOptions ''Card)

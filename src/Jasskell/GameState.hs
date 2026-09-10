@@ -12,11 +12,13 @@ module Jasskell.GameState
     playCard,
     closeTrick,
     closeRound,
-    view,
+    GameView (..),
+    viewFor,
   )
 where
 
 import Control.Monad (guard)
+import Data.Either (isRight)
 import Data.Foldable (toList)
 import Data.Functor (($>))
 import Data.Maybe (catMaybes, fromMaybe, isJust)
@@ -223,6 +225,7 @@ closeRound game = do
 data GameView = GameView
   { variant :: !(Maybe Variant),
     hand :: !CardSet,
+    playableCards :: !CardSet,
     playedCards :: !(Vector4 (Maybe Card)),
     leader :: !Index4,
     currentPlayer :: !Index4,
@@ -230,13 +233,21 @@ data GameView = GameView
   }
   deriving (Show)
 
-view :: Index4 -> GameState -> GameView
-view player gs =
+viewFor :: Index4 -> GameState -> GameView
+viewFor i gs =
   GameView
     { variant = gs.variant,
-      hand = Vector4.index player gs.hands,
-      playedCards = Vector4.rotate player gs.playedCards,
-      leader = gs.leader - player,
-      currentPlayer = currentPlayer gs - player,
+      hand,
+      playableCards =
+        if current == i
+          then
+            Card.filter (isRight . isCardPlayable gs) hand
+          else Card.empty,
+      playedCards = Vector4.rotate i gs.playedCards,
+      leader = gs.leader - i,
+      currentPlayer = current - i,
       shoved = gs.shoved
     }
+  where
+    hand = Vector4.index i gs.hands
+    current = currentPlayer gs

@@ -49,7 +49,7 @@ hxWsConnect_ :: Text -> Attributes
 hxWsConnect_ = makeAttributes "hx-ws:connect"
 
 hxVals_ :: (Aeson.ToJSON a) => a -> Attributes
-hxVals_ = makeAttributes "hx-vals" . Text.decodeUtf8 . BS.toStrict . Aeson.encode
+hxVals_ = makeAttributes "hx-vals" . Text.decodeUtf8Lenient . BS.toStrict . Aeson.encode
 
 hxWsSend_ :: Attributes
 hxWsSend_ = makeAttributes "hx-ws:send" ""

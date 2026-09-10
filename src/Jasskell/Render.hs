@@ -4,23 +4,33 @@ module Jasskell.Render
     index,
     tableLogin,
     tableConnect,
-    viewWaiting,
+    waitingView,
+    playerView,
+    spectatorView,
   )
 where
 
-import Control.Monad (when)
+import Control.Monad (forM_, when)
 import Control.Monad.Identity (runIdentity)
 import Data.ByteString.Builder (Builder)
-import Data.Maybe (isNothing)
+import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Vector4 qualified as Vector4
 import Jasskell.Card (Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
 import Jasskell.Component qualified as Component
+import Jasskell.GameState (GameView (..))
 import Jasskell.Id qualified as Id
 import Jasskell.Player (Nickname (..), Player (..))
 import Jasskell.Static qualified as Static
-import Jasskell.Table (Command (..), TableId, ViewWaiting (..))
+import Jasskell.Table
+  ( Command (..),
+    PlayerView (..),
+    SpectatorView (..),
+    TableId,
+    WaitingView (..),
+  )
+import Jasskell.Variant (Variant (..))
 import Lucid
 import Lucid.Base (makeAttributes)
 import Lucid.Htmx
@@ -98,11 +108,32 @@ tableConnect player tableId = do
     $ div_ [id_ "message"]
     $ p_ "connecting"
 
-viewWaiting :: ViewWaiting -> Html ()
-viewWaiting view = Vector4.iforM_ view.seats $ \i m -> case m of
-  Nothing -> div_ $ do
-    "Empty"
-    button_ [hxWsSend_, hxVals_ $ TakeSeat i] "Take"
-  Just nickname
-    | Just i == view.yourSeat -> div_ "You"
-    | otherwise -> div_ $ toHtml nickname.toText
+waitingView :: WaitingView -> Html ()
+waitingView view = do
+  Vector4.iforM_ view.seats $ \i m -> case m of
+    Nothing -> div_ $ do
+      "Empty"
+      button_ [hxWsSend_, hxVals_ $ TakeSeat i] "Take"
+    Just nickname
+      | Just i == view.yourSeat -> div_ "You"
+      | otherwise -> div_ $ toHtml nickname.toText
+  when (all isJust view.seats) $ button_ [hxWsSend_, hxVals_ StartGame] "Start"
+
+playerView :: PlayerView -> Html ()
+playerView view = do
+  div_ . toHtml $ show view
+  div_ $ case view.game.variant of
+    Nothing
+      | view.game.currentPlayer == 0 -> forM_ [minBound .. maxBound] $ \s ->
+          button_ [hxWsSend_, hxVals_ $ DeclareVariant $ Trump s] $ toHtml $ show s
+      | otherwise -> "Waiting for leader to declare variant"
+    Just v -> toHtml $ show v
+  Vector4.iforM_ view.seats $ \i nickname ->
+    article_ $ do
+      div_ . toHtml $ if i == 0 then "You" else nickname.toText
+      case Vector4.index i view.game.playedCards of
+        Nothing -> div_ "-"
+        Just c -> div_ . toHtml $ Card.abbreviation c
+
+spectatorView :: SpectatorView -> Html ()
+spectatorView = toHtml . show

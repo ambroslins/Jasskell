@@ -4,14 +4,12 @@ import Control.Monad.Except (ExceptT (..), runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.IO.Unlift (liftIOOp)
 import Control.Monad.Trans (lift)
-import Data.Aeson (FromJSON (..), eitherDecode, withObject, (.:))
+import Data.Aeson (eitherDecode)
 import Data.ByteString.Builder (Builder)
 import Data.ByteString.Builder qualified as Builder
 import Data.ByteString.Char8 qualified as BS
 import Data.ByteString.Lazy (LazyByteString)
 import Data.Text (Text)
-import Data.Text qualified as Text
-import Data.Vector4 qualified as Vector4
 import Jasskell.App (AppT, Env (..), hoistAppT, runAppT)
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
@@ -19,7 +17,7 @@ import Jasskell.Player (Player)
 import Jasskell.Player qualified as Player
 import Jasskell.Render qualified as Render
 import Jasskell.Static qualified as Static
-import Jasskell.Table (Command (..), Connection (..), Message (..), TableId, TableManager)
+import Jasskell.Table (Connection (..), Message (..), TableId, TableManager)
 import Jasskell.Table qualified as Table
 import Network.Wai qualified as Wai
 import Network.Wai.Handler.WebSockets (websocketsOr)
@@ -38,16 +36,6 @@ application env tableManager =
     $ foldr ($) (Twain.notFound $ Twain.send $ Twain.html "Not found...")
     $ Static.handlers
       : routes env tableManager
-
-data ClientMessage
-  = Sit Vector4.Index4
-  deriving (Eq, Show)
-
-instance FromJSON ClientMessage where
-  parseJSON = withObject "ClientMessage" $ \o ->
-    o .: "action" >>= \case
-      "sit" -> Sit . fromIntegral @Int <$> o .: "seat"
-      a -> fail $ "unkown action: " <> Text.unpack a
 
 websocketApp :: Env -> TableManager -> WS.ServerApp
 websocketApp env tm pending = rejectOnError . runExceptT . runAppT env $ do
@@ -86,7 +74,13 @@ websocketApp env tm pending = rejectOnError . runExceptT . runAppT env $ do
                   case msg of
                     ConnectionClosed -> liftIO $ WS.sendTextData @Text wsConn "closed"
                     UpdateWaiting view -> do
-                      sendBuilder wsConn $ Render.fragment $ Render.viewWaiting view
+                      sendBuilder wsConn $ Render.fragment $ Render.waitingView view
+                      receiveLoop
+                    UpdatePlayer view -> do
+                      sendBuilder wsConn $ Render.fragment $ Render.playerView view
+                      receiveLoop
+                    UpdateSpectator view -> do
+                      sendBuilder wsConn $ Render.fragment $ Render.spectatorView view
                       receiveLoop
             Async.race_ sendLoop receiveLoop
   where
