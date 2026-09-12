@@ -128,7 +128,7 @@ data UnplayableCardReason
 isCardPlayable :: GameState -> Card -> Either UnplayableCardReason ()
 isCardPlayable game card
   | not (Card.member card hand) = Left NotInHand
-  | Just _ <- closeTrick game = pure ()
+  | Just _ <- closed = pure ()
   | otherwise = case gs.variant of
       Nothing -> Left NoVariant
       Just v -> case catMaybes $ toList $ Vector4.rotate gs.leader gs.playedCards of
@@ -137,28 +137,28 @@ isCardPlayable game card
           Trump trump
             | trump == lead ->
                 let puur = Card.make trump Card.Under
-                    trumps = Card.filter (isOfSuit trump) hand
+                    trumps = Card.filterSuit trump hand
                  in if Card.suit c == trump
                       || Card.null (Card.delete puur trumps)
                       then Right ()
                       else Left $ FollowTrump trump
             | Card.suit highest == trump && Card.suit c == trump ->
-                if Card.compare lead v c highest == GT
-                  then Right ()
-                  else Left $ Undertrump highest
+                case Card.compare lead v c highest of
+                  GT -> Right ()
+                  _ -> Left $ Undertrump highest
             | Card.suit c == trump -> Right ()
           _
             | Card.suit c == lead || Card.null followers -> Right ()
             | otherwise -> Left $ FollowLead lead
           where
             lead = Card.suit c
-            followers = Card.filter (isOfSuit lead) hand
+            followers = Card.filterSuit lead hand
             highest = foldl' (Card.max lead v) c cs
   where
-    gs = fromMaybe game (closeTrick game)
+    closed = closeTrick game
+    gs = fromMaybe game closed
     current = currentPlayer gs
     hand = Vector4.index current gs.hands
-    isOfSuit s c = Card.suit c == s
 
 playCard :: Card -> GameState -> Either UnplayableCardReason GameState
 playCard card game = case gs.variant of

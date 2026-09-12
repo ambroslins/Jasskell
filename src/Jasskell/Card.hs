@@ -22,6 +22,7 @@ module Jasskell.Card
     toList,
     fromList,
     filter,
+    filterSuit,
     compare,
     max,
     points,
@@ -125,6 +126,9 @@ fromList = foldl' (flip insert) empty
 filter :: (Card -> Bool) -> CardSet -> CardSet
 filter f cs = fromList $ List.filter f $ toList cs
 
+filterSuit :: Suit -> CardSet -> CardSet
+filterSuit s (CardSet cs) = CardSet $ cs .&. (0x01_11_11_11_11 `shiftL` fromEnum s)
+
 compare :: Suit -> Variant -> Card -> Card -> Ordering
 compare lead variant = case variant of
   Trump trump ->
@@ -133,18 +137,20 @@ compare lead variant = case variant of
      in comparing (== puur)
           <> comparing (== nell)
           <> comparing (\c -> suit c == trump)
-          <> compareDirection BottomUp
+          <> compareDirection TopDown
   Direction d -> compareDirection d
   Slalom d -> compareDirection d
   where
     compareDirection d =
       comparing (\c -> suit c == lead)
         <> case d of
-          BottomUp -> comparing rank
-          TopDown -> comparing (Down . rank)
+          TopDown -> comparing rank
+          BottomUp -> comparing (Down . rank)
 
 max :: Suit -> Variant -> Card -> Card -> Card
-max lead variant c1 c2 = if compare lead variant c1 c2 == LT then c2 else c1
+max lead variant c1 c2 = case compare lead variant c1 c2 of
+  LT -> c2
+  _ -> c1
 
 points :: Variant -> Card -> Int
 points v c = case v of

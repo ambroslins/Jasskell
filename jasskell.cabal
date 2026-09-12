@@ -158,8 +158,11 @@ executable jasskell
 test-suite jasskell-test
   -- Import common warning flags.
   import: warnings, extensions
+  ghc-options:
+    -Wno-orphans
   -- Modules included in this executable, other than Main.
-  -- other-modules:
+  other-modules:
+    Test.Card
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
   -- The interface type and version of the test suite.
@@ -172,3 +175,7 @@ test-suite jasskell-test
   build-depends:
     base ^>=4.21.0.0,
     jasskell,
+    tasty,
+    tasty-hunit,
+    tasty-quickcheck,
+    text,
