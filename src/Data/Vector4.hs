@@ -87,9 +87,9 @@ maxIndexBy :: (a -> a -> Ordering) -> Vector4 a -> Index4
 maxIndexBy cmp (Vector4 x0 x1 x2 x3) =
   fst $ (0, x0) `maxBy` (1, x1) `maxBy` (2, x2) `maxBy` (3, x3)
   where
-    maxBy (ix, x) (iy, y) = case cmp x y of
-      LT -> (ix, x)
-      _ -> (iy, y)
+    maxBy a b = case cmp (snd a) (snd b) of
+      LT -> b
+      _ -> a
 
 imap :: (Index4 -> a -> b) -> Vector4 a -> Vector4 b
 imap f (Vector4 x0 x1 x2 x3) = Vector4 (f 0 x0) (f 1 x1) (f 2 x2) (f 3 x3)

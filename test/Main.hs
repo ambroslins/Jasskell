@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Test.Card qualified
+import Test.GameState qualified
 import Test.Tasty
 
 main :: IO ()
@@ -10,5 +11,6 @@ tests :: TestTree
 tests =
   testGroup
     "Tests"
-    [ Test.Card.tests
+    [ Test.Card.tests,
+      Test.GameState.tests
     ]

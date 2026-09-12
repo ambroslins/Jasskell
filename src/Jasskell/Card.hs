@@ -58,7 +58,26 @@ data Rank
   deriving (Eq, Ord, Bounded, Enum, Show)
 
 newtype Card = Card Word32
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show Card where
+  show c = s : r
+    where
+      s = case suit c of
+        Bells -> 'B'
+        Hearts -> 'H'
+        Acorns -> 'A'
+        Leaves -> 'L'
+      r = case rank c of
+        Six -> "6"
+        Seven -> "7"
+        Eight -> "8"
+        Nine -> "9"
+        Ten -> "10"
+        Under -> "U"
+        Over -> "O"
+        King -> "K"
+        Ace -> "A"
 
 suit :: Card -> Suit
 suit (Card w) = toEnum $ fromIntegral (w .&. 3)
@@ -74,7 +93,10 @@ weli :: Card
 weli = make Bells Six
 
 newtype CardSet = CardSet Word64
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show CardSet where
+  show = show . toList
 
 empty :: CardSet
 empty = CardSet 0

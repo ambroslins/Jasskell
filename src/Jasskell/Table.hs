@@ -251,7 +251,9 @@ tableLoop creator inputQueue clientsVar = go initial
                   Right gs -> pure $ Playing seats gs
                 PlayCard card -> case GameState.playCard card gameState of
                   Left e -> error $ "play card: " <> show e
-                  Right gs -> pure $ Playing seats gs
+                  Right gs -> do
+                    logDebug "card played" ["gameState" =: show gs]
+                    pure $ Playing seats gs
           _ -> pure state
 
       clients <- readTVarIO clientsVar

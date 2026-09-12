@@ -79,21 +79,23 @@ new gen =
 
 trickLeader :: GameState -> Index4
 trickLeader gs = case gs.variant of
-  Nothing
-    | gs.shoved -> gs.leader + 2
-    | otherwise -> gs.leader
+  Nothing -> gs.leader
   Just _ -> case gs.tricks of
     [] -> gs.leader
     t : _ -> t.winner
 
 currentPlayer :: GameState -> Index4
-currentPlayer game = case closeTrick game of
-  Just gs -> trickLeader gs
-  Nothing ->
-    foldl'
-      (\i mc -> if isJust mc then i + 1 else i)
-      (trickLeader game)
-      game.playedCards
+currentPlayer game = case game.variant of
+  Nothing
+    | game.shoved -> game.leader + 2
+    | otherwise -> game.leader
+  Just _ -> case closeTrick game of
+    Just gs -> trickLeader gs
+    Nothing ->
+      foldl'
+        (\i mc -> if isJust mc then i + 1 else i)
+        (trickLeader game)
+        game.playedCards
 
 data DeclareError = VariantAlreadyDeclared
   deriving (Eq, Show)
@@ -131,7 +133,7 @@ isCardPlayable game card
   | Just _ <- closed = pure ()
   | otherwise = case gs.variant of
       Nothing -> Left NoVariant
-      Just v -> case catMaybes $ toList $ Vector4.rotate gs.leader gs.playedCards of
+      Just v -> case catMaybes $ toList $ Vector4.rotate leader gs.playedCards of
         [] -> pure ()
         c : cs -> case v of
           Trump trump
@@ -157,6 +159,7 @@ isCardPlayable game card
   where
     closed = closeTrick game
     gs = fromMaybe game closed
+    leader = trickLeader gs
     current = currentPlayer gs
     hand = Vector4.index current gs.hands
 
@@ -176,19 +179,19 @@ playCard card game = case gs.variant of
 closeTrick :: GameState -> Maybe GameState
 closeTrick gs = do
   v <- gs.variant
-  cs <- sequence gs.playedCards
+  cards <- sequence gs.playedCards
   let leader = trickLeader gs
-      leadSuit = Card.suit $ Vector4.index leader cs
+      lead = Card.suit $ Vector4.index leader cards
       trick =
         Trick
           { leader,
-            cards = cs,
+            cards,
             winner =
               leader
                 + Vector4.maxIndexBy
-                  (Card.compare leadSuit v)
-                  (Vector4.rotate leader cs),
-            points = foldl' (\p c -> p + Card.points v c) 0 cs
+                  (Card.compare lead v)
+                  (Vector4.rotate leader cards),
+            points = foldl' (\p c -> p + Card.points v c) 0 cards
           }
   pure
     gs
