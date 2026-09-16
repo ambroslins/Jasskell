@@ -11,6 +11,7 @@ module Jasskell.Card
     CardSet,
     empty,
     null,
+    notNull,
     deck,
     deal,
     insert,
@@ -103,6 +104,9 @@ empty = CardSet 0
 
 null :: CardSet -> Bool
 null = (== empty)
+
+notNull :: CardSet -> Bool
+notNull = not . null
 
 deck :: CardSet
 deck = CardSet 0x0f_ff_ff_ff_ff -- Set the lower 36 bits

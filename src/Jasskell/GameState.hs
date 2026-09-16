@@ -7,24 +7,22 @@ module Jasskell.GameState
     declareVariant,
     ShoveError (..),
     shove,
-    UnplayableCardReason (..),
-    isCardPlayable,
     playCard,
     closeTrick,
     closeRound,
     GameView (..),
+    HandCard (..),
+    CardStatus (..),
+    IllegalCard (..),
     viewFor,
   )
 where
 
 import Control.Monad (guard)
-import Data.Either (isRight)
-import Data.Foldable (toList)
-import Data.Functor (($>))
-import Data.Maybe (catMaybes, fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Vector4 (Index4 (..), Vector4)
 import Data.Vector4 qualified as Vector4
-import Jasskell.Card (Card, CardSet, Suit)
+import Jasskell.Card (Card, CardSet, Rank (..), Suit)
 import Jasskell.Card qualified as Card
 import Jasskell.Variant (Variant (..))
 import Jasskell.Variant qualified as Variant
@@ -78,11 +76,9 @@ new gen =
     (hands, gen') = Card.deal gen
 
 trickLeader :: GameState -> Index4
-trickLeader gs = case gs.variant of
-  Nothing -> gs.leader
-  Just _ -> case gs.tricks of
-    [] -> gs.leader
-    t : _ -> t.winner
+trickLeader gs = case gs.tricks of
+  [] -> gs.leader
+  t : _ -> t.winner
 
 currentPlayer :: GameState -> Index4
 currentPlayer game = case game.variant of
@@ -119,61 +115,82 @@ shove gs = case gs.variant of
     -- We need to update some other field to make the record update unambiguous.
     | otherwise -> Right gs {shoved = True, randomGen = gs.randomGen}
 
-data UnplayableCardReason
-  = NoVariant
+data IllegalCard
+  = VariantNotChosen
+  | NotYourTurn Index4
   | NotInHand
-  | FollowLead Suit
-  | FollowTrump Suit
-  | Undertrump Card
+  | DoesNotFollow Suit
+  | WouldUndertrump Card
   deriving (Eq, Show)
 
-isCardPlayable :: GameState -> Card -> Either UnplayableCardReason ()
-isCardPlayable game card
-  | not (Card.member card hand) = Left NotInHand
-  | Just _ <- closed = pure ()
-  | otherwise = case gs.variant of
-      Nothing -> Left NoVariant
-      Just v -> case catMaybes $ toList $ Vector4.rotate leader gs.playedCards of
-        [] -> pure ()
-        c : cs -> case v of
-          Trump trump
-            | trump == lead ->
-                let puur = Card.make trump Card.Under
-                    trumps = Card.filterSuit trump hand
-                 in if Card.suit c == trump
-                      || Card.null (Card.delete puur trumps)
-                      then Right ()
-                      else Left $ FollowTrump trump
-            | Card.suit highest == trump && Card.suit c == trump ->
-                case Card.compare lead v c highest of
-                  GT -> Right ()
-                  _ -> Left $ Undertrump highest
-            | Card.suit c == trump -> Right ()
-          _
-            | Card.suit c == lead || Card.null followers -> Right ()
-            | otherwise -> Left $ FollowLead lead
-          where
-            lead = Card.suit c
-            followers = Card.filterSuit lead hand
-            highest = foldl' (Card.max lead v) c cs
-  where
-    closed = closeTrick game
-    gs = fromMaybe game closed
-    leader = trickLeader gs
-    current = currentPlayer gs
-    hand = Vector4.index current gs.hands
+data CardStatus = Playable | Illegal IllegalCard
+  deriving (Eq, Show)
 
-playCard :: Card -> GameState -> Either UnplayableCardReason GameState
-playCard card game = case gs.variant of
-  Nothing -> Left NoVariant
-  Just _ ->
-    isCardPlayable gs card
-      $> gs
+-- | The 'CardStatus' for the current player.
+--
+-- The card sets are computed once per 'GameState'. Bind the partial
+-- application to share them across cards:
+--
+-- > let status = currentCardStatus gameState
+-- >  in map status (Card.toList hand)
+--
+-- Callers holding another seat must check turn order themselves; this
+-- function assumes the caller is 'currentPlayer'.
+currentCardStatus :: GameState -> Card -> CardStatus
+currentCardStatus gameState = \card ->
+  if card `Card.member` hand then status card else Illegal NotInHand
+  where
+    !gs = fromMaybe gameState $ closeTrick gameState
+    !hand = Vector4.index (currentPlayer gs) gs.hands
+    !status = case gs.variant of
+      Nothing -> const $ Illegal VariantNotChosen
+      Just variant -> case currentTrick gs of
+        [] -> const Playable
+        c : cs ->
+          \case
+            card
+              | card `Card.member` doesNotFollow -> Illegal $ DoesNotFollow lead
+              | card `Card.member` wouldUndertrump -> Illegal $ WouldUndertrump highest
+              | otherwise -> Playable
+          where
+            !lead = Card.suit c
+            !follower = Card.filterSuit lead hand
+            !obligation = case variant of
+              Trump trump -> Card.delete (Card.make trump Under) follower
+              _ -> follower
+            !trumps = case variant of
+              Trump trump -> Card.filterSuit trump hand
+              _ -> Card.empty
+            !doesNotFollow
+              | Card.null obligation = Card.empty
+              | otherwise = hand `Card.difference` follower `Card.difference` trumps
+            !highest = foldl' (Card.max lead variant) c cs
+            !wouldUndertrump = case variant of
+              Trump trump
+                | lead /= trump && hand /= trumps && Card.suit highest == trump ->
+                    let comp = Card.compare lead variant
+                     in Card.filter (\card -> comp card highest == LT) trumps
+              _ -> Card.empty
+
+currentTrick :: GameState -> [Card]
+currentTrick gameState =
+  foldr go [] $ Vector4.rotate (trickLeader gameState) gameState.playedCards
+  where
+    go mc cs = case mc of
+      Nothing -> []
+      Just c -> c : cs
+
+playCard :: Card -> GameState -> Either IllegalCard GameState
+playCard card gameState = case currentCardStatus gs card of
+  Illegal e -> Left e
+  Playable ->
+    pure $
+      gs
         { playedCards = Vector4.set current (Just card) gs.playedCards,
           hands = Vector4.modify current (Card.delete card) gs.hands
         }
   where
-    gs = fromMaybe game (closeTrick game)
+    gs = fromMaybe gameState (closeTrick gameState)
     current = currentPlayer gs
 
 closeTrick :: GameState -> Maybe GameState
@@ -225,10 +242,12 @@ closeRound game = do
         shoved = False
       }
 
+data HandCard = HandCard {card :: Card, status :: CardStatus}
+  deriving (Show)
+
 data GameView = GameView
   { variant :: !(Maybe Variant),
-    hand :: !CardSet,
-    playableCards :: !CardSet,
+    hand :: ![HandCard],
     playedCards :: !(Vector4 (Maybe Card)),
     leader :: !Index4,
     currentPlayer :: !Index4,
@@ -237,20 +256,19 @@ data GameView = GameView
   deriving (Show)
 
 viewFor :: Index4 -> GameState -> GameView
-viewFor i gs =
+viewFor i gameState =
   GameView
-    { variant = gs.variant,
-      hand,
-      playableCards =
-        if current == i
-          then
-            Card.filter (isRight . isCardPlayable gs) hand
-          else Card.empty,
-      playedCards = Vector4.rotate i gs.playedCards,
-      leader = gs.leader - i,
+    { variant = gameState.variant,
+      hand = map (\card -> HandCard {card, status = statusOf card}) handCards,
+      playedCards = Vector4.rotate i gameState.playedCards,
+      leader = gameState.leader - i,
       currentPlayer = current - i,
-      shoved = gs.shoved
+      shoved = gameState.shoved
     }
   where
-    hand = Vector4.index i gs.hands
-    current = currentPlayer gs
+    handCards = Card.toList $ Vector4.index i gameState.hands
+    current = currentPlayer gameState
+    statusOf =
+      if current == i
+        then currentCardStatus gameState
+        else const $ Illegal $ NotYourTurn $ current - i

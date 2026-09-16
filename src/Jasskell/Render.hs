@@ -19,7 +19,7 @@ import Data.Vector4 qualified as Vector4
 import Jasskell.Card (Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
 import Jasskell.Component qualified as Component
-import Jasskell.GameState (GameView (..))
+import Jasskell.GameState (CardStatus (Playable), GameView (..), HandCard (..))
 import Jasskell.Id qualified as Id
 import Jasskell.Player (Nickname (..), Player (..))
 import Jasskell.Static qualified as Static
@@ -134,11 +134,11 @@ playerView view = do
       case Vector4.index i view.game.playedCards of
         Nothing -> div_ "-"
         Just c -> div_ . toHtml $ Card.abbreviation c
-  forM_ (Card.toList view.game.hand) $ \card ->
+  forM_ view.game.hand $ \HandCard {card, status} ->
     button_
       [ hxWsSend_,
         hxVals_ $ PlayCard card,
-        if card `Card.member` view.game.playableCards then mempty else disabled_ "true"
+        if status == Playable then mempty else disabled_ "true"
       ]
       $ toHtml
       $ Card.abbreviation card
