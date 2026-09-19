@@ -1,8 +1,9 @@
 module Test.Card (tests) where
 
 import Data.Text qualified as Text
-import Jasskell.Card (Card, CardSet, Rank (..), Suit (..))
+import Jasskell.Card (Card, Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
+import Jasskell.Card.Set qualified as CardSet
 import Jasskell.Variant (Direction (..), Variant (..))
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -22,7 +23,7 @@ tests =
       testGroup
         "points"
         [ testProperty "sum is 152" $
-            \var -> sum (map (Card.points var) $ Card.toList Card.deck) === 152
+            \var -> sum (map (Card.points var) $ CardSet.toList CardSet.deck) === 152
         ],
       testGroup
         "compare"
@@ -52,20 +53,6 @@ tests =
                     testIsGT (Card.make Hearts Ten) (Card.make Hearts Nine),
                     testIsGT (Card.make Hearts Eight) (Card.make Acorns Ace)
                   ]
-        ],
-      testGroup
-        "fromList"
-        [ testProperty "all cards are members" $
-            \cs -> let set = Card.fromList cs in all (`Card.member` set) cs,
-          testProperty "inverse of toList" $
-            \cs -> cs === Card.fromList (Card.toList cs)
-        ],
-      testGroup
-        "filterSuit"
-        [ testProperty "equals filter on suit" $
-            \s cs -> Card.filterSuit s cs === Card.filter (\c -> Card.suit c == s) cs,
-          testProperty "all suit" $
-            \s cs -> all (\c -> Card.suit c == s) . Card.toList $ Card.filterSuit s cs
         ]
     ]
 
@@ -77,10 +64,6 @@ instance Arbitrary Suit where
 
 instance Arbitrary Card where
   arbitrary = Card.make <$> arbitrary <*> arbitrary
-
-instance Arbitrary CardSet where
-  arbitrary = Card.fromList <$> arbitrary
-  shrink = fmap Card.fromList . shrink . Card.toList
 
 instance Arbitrary Variant where
   arbitrary =

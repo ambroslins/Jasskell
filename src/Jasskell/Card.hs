@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Jasskell.Card
   ( Card,
     Suit (..),
@@ -8,22 +6,6 @@ module Jasskell.Card
     rank,
     make,
     weli,
-    CardSet,
-    empty,
-    null,
-    notNull,
-    deck,
-    deal,
-    insert,
-    delete,
-    member,
-    union,
-    intersection,
-    difference,
-    toList,
-    fromList,
-    filter,
-    filterSuit,
     compare,
     max,
     points,
@@ -31,129 +13,14 @@ module Jasskell.Card
   )
 where
 
-import Data.Aeson.TH (defaultOptions, deriveJSON)
-import Data.Bits (Bits (complement), clearBit, setBit, shiftL, shiftR, testBit, (.&.), (.|.))
-import Data.Coerce (coerce)
-import Data.List qualified as List
 import Data.Ord (Down (..), comparing)
 import Data.Text (Text)
-import Data.Vector4 (Vector4 (..))
-import Data.Vector4 qualified as Vector4
-import Data.Word (Word32, Word64)
-import Jasskell.Card.Suit (Suit (..))
+import Jasskell.Card.Internal
 import Jasskell.Variant (Direction (..), Variant (..))
-import System.Random (RandomGen)
-import System.Random qualified as Random
 import Prelude hiding (compare, filter, max, null)
-
-data Rank
-  = Six
-  | Seven
-  | Eight
-  | Nine
-  | Ten
-  | Under
-  | Over
-  | King
-  | Ace
-  deriving (Eq, Ord, Bounded, Enum, Show)
-
-newtype Card = Card Word32
-  deriving (Eq)
-
-instance Show Card where
-  show c = s : r
-    where
-      s = case suit c of
-        Bells -> 'B'
-        Hearts -> 'H'
-        Acorns -> 'A'
-        Leaves -> 'L'
-      r = case rank c of
-        Six -> "6"
-        Seven -> "7"
-        Eight -> "8"
-        Nine -> "9"
-        Ten -> "10"
-        Under -> "U"
-        Over -> "O"
-        King -> "K"
-        Ace -> "A"
-
-suit :: Card -> Suit
-suit (Card w) = toEnum $ fromIntegral (w .&. 3)
-
-rank :: Card -> Rank
-rank (Card w) = toEnum $ fromIntegral (w `shiftR` 2)
-
-make :: Suit -> Rank -> Card
-make s r =
-  Card $ fromIntegral $ fromEnum r `shiftL` 2 .|. fromEnum s
 
 weli :: Card
 weli = make Bells Six
-
-newtype CardSet = CardSet Word64
-  deriving (Eq)
-
-instance Show CardSet where
-  show = show . toList
-
-empty :: CardSet
-empty = CardSet 0
-
-null :: CardSet -> Bool
-null = (== empty)
-
-notNull :: CardSet -> Bool
-notNull = not . null
-
-deck :: CardSet
-deck = CardSet 0x0f_ff_ff_ff_ff -- Set the lower 36 bits
-
-deal :: forall g. (RandomGen g) => g -> (Vector4 CardSet, g)
-deal gen =
-  let (cards, gen') = coerce $ Random.uniformShuffleList @g @Word32 [0 .. 35] gen
-   in ( go (Vector4.replicate empty) cards,
-        gen'
-      )
-  where
-    go :: Vector4 CardSet -> [Card] -> Vector4 CardSet
-    go !acc = \case
-      [] -> acc
-      c1 : c2 : c3 : c4 : cs ->
-        go (liftA2 insert (Vector4.make c1 c2 c3 c4) acc) cs
-      _ -> error "Jasskel.Card.deal: not enough cards"
-
-insert :: Card -> CardSet -> CardSet
-insert (Card c) (CardSet cs) = CardSet $ cs `setBit` fromIntegral c
-
-delete :: Card -> CardSet -> CardSet
-delete (Card c) (CardSet cs) = CardSet $ cs `clearBit` fromIntegral c
-
-member :: Card -> CardSet -> Bool
-member (Card c) (CardSet cs) = cs `testBit` fromIntegral c
-
-union :: CardSet -> CardSet -> CardSet
-union (CardSet a) (CardSet b) = CardSet $ a .|. b
-
-intersection :: CardSet -> CardSet -> CardSet
-intersection (CardSet a) (CardSet b) = CardSet $ a .&. b
-
-difference :: CardSet -> CardSet -> CardSet
-difference (CardSet a) (CardSet b) = CardSet $ a .&. complement b
-
-toList :: CardSet -> [Card]
-toList cs = List.filter (`member` cs) $ map Card [0 .. 35]
-
-fromList :: [Card] -> CardSet
-fromList = foldl' (flip insert) empty
-
-filter :: (Card -> Bool) -> CardSet -> CardSet
-filter f cs = fromList $ List.filter f $ toList cs
-
-filterSuit :: Suit -> CardSet -> CardSet
-filterSuit s (CardSet cs) = CardSet $ cs .&. (0x01_11_11_11_11 `shiftL` fromEnum s)
 
 compare :: Suit -> Variant -> Card -> Card -> Ordering
 compare lead variant = case variant of
@@ -214,6 +81,3 @@ abbreviation c = s <> r
       Over -> "O"
       King -> "K"
       Ace -> "A"
-
-$(deriveJSON defaultOptions ''Rank)
-$(deriveJSON defaultOptions ''Card)

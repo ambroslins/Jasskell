@@ -3,7 +3,7 @@
 module Jasskell.Variant (Variant (..), Direction (..), next) where
 
 import Data.Aeson.TH (defaultOptions, deriveJSON)
-import Jasskell.Card.Suit (Suit)
+import Jasskell.Card.Internal (Suit)
 
 data Variant
   = Trump !Suit
