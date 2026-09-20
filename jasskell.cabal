@@ -64,6 +64,7 @@ library
     Jasskell.App
     Jasskell.Card
     Jasskell.Card.Internal
+    Jasskell.Card.Seq
     Jasskell.Card.Set
     Jasskell.Component
     Jasskell.Database
@@ -164,6 +165,7 @@ test-suite jasskell-test
     Test.Card
     Test.CardSet
     Test.GameState
+    Test.CardSeq
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
   -- The interface type and version of the test suite.

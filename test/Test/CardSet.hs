@@ -4,14 +4,13 @@ import Jasskell.Card qualified as Card
 import Jasskell.Card.Set (CardSet)
 import Jasskell.Card.Set qualified as CardSet
 import Test.Card ()
--- orphan instances
 import Test.Tasty
 import Test.Tasty.QuickCheck
 
 tests :: TestTree
 tests =
   testGroup
-    "CardSeq"
+    "CardSet"
     [ testGroup
         "fromList"
         [ testProperty "all cards are members" $

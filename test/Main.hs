@@ -1,7 +1,8 @@
 module Main (main) where
 
 import Test.Card qualified
-import Test.Card qualified as Test.CardSet
+import Test.CardSeq qualified
+import Test.CardSet qualified
 import Test.GameState qualified
 import Test.Tasty
 
@@ -14,5 +15,6 @@ tests =
     "Tests"
     [ Test.Card.tests,
       Test.CardSet.tests,
+      Test.CardSeq.tests,
       Test.GameState.tests
     ]
