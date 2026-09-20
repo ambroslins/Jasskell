@@ -19,11 +19,13 @@ module Jasskell.GameState
 where
 
 import Control.Monad (guard)
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe)
 import Data.Vector4 (Index4 (..), Vector4)
 import Data.Vector4 qualified as Vector4
 import Jasskell.Card (Card, Rank (..), Suit)
 import Jasskell.Card qualified as Card
+import Jasskell.Card.Seq (CardSeq)
+import Jasskell.Card.Seq qualified as CardSeq
 import Jasskell.Card.Set (CardSet)
 import Jasskell.Card.Set qualified as CardSet
 import Jasskell.Variant (Variant (..))
@@ -36,7 +38,7 @@ data GameState = GameState
     rounds :: [Round],
     variant :: Maybe Variant,
     hands :: Vector4 CardSet,
-    playedCards :: Vector4 (Maybe Card),
+    playedCards :: CardSeq,
     tricks :: [Trick],
     leader :: Index4,
     shoved :: Bool
@@ -52,7 +54,7 @@ data Round = Round
   deriving (Show)
 
 data Trick = Trick
-  { cards :: Vector4 Card,
+  { cards :: CardSeq,
     leader :: Index4,
     winner :: Index4,
     points :: Int
@@ -66,7 +68,7 @@ new gen =
       rounds = [],
       variant = Nothing,
       hands,
-      playedCards = Vector4.replicate Nothing,
+      playedCards = CardSeq.empty,
       tricks = [],
       leader =
         fromMaybe
@@ -89,11 +91,7 @@ currentPlayer game = case game.variant of
     | otherwise -> game.leader
   Just _ -> case closeTrick game of
     Just gs -> trickLeader gs
-    Nothing ->
-      foldl'
-        (\i mc -> if isJust mc then i + 1 else i)
-        (trickLeader game)
-        game.playedCards
+    Nothing -> trickLeader game + toEnum (CardSeq.length game.playedCards)
 
 data DeclareError = VariantAlreadyDeclared
   deriving (Eq, Show)
@@ -146,7 +144,7 @@ currentCardStatus gameState = \card ->
     !hand = Vector4.index (currentPlayer gs) gs.hands
     !status = case gs.variant of
       Nothing -> const $ Illegal VariantNotChosen
-      Just variant -> case currentTrick gs of
+      Just variant -> case CardSeq.toList gs.playedCards of
         [] -> const Playable
         c : cs ->
           \case
@@ -174,21 +172,13 @@ currentCardStatus gameState = \card ->
                      in CardSet.filter (\card -> comp card highest == LT) trumps
               _ -> CardSet.empty
 
-currentTrick :: GameState -> [Card]
-currentTrick gameState =
-  foldr go [] $ Vector4.rotate (trickLeader gameState) gameState.playedCards
-  where
-    go mc cs = case mc of
-      Nothing -> []
-      Just c -> c : cs
-
 playCard :: Card -> GameState -> Either IllegalCard GameState
 playCard card gameState = case currentCardStatus gs card of
   Illegal e -> Left e
   Playable ->
     pure $
       gs
-        { playedCards = Vector4.set current (Just card) gs.playedCards,
+        { playedCards = CardSeq.push card gs.playedCards,
           hands = Vector4.modify current (CardSet.delete card) gs.hands
         }
   where
@@ -197,24 +187,23 @@ playCard card gameState = case currentCardStatus gs card of
 
 closeTrick :: GameState -> Maybe GameState
 closeTrick gs = do
+  let cards = gs.playedCards
+  guard $ CardSeq.length cards == 4
   v <- gs.variant
-  cards <- sequence gs.playedCards
   let leader = trickLeader gs
-      lead = Card.suit $ Vector4.index leader cards
+      lead = Card.suit $ CardSeq.unsafeIndex cards (fromEnum leader)
       trick =
         Trick
           { leader,
             cards,
             winner =
               leader
-                + Vector4.maxIndexBy
-                  (Card.compare lead v)
-                  (Vector4.rotate leader cards),
-            points = foldl' (\p c -> p + Card.points v c) 0 cards
+                + fromIntegral (CardSeq.maxIndexBy (Card.compare lead v) cards),
+            points = CardSeq.foldl' (\p c -> p + Card.points v c) 0 cards
           }
   pure
     gs
-      { playedCards = Vector4.replicate Nothing,
+      { playedCards = CardSeq.empty,
         tricks = trick : gs.tricks,
         variant = Just $ Variant.next v
       }
@@ -238,7 +227,7 @@ closeRound game = do
         rounds = round : gs.rounds,
         variant = Nothing,
         hands = newHands,
-        playedCards = Vector4.replicate Nothing,
+        playedCards = CardSeq.empty,
         tricks = [],
         leader = gs.leader + 1,
         shoved = False
@@ -250,8 +239,9 @@ data HandCard = HandCard {card :: Card, status :: CardStatus}
 data GameView = GameView
   { variant :: Maybe Variant,
     hand :: [HandCard],
-    playedCards :: Vector4 (Maybe Card),
+    playedCards :: CardSeq,
     leader :: Index4,
+    trickLeader :: Index4,
     currentPlayer :: Index4,
     shoved :: Bool
   }
@@ -262,8 +252,9 @@ viewFor i gameState =
   GameView
     { variant = gameState.variant,
       hand = map (\card -> HandCard {card, status = statusOf card}) handCards,
-      playedCards = Vector4.rotate i gameState.playedCards,
+      playedCards = gameState.playedCards,
       leader = gameState.leader - i,
+      trickLeader = trickLeader gameState - i,
       currentPlayer = current - i,
       shoved = gameState.shoved
     }

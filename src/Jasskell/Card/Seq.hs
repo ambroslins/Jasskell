@@ -7,9 +7,10 @@ module Jasskell.Card.Seq
     index,
     unsafeIndex,
     foldr,
-    ifoldl',
+    foldl',
     toList,
     fromList,
+    maxIndexBy,
   )
 where
 
@@ -69,14 +70,13 @@ foldr f z cs = go (length cs) (coerce cs)
            in f c $ go (l - 1) (s `Bits.unsafeShiftR` bitsPerCard)
       | otherwise = z
 
-ifoldl' :: (Int -> a -> Card -> a) -> a -> CardSeq -> a
-ifoldl' f z cs = go 0 z (coerce cs)
+foldl' :: (a -> Card -> a) -> a -> CardSeq -> a
+foldl' f z cs = go (length cs) z (coerce cs)
   where
-    len = length cs
-    go !i !x !s
-      | i < len =
+    go !l !x !s
+      | l > 0 =
           let !c = Card $ fromIntegral $ s .&. mask
-           in go (i + 1) (f i x c) (s `Bits.unsafeShiftR` bitsPerCard)
+           in go (l - 1) (f x c) (s `Bits.unsafeShiftR` bitsPerCard)
       | otherwise = x
 
 toList :: CardSeq -> [Card]
@@ -84,3 +84,17 @@ toList = foldr (:) []
 
 fromList :: [Card] -> CardSeq
 fromList = List.foldl' (flip push) empty
+
+maxIndexBy :: (Card -> Card -> Ordering) -> CardSeq -> Int
+maxIndexBy cmp cs
+  | null cs = error "Jasskell.Card.Seq: maxIndexBy on empty"
+  | otherwise = go 1 0 (unsafeIndex cs 0)
+  where
+    len = length cs
+    go !i !mi !mc
+      | i < len =
+          let c = unsafeIndex cs i
+           in case cmp mc c of
+                LT -> go (i + 1) i c
+                _ -> go (i + 1) mi mc
+      | otherwise = mi

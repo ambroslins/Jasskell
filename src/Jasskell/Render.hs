@@ -18,6 +18,7 @@ import Data.Text (Text)
 import Data.Vector4 qualified as Vector4
 import Jasskell.Card (Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
+import Jasskell.Card.Seq qualified as CardSeq
 import Jasskell.Component qualified as Component
 import Jasskell.GameState (CardStatus (Playable), GameView (..), HandCard (..))
 import Jasskell.Id qualified as Id
@@ -131,7 +132,7 @@ playerView view = do
   Vector4.iforM_ view.seats $ \i nickname ->
     article_ $ do
       div_ . toHtml $ if i == 0 then "You" else nickname.toText
-      case Vector4.index i view.game.playedCards of
+      case CardSeq.index view.game.playedCards (fromEnum $ i - view.game.trickLeader) of
         Nothing -> div_ "-"
         Just c -> div_ . toHtml $ Card.abbreviation c
   forM_ view.game.hand $ \HandCard {card, status} ->
