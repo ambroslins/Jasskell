@@ -32,30 +32,30 @@ import System.Random qualified as Random
 import Prelude hiding (round)
 
 data GameState = GameState
-  { randomGen :: !Random.StdGen,
-    rounds :: ![Round],
-    variant :: !(Maybe Variant),
-    hands :: !(Vector4 CardSet),
-    playedCards :: !(Vector4 (Maybe Card)),
-    tricks :: ![Trick],
-    leader :: !Index4,
-    shoved :: !Bool
+  { randomGen :: Random.StdGen,
+    rounds :: [Round],
+    variant :: Maybe Variant,
+    hands :: Vector4 CardSet,
+    playedCards :: Vector4 (Maybe Card),
+    tricks :: [Trick],
+    leader :: Index4,
+    shoved :: Bool
   }
   deriving (Show)
 
 data Round = Round
-  { variant :: !Variant,
-    tricks :: ![Trick],
-    leader :: !Index4,
-    shoved :: !Bool
+  { variant :: Variant,
+    tricks :: [Trick],
+    leader :: Index4,
+    shoved :: Bool
   }
   deriving (Show)
 
 data Trick = Trick
-  { cards :: !(Vector4 Card),
-    leader :: !Index4,
-    winner :: !Index4,
-    points :: !Int
+  { cards :: Vector4 Card,
+    leader :: Index4,
+    winner :: Index4,
+    points :: Int
   }
   deriving (Show)
 
@@ -248,12 +248,12 @@ data HandCard = HandCard {card :: Card, status :: CardStatus}
   deriving (Show)
 
 data GameView = GameView
-  { variant :: !(Maybe Variant),
-    hand :: ![HandCard],
-    playedCards :: !(Vector4 (Maybe Card)),
-    leader :: !Index4,
-    currentPlayer :: !Index4,
-    shoved :: !Bool
+  { variant :: Maybe Variant,
+    hand :: [HandCard],
+    playedCards :: Vector4 (Maybe Card),
+    leader :: Index4,
+    currentPlayer :: Index4,
+    shoved :: Bool
   }
   deriving (Show)
 

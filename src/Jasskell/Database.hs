@@ -12,12 +12,12 @@ import Pqi.Ffi qualified
 import UnliftIO (bracket)
 
 data Config = Config
-  { host :: !Text,
-    port :: !Word16,
-    user :: !Text,
-    password :: !Text,
-    name :: !Text,
-    poolSize :: !Int
+  { host :: Text,
+    port :: Word16,
+    user :: Text,
+    password :: Text,
+    name :: Text,
+    poolSize :: Int
   }
   deriving (Show)
 

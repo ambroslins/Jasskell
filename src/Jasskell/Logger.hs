@@ -56,7 +56,7 @@ newtype Logger = Logger (Level -> Text -> [Pair] -> IO ())
 data Level = Debug | Info | Warning | Error
   deriving (Eq, Show, Ord)
 
-data Pair = Pair {key :: !Text, value :: !Builder}
+data Pair = Pair {key :: Text, value :: Builder}
   deriving (Show)
 
 infix 6 =:

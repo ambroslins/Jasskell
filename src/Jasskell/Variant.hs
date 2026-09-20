@@ -6,9 +6,9 @@ import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Jasskell.Card.Internal (Suit)
 
 data Variant
-  = Trump !Suit
-  | Direction !Direction
-  | Slalom !Direction
+  = Trump Suit
+  | Direction Direction
+  | Slalom Direction
   deriving (Eq, Show)
 
 data Direction = BottomUp | TopDown
