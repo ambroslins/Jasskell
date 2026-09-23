@@ -11,6 +11,8 @@ module Jasskell.Card.Set
     union,
     intersection,
     difference,
+    foldr,
+    foldl',
     toList,
     fromList,
     filter,
@@ -18,7 +20,8 @@ module Jasskell.Card.Set
   )
 where
 
-import Data.Bits (clearBit, complement, setBit, testBit, (.&.), (.|.))
+import Data.Bits ((.&.), (.|.))
+import Data.Bits qualified as Bits
 import Data.Coerce (coerce)
 import Data.List qualified as List
 import Data.Vector4 (Vector4 (..))
@@ -26,7 +29,7 @@ import Data.Vector4 qualified as Vector4
 import Jasskell.Card.Internal
 import System.Random (RandomGen)
 import System.Random qualified as Random
-import Prelude hiding (compare, filter, max, null)
+import Prelude hiding (compare, filter, foldl', foldr, null)
 
 null :: CardSet -> Bool
 null = (== empty)
@@ -49,13 +52,13 @@ deal gen =
       _ -> error "Jasskel.Card.deal: not enough cards"
 
 insert :: Card -> CardSet -> CardSet
-insert (Card c) (CardSet cs) = CardSet $ cs `setBit` fromIntegral c
+insert (Card c) (CardSet cs) = CardSet $ cs `Bits.setBit` fromIntegral c
 
 delete :: Card -> CardSet -> CardSet
-delete (Card c) (CardSet cs) = CardSet $ cs `clearBit` fromIntegral c
+delete (Card c) (CardSet cs) = CardSet $ cs `Bits.clearBit` fromIntegral c
 
 member :: Card -> CardSet -> Bool
-member (Card c) (CardSet cs) = cs `testBit` fromIntegral c
+member (Card c) (CardSet cs) = cs `Bits.testBit` fromIntegral c
 
 union :: CardSet -> CardSet -> CardSet
 union (CardSet a) (CardSet b) = CardSet $ a .|. b
@@ -64,16 +67,34 @@ intersection :: CardSet -> CardSet -> CardSet
 intersection (CardSet a) (CardSet b) = CardSet $ a .&. b
 
 difference :: CardSet -> CardSet -> CardSet
-difference (CardSet a) (CardSet b) = CardSet $ a .&. complement b
+difference (CardSet a) (CardSet b) = CardSet $ a .&. Bits.complement b
+
+foldr :: (Card -> a -> a) -> a -> CardSet -> a
+foldr f z (CardSet w) = go w
+  where
+    go !cs
+      | cs == 0 = z
+      | otherwise =
+          let !c = Card $ Bits.countTrailingZeros cs
+           in f c $ go (cs .&. (cs - 1))
+
+foldl' :: (a -> Card -> a) -> a -> CardSet -> a
+foldl' f z (CardSet w) = go z w
+  where
+    go !x !cs
+      | cs == 0 = x
+      | otherwise =
+          let !c = Card $ Bits.countTrailingZeros cs
+           in go (f x c) (cs .&. (cs - 1))
 
 toList :: CardSet -> [Card]
-toList cs = List.filter (`member` cs) $ map Card [0 .. 35]
+toList = foldr (:) []
 
 fromList :: [Card] -> CardSet
-fromList = foldl' (flip insert) empty
+fromList = List.foldl' (flip insert) empty
 
 filter :: (Card -> Bool) -> CardSet -> CardSet
-filter f cs = fromList $ List.filter f $ toList cs
+filter p = foldl' (\cs c -> if p c then insert c cs else cs) empty
 
 filterSuit :: Suit -> CardSet -> CardSet
 filterSuit s (CardSet cs) = CardSet $ cs .&. suitMask s
