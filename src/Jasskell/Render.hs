@@ -16,11 +16,11 @@ import Data.ByteString.Builder (Builder)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Vector4 qualified as Vector4
-import Jasskell.Card (Rank (..), Suit (..))
+import Jasskell.Card (Card, Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
 import Jasskell.Card.Seq qualified as CardSeq
-import Jasskell.Component qualified as Component
 import Jasskell.GameState (CardStatus (Playable), GameView (..), HandCard (..))
+import Jasskell.Icon qualified as Icon
 import Jasskell.Id qualified as Id
 import Jasskell.Player (Nickname (..), Player (..))
 import Jasskell.Static qualified as Static
@@ -67,11 +67,11 @@ index mplayer = do
         h1_ "Hero Section"
         a_ [href_ "#play"] $ button_ [class_ "primary"] "Play"
       div_ [id_ "hero-deck"] $ do
-        Component.card [style_ "transform: rotate(-30deg);"] $ Card.make Bells Six
-        Component.card [style_ "transform: rotate(-15deg);"] $ Card.make Acorns Nine
-        Component.card [style_ "transform: rotate(0deg);"] $ Card.make Leaves Under
-        Component.card [style_ "transform: rotate(15deg);"] $ Card.make Hearts King
-        Component.card [style_ "transform: rotate(30deg);"] $ Card.make Bells Ace
+        card [style_ "transform: rotate(-30deg);"] $ Card.make Bells Six
+        card [style_ "transform: rotate(-15deg);"] $ Card.make Acorns Nine
+        card [style_ "transform: rotate(0deg);"] $ Card.make Leaves Under
+        card [style_ "transform: rotate(15deg);"] $ Card.make Hearts King
+        card [style_ "transform: rotate(30deg);"] $ Card.make Bells Ace
     section_ [id_ "play", class_ "container"] $ do
       div_ [id_ "table-list"] $ do
         h3_ "Table List"
@@ -135,14 +135,36 @@ playerView view = do
       case CardSeq.index view.game.playedCards (fromEnum $ i - view.game.trickLeader) of
         Nothing -> div_ "-"
         Just c -> div_ . toHtml $ Card.abbreviation c
-  forM_ view.game.hand $ \HandCard {card, status} ->
+  forM_ view.game.hand $ \handCard ->
     button_
       [ hxWsSend_,
-        hxVals_ $ PlayCard card,
-        if status == Playable then mempty else disabled_ "true"
+        hxVals_ $ PlayCard handCard.card,
+        if handCard.status == Playable then mempty else disabled_ "true"
       ]
       $ toHtml
-      $ Card.abbreviation card
+      $ Card.abbreviation handCard.card
 
 spectatorView :: SpectatorView -> Html ()
 spectatorView = toHtml . show
+
+card :: [Attributes] -> Card -> Html ()
+card as c = div_ (class_ "card" : as) $ do
+  span_ [class_ "rank top"] $ rank <> suit
+  span_ [class_ "suit"] suit
+  span_ [class_ "rank bottom"] $ rank <> suit
+  where
+    suit = case Card.suit c of
+      Bells -> Icon.bell []
+      Acorns -> Icon.acorn []
+      Leaves -> Icon.leaf []
+      Hearts -> Icon.heart []
+    rank = case Card.rank c of
+      Six -> "6"
+      Seven -> "7"
+      Eight -> "8"
+      Nine -> "9"
+      Ten -> "10"
+      Under -> "U"
+      Over -> "O"
+      King -> "K"
+      Ace -> "A"
