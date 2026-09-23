@@ -23,9 +23,10 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.FileEmbed (embedFileRelative)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
-import Network.Wai (rawPathInfo)
-import Web.Twain qualified as Twain
-import Web.Twain.Types qualified as Twain
+import Network.HTTP.Types (hCacheControl, hContentType)
+import Network.HTTP.Types.Header (hAcceptEncoding, hContentEncoding)
+import Network.HTTP.Types.Status (status200)
+import Network.Wai qualified as Wai
 
 data Asset = Asset
   { content :: LazyByteString,
@@ -37,7 +38,7 @@ data Asset = Asset
     sha256Base64 :: Text
   }
 
-handlers :: Twain.Middleware
+handlers :: Wai.Middleware
 handlers =
   handleAsset style
     . handleAsset script
@@ -45,23 +46,24 @@ handlers =
 data EncodingWeights = EncodingWeights {brotli, gzip :: Float}
   deriving (Show)
 
-handleAsset :: Asset -> Twain.Middleware
-handleAsset asset =
-  Twain.get (matchRawPath asset.pathBS) $
-    do
-      headers <- Twain.headers
-      let weights = parseAcceptEncoding $ lookup Twain.hAcceptEncoding headers
-          (content, encoding)
-            | weights.brotli > weights.gzip || weights.brotli == 1.0 = (asset.contentBrotli, Just "br")
-            | weights.gzip > 0.0 = (asset.contentGzip, Just "gzip")
-            | otherwise = (asset.content, Nothing)
-          responseHeaders =
-            (Twain.hCacheControl, "public, max-age=31536000, immutable")
-              : (Twain.hContentType, asset.contentType.header)
-              : case encoding of
-                Nothing -> []
-                Just alg -> [(Twain.hContentEncoding, alg)]
-      Twain.send $ Twain.raw Twain.status200 responseHeaders content
+handleAsset :: Asset -> Wai.Middleware
+handleAsset asset next request respond
+  | Wai.rawPathInfo request == asset.pathBS =
+      respond $ Wai.responseLBS status200 responseHeaders content
+  | otherwise = next request respond
+  where
+    requestHeaders = Wai.requestHeaders request
+    weights = parseAcceptEncoding $ lookup hAcceptEncoding requestHeaders
+    (content, encoding)
+      | weights.gzip > weights.brotli = (asset.contentGzip, Just "gzip")
+      | weights.brotli > 0.0 = (asset.contentBrotli, Just "br")
+      | otherwise = (asset.content, Nothing)
+    responseHeaders =
+      (hCacheControl, "public, max-age=31536000, immutable")
+        : (hContentType, asset.contentType.header)
+        : case encoding of
+          Nothing -> []
+          Just alg -> [(hContentEncoding, alg)]
 
 parseAcceptEncoding :: Maybe ByteString -> EncodingWeights
 parseAcceptEncoding = maybe none (foldl' go none . BS.split ',')
@@ -134,10 +136,6 @@ makeAsset name contentType chunks =
       Brotli.defaultCompressParams
         { Brotli.compressMode = Brotli.CompressionModeText
         }
-
-matchRawPath :: ByteString -> Twain.PathPattern
-matchRawPath path = Twain.MatchPath $ \req ->
-  if path == rawPathInfo req then Just [] else Nothing
 
 data ContentType = ContentType
   { extension :: ByteString,
