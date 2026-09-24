@@ -76,6 +76,17 @@ migrations =
         created_by int8 not null, -- references players
         created_at timestamptz not null default now()
       )
+      """,
+    Migration
+      "create seats"
+      """
+      create table seats (
+        table_id int8 not null references tables(table_id),
+        index int4 not null,
+        player_id int8 not null, -- references players
+
+        primary key (table_id, index)
+      )
       """
   ]
 

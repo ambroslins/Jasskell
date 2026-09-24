@@ -1,3 +1,5 @@
+{-# LANGUAGE DerivingVia #-}
+
 module Jasskell.Id
   ( Id (..),
     toInt,

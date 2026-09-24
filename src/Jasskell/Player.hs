@@ -2,8 +2,8 @@
 
 module Jasskell.Player
   ( PlayerId,
-    Nickname (toText),
-    Player (id, nickname),
+    Nickname (..),
+    Player (..),
     SessionError (..),
     sessionCookieName,
     newSession,
