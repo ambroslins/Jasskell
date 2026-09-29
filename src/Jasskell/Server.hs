@@ -28,6 +28,7 @@ import Network.HTTP.Types qualified as HTTP
 import Network.Wai qualified as Wai
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets qualified as WS
+import System.Random qualified as Random
 import UnliftIO.Async qualified as Async
 import UnliftIO.STM (atomically)
 import Web.Cookie (SetCookie, parseCookies, renderSetCookieBS)
@@ -125,7 +126,8 @@ responseHtml headers =
 getRoot :: TableManager -> Wai.Request -> AppT IO Wai.Response
 getRoot _tm request = do
   mplayer <- getPlayerSession request
-  pure . responseHtml [] . Render.page "Jasskell" $ Render.index mplayer
+  stdGen <- Random.newStdGen
+  pure . responseHtml [] . Render.page "Jasskell" $ Render.index stdGen mplayer
 
 postTables :: Wai.Request -> AppT IO Wai.Response
 postTables request = do

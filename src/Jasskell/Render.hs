@@ -16,10 +16,12 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
+import Data.Vector.Unboxed qualified as VU
 import Data.Vector4 qualified as Vector4
 import Jasskell.Card (Card, Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
 import Jasskell.Card.Seq qualified as CardSeq
+import Jasskell.Card.Set qualified as CardSet
 import Jasskell.GameState (CardStatus (Playable), GameView (..), HandCard (..))
 import Jasskell.Id qualified as Id
 import Jasskell.Player (Nickname (..), Player (..))
@@ -35,6 +37,7 @@ import Jasskell.Variant (Variant (..))
 import Lucid
 import Lucid.Base (makeAttributes, makeElement)
 import Lucid.Htmx
+import System.Random qualified as Random
 
 fragment :: Html () -> Builder
 fragment = runIdentity . execHtmlT
@@ -56,8 +59,8 @@ page titel body = runIdentity . execHtmlT $ do
       svgSymbols
       body
 
-index :: Maybe Player -> Html ()
-index mplayer = do
+index :: Random.StdGen -> Maybe Player -> Html ()
+index gen mplayer = do
   header_ [id_ "hero", class_ "container grid"] $ do
     div_ $ do
       hgroup_ $ do
@@ -66,11 +69,8 @@ index mplayer = do
       p_ "More about rules and stuff"
       a_ [href_ "#play", role_ "button"] "Play"
 
-    div_ [id_ "hero-deck"] $ do
-      card [] $ Card.make Bells Six
-      card [] $ Card.make Acorns Nine
-      card [] $ Card.make Hearts King
-      card [] $ Card.make Bells Ace
+    div_ [id_ "hero-deck"] . VU.foldMap (card []) . VU.take 4 . fst $
+      CardSet.shuffle gen
 
   main_ [id_ "play", class_ "container grid"] $ do
     section_ $ do

@@ -19,7 +19,9 @@ module Jasskell.GameState
 where
 
 import Control.Monad (guard)
+import Data.Bifunctor (first)
 import Data.Maybe (fromMaybe)
+import Data.Vector.Unboxed qualified as VU
 import Data.Vector4 (Index4 (..), Vector4)
 import Data.Vector4 qualified as Vector4
 import Jasskell.Card (Card, Rank (..), Suit)
@@ -77,7 +79,15 @@ new gen =
       shoved = False
     }
   where
-    (hands, gen') = CardSet.deal gen
+    (hands, gen') = deal gen
+
+deal :: Random.StdGen -> (Vector4 CardSet, Random.StdGen)
+deal = first split . CardSet.shuffle
+  where
+    split v =
+      Vector4.generate $ \i ->
+        VU.foldl' (flip CardSet.insert) CardSet.empty $
+          VU.slice (fromEnum i * 9) 9 v
 
 trickLeader :: GameState -> Index4
 trickLeader gs = case gs.tricks of
@@ -220,7 +230,7 @@ closeRound game = do
             variant = v,
             tricks = reverse gs.tricks
           }
-      (newHands, gen) = CardSet.deal gs.randomGen
+      (newHands, gen) = deal gs.randomGen
   pure
     GameState
       { randomGen = gen,

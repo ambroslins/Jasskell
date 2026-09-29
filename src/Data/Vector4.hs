@@ -43,6 +43,9 @@ make = Vector4
 replicate :: a -> Vector4 a
 replicate x = Vector4 x x x x
 
+generate :: (Index4 -> a) -> Vector4 a
+generate f = Vector4 (f 0) (f 1) (f 2) (f 3)
+
 index :: Index4 -> Vector4 a -> a
 index (Index4 i) (Vector4 x0 x1 x2 x3) = case i of
   0 -> x0

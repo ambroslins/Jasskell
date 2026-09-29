@@ -3,8 +3,9 @@ module Jasskell.Card.Set
     empty,
     null,
     notNull,
+    size,
     deck,
-    deal,
+    shuffle,
     insert,
     delete,
     member,
@@ -20,15 +21,15 @@ module Jasskell.Card.Set
   )
 where
 
+import Control.Monad (forM_)
 import Data.Bits ((.&.), (.|.))
 import Data.Bits qualified as Bits
-import Data.Coerce (coerce)
 import Data.List qualified as List
-import Data.Vector4 (Vector4 (..))
-import Data.Vector4 qualified as Vector4
+import Data.Vector.Unboxed qualified as VU
+import Data.Vector.Unboxed.Mutable qualified as VUM
 import Jasskell.Card.Internal
 import System.Random (RandomGen)
-import System.Random qualified as Random
+import System.Random.Stateful qualified as Random
 import Prelude hiding (compare, filter, foldl', foldr, null)
 
 null :: CardSet -> Bool
@@ -37,19 +38,16 @@ null = (== empty)
 notNull :: CardSet -> Bool
 notNull = not . null
 
-deal :: forall g. (RandomGen g) => g -> (Vector4 CardSet, g)
-deal gen =
-  let (cards, gen') = coerce $ Random.uniformShuffleList @g @Int [0 .. 35] gen
-   in ( go (Vector4.replicate empty) cards,
-        gen'
-      )
-  where
-    go :: Vector4 CardSet -> [Card] -> Vector4 CardSet
-    go !acc = \case
-      [] -> acc
-      c1 : c2 : c3 : c4 : cs ->
-        go (liftA2 insert (Vector4.make c1 c2 c3 c4) acc) cs
-      _ -> error "Jasskel.Card.deal: not enough cards"
+size :: CardSet -> Int
+size (CardSet cs) = Bits.popCount cs
+
+shuffle :: forall g. (RandomGen g) => g -> (VU.Vector Card, g)
+shuffle gen = Random.runSTGen gen $ \stGen -> do
+  v <- VUM.generate 36 Card
+  forM_ [35, 34 .. 1] $ \i -> do
+    j <- Random.uniformRM (0, i) stGen
+    VUM.swap v i j
+  VU.unsafeFreeze v
 
 insert :: Card -> CardSet -> CardSet
 insert (Card c) (CardSet cs) = CardSet $ cs `Bits.setBit` fromIntegral c
