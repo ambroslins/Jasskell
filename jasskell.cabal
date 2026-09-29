@@ -122,7 +122,6 @@ library
     unliftio,
     unliftio-core,
     unordered-containers,
-    uuid,
     vector,
     wai,
     wai-websockets,
