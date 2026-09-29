@@ -114,7 +114,7 @@ routes env tm request respond = respond <=< runAppT env $
     method = Wai.requestMethod request
 
 notFound :: Wai.Response
-notFound = Wai.responseLBS HTTP.status200 [] "Not Found"
+notFound = Wai.responseLBS HTTP.status404 [] "Not Found"
 
 responseHtml :: HTTP.ResponseHeaders -> Builder -> Wai.Response
 responseHtml headers =
