@@ -70,7 +70,6 @@ library
     Jasskell.Database.Migration
     Jasskell.Form
     Jasskell.GameState
-    Jasskell.Icon
     Jasskell.Id
     Jasskell.Logger
     Jasskell.Main

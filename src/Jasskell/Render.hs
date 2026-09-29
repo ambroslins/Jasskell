@@ -12,6 +12,7 @@ where
 
 import Control.Monad (forM_, when)
 import Control.Monad.Identity (runIdentity)
+import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
@@ -20,7 +21,6 @@ import Jasskell.Card (Card, Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
 import Jasskell.Card.Seq qualified as CardSeq
 import Jasskell.GameState (CardStatus (Playable), GameView (..), HandCard (..))
-import Jasskell.Icon qualified as Icon
 import Jasskell.Id qualified as Id
 import Jasskell.Player (Nickname (..), Player (..))
 import Jasskell.Static qualified as Static
@@ -33,7 +33,7 @@ import Jasskell.Table
   )
 import Jasskell.Variant (Variant (..))
 import Lucid
-import Lucid.Base (makeAttributes)
+import Lucid.Base (makeAttributes, makeElement)
 import Lucid.Htmx
 
 fragment :: Html () -> Builder
@@ -52,7 +52,9 @@ page titel body = runIdentity . execHtmlT $ do
           integrity_ $ "sha256-" <> Static.script.sha256Base64
         ]
         ("" :: String)
-    body_ body
+    body_ $ do
+      svgSymbols
+      body
 
 index :: Maybe Player -> Html ()
 index mplayer = do
@@ -154,10 +156,10 @@ card as c = div_ (class_ "card" : as) $ do
   span_ [class_ "rank bottom"] $ rank <> suit
   where
     suit = case Card.suit c of
-      Bells -> Icon.bell []
-      Acorns -> Icon.acorn []
-      Leaves -> Icon.leaf []
-      Hearts -> Icon.heart []
+      Bells -> bell []
+      Acorns -> acorn []
+      Leaves -> leaf []
+      Hearts -> heart []
     rank = case Card.rank c of
       Six -> "6"
       Seven -> "7"
@@ -168,3 +170,47 @@ card as c = div_ (class_ "card" : as) $ do
       Over -> "O"
       King -> "K"
       Ace -> "A"
+
+bell, acorn, heart, leaf :: [Attributes] -> Html ()
+bell = symbolIcon "#bell"
+acorn = symbolIcon "#acorn"
+heart = symbolIcon "#heart"
+leaf = symbolIcon "#leaf"
+
+symbolIcon :: Text -> [Attributes] -> Html ()
+symbolIcon ref as =
+  svg_ (class_ "icon" : as) $
+    makeElement "use" [href_ ref] mempty
+
+svgSymbols :: Html ()
+svgSymbols =
+  svg_ [width_ "0", height_ "0", style_ "position: absolute;", makeAttributes "aria-hidden" "true"] $ do
+    symbol
+      "bell"
+      """
+      <path d="M96,192a32,32,0,0,0,64,0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>
+      <path d="M56,104a72,72,0,0,1,144,0c0,35.82,8.3,64.6,14.9,76A8,8,0,0,1,208,192H48a8,8,0,0,1-6.88-12C47.71,168.6,56,139.81,56,104Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>
+      """
+    symbol
+      "acorn"
+      """
+      <path d="M216,112v16c0,53-88,88-88,112,0-24-88-59-88-112V112" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>
+      <path d="M80,56h96a48,48,0,0,1,48,48v0a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8v0A48,48,0,0,1,80,56Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>
+      <path d="M128,56V48a32,32,0,0,1,32-32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>
+      """
+    symbol
+      "heart"
+      """
+      <path d="M128,224l89.36-90.64a50,50,0,1,0-70.72-70.72L128,80,109.36,62.64a50,50,0,0,0-70.72,70.72Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>
+      """
+    symbol
+      "leaf"
+      """
+      <path d="M63.81,192.19c-47.89-79.81,16-159.62,151.64-151.64C223.43,176.23,143.62,240.08,63.81,192.19Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>
+      <line x1="160" y1="96" x2="40" y2="216" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>
+      """
+  where
+    symbol :: Text -> ByteString -> Html ()
+    symbol name =
+      makeElement "symbol" [id_ name, makeAttributes "viewBox" "0 0 256 256"]
+        . toHtmlRaw
