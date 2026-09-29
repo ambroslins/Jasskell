@@ -16,7 +16,6 @@ module Jasskell.Id
 where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Bifunctor (first)
 import Data.Binary.Get qualified as Get
 import Data.Binary.Put qualified as Put
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
@@ -30,7 +29,6 @@ import Data.Time (UTCTime)
 import Data.Time.Clock.System (SystemTime (..), getSystemTime, systemToUTCTime)
 import Data.Word (Word64)
 import System.Random.Stateful qualified as Random
-import Web.Twain (HttpError (..), ParsableParam (..), badRequest400)
 
 newtype Id a = Id Int
   deriving newtype (Eq, Show)
@@ -68,9 +66,6 @@ decodeByteString bs = do
 
 decodeText :: Text -> Either String (Id a)
 decodeText = decodeByteString . encodeUtf8
-
-instance ParsableParam (Id a) where
-  parseParam = first (HttpError badRequest400) . decodeText
 
 new :: (MonadIO m) => m (Id a)
 new = do

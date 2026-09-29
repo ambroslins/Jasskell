@@ -3,6 +3,7 @@
 module Jasskell.Player
   ( PlayerId,
     Nickname (..),
+    parseNickname,
     Player (..),
     SessionError (..),
     sessionCookieName,
@@ -22,6 +23,7 @@ import Data.ByteArray (convert)
 import Data.ByteString (ByteString)
 import Data.ByteString.Base64.URL qualified as Base64
 import Data.ByteString.Char8 qualified as BS
+import Data.Char qualified as Char
 import Data.Coerce (coerce)
 import Data.Profunctor (lmap)
 import Data.String (IsString)
@@ -34,12 +36,23 @@ import Jasskell.App
 import Jasskell.Id (Id)
 import Jasskell.Id qualified as Id
 import Web.Cookie (SetCookie (..), defaultSetCookie, sameSiteStrict)
-import Web.Twain qualified as Twain
 
 type PlayerId = Id Player
 
 newtype Nickname = Nickname {toText :: Text}
-  deriving newtype (Eq, Ord, Show, IsString, Twain.ParsableParam)
+  deriving newtype (Eq, Ord, Show, IsString)
+
+parseNickname :: Text -> Either String Nickname
+parseNickname name
+  | len < 2 = Left "name too short"
+  | len > 20 = Left "name too long"
+  | Just c <- Text.find (not . allowed) name = Left $ "invalid char: " <> show c
+  | any Text.null (Text.split isSep name) = Left "missplaced separator"
+  | otherwise = Right $ Nickname name
+  where
+    len = Text.length name
+    allowed c = Char.isAlphaNum c || isSep c
+    isSep c = c == '-' || c == '_'
 
 data Player = Player
   { id :: PlayerId,

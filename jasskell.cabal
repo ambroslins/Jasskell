@@ -68,6 +68,7 @@ library
     Jasskell.Card.Set
     Jasskell.Database
     Jasskell.Database.Migration
+    Jasskell.Form
     Jasskell.GameState
     Jasskell.Icon
     Jasskell.Id
@@ -118,7 +119,6 @@ library
     text,
     time,
     transformers,
-    twain,
     unliftio,
     unliftio-core,
     unordered-containers,
