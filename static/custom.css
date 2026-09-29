@@ -3,8 +3,35 @@
 [data-theme=light],
 :root:not([data-theme=dark]),
 :host:not([data-theme=dark]) {
-  --pico-color: #1f241f;
-  --pico-background-color: #eaeee8;
+  --pico-background-color: #f3f0e9;
+  --pico-color: #55534e;
+  --pico-h1-color: #45433f;
+  --pico-h2-color: #45433f;
+  --pico-h3-color: #45433f;
+  --pico-muted-color: #8c887f;
+  --pico-muted-border-color: #e2ddd2;
+  --pico-card-background-color: #f8f6f1;
+  --pico-form-element-background-color: #faf8f4;
+  --pico-form-element-border-color: #d9d3c6;
+  --pico-table-border-color: #e2ddd2;
+  --pico-primary: #6f8f7c;
+  --pico-primary-background: #7f9d8a;
+  --pico-primary-border: #7f9d8a;
+  --pico-primary-underline: rgba(111, 143, 124, .5);
+  --pico-primary-hover: #5d7b69;
+  --pico-primary-hover-background: #6f8f7c;
+  --pico-primary-hover-border: #6f8f7c;
+  --pico-primary-focus: rgba(127, 157, 138, .3);
+  --pico-primary-inverse: #fbfaf6;
+  --pico-secondary: #8a857b;
+  --pico-secondary-background: #9b958a;
+  --pico-secondary-border: #9b958a;
+  --pico-secondary-underline: rgba(138, 133, 123, .5);
+  --pico-secondary-hover: #6f6b62;
+  --pico-secondary-hover-background: #8a857b;
+  --pico-secondary-hover-border: #8a857b;
+  --pico-secondary-focus: rgba(155, 149, 138, .3);
+  --pico-secondary-inverse: #fbfaf6;
 }
 
 /* Colors for dark color scheme (Auto) */
@@ -20,7 +47,7 @@
 }
 
 :root {
-  --card-height: 10rem;
+  --card-height: 15rem;
 }
 
 svg.icon {
@@ -33,19 +60,23 @@ svg.icon {
 .card {
   height: var(--card-height);
   aspect-ratio: 2 / 3;
-  border-radius: calc(var(--card-height)*0.025);
-  background: #ffffff;
-  border: 1px solid #efefef;
-  padding: calc(var(--card-height)*0.05);
+  border-radius: calc(var(--card-height)*0.05);
+  background: #fbfaf6;
+  border: 1px solid #ddd7ca;
+  padding: calc(var(--card-height)*0.025) calc(var(--card-height)*0.03);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  font-size: 1rem;
+  font-size: calc(var(--card-height)*0.125);
   color: var(--pico-color);
 
   .rank {
     font-weight: 700;
+    line-height: 1.0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
   }
 
   .top {
@@ -62,7 +93,14 @@ svg.icon {
   }
 }
 
+#hero {
+  min-height: 100vh;
+  align-items: center;
+}
+
 #hero-deck {
+  height: calc(var(--card-height)*1.5);
+  width: calc(var(--card-height)*1.5);
   display: grid;
   grid-template: 1fr / 1fr;
   place-content: center;
@@ -71,6 +109,19 @@ svg.icon {
   .card {
     grid-row: 1 / 1;
     grid-column: 1 / 1;
+  }
+
+  .card:nth-child(1) {
+    transform: translateX(calc(var(--card-height)*-0.18)) translateY(calc(var(--card-height)*+0.018)) rotate(-18deg);
+  }
+  .card:nth-child(2) {
+    transform: translateX(calc(var(--card-height)*-0.06)) translateY(calc(var(--card-height)*+0.006)) rotate(-6deg);
+  }
+  .card:nth-child(3) {
+    transform: translateX(calc(var(--card-height)*+0.06)) translateY(calc(var(--card-height)*-0.006)) rotate(+6deg);
+  }
+  .card:nth-child(4) {
+    transform: translateX(calc(var(--card-height)*+0.18)) translateY(calc(var(--card-height)*-0.018)) rotate(+18deg);
   }
 }
 

@@ -58,34 +58,40 @@ page titel body = runIdentity . execHtmlT $ do
 
 index :: Maybe Player -> Html ()
 index mplayer = do
-  header_ [id_ "top", class_ "container nav"] $ do
-    a_ [href_ "#top"] $
-      span_
-        [style_ "font-size: 2rem; font-weight: 600; letter-spacing: 0.15rem"]
-        "Jass"
-  main_ [] $ do
-    section_ [id_ "hero", class_ "container"] $ do
-      div_ $ do
-        h1_ "Hero Section"
-        a_ [href_ "#play"] $ button_ [class_ "primary"] "Play"
-      div_ [id_ "hero-deck"] $ do
-        card [style_ "transform: rotate(-30deg);"] $ Card.make Bells Six
-        card [style_ "transform: rotate(-15deg);"] $ Card.make Acorns Nine
-        card [style_ "transform: rotate(0deg);"] $ Card.make Leaves Under
-        card [style_ "transform: rotate(15deg);"] $ Card.make Hearts King
-        card [style_ "transform: rotate(30deg);"] $ Card.make Bells Ace
-    section_ [id_ "play", class_ "container"] $ do
-      div_ [id_ "table-list"] $ do
-        h3_ "Table List"
+  header_ [id_ "hero", class_ "container grid"] $ do
+    div_ $ do
+      hgroup_ $ do
+        h1_ "Jass"
+        p_ "Something useful"
+      p_ "More about rules and stuff"
+      a_ [href_ "#play", role_ "button"] "Play"
+
+    div_ [id_ "hero-deck"] $ do
+      card [] $ Card.make Bells Six
+      card [] $ Card.make Acorns Nine
+      card [] $ Card.make Hearts King
+      card [] $ Card.make Bells Ace
+
+  main_ [id_ "play", class_ "container grid"] $ do
+    section_ $ do
+      h2_ "New table"
       form_ [method_ "post", action_ "/tables"] $ do
-        when (isNothing mplayer) $ do
-          label_ $ do
-            "Nickname"
-            input_ [type_ "text", name_ "nickname"]
+        when (isNothing mplayer) $ label_ $ do
+          "Nickname"
+          input_
+            [ type_ "text",
+              name_ "nickname",
+              required_ "",
+              minlength_ "2",
+              maxlength_ "20",
+              autocomplete_ "nickname",
+              makeAttributes "aria-describedby" "nickname-help"
+            ]
+          small_ [id_ "nickname-help"] "Shown to other players. No account needed."
         label_ $ do
           "Private"
           input_ [type_ "checkbox", name_ "private"]
-        button_ [type_ "submit", class_ "primary"] "Create"
+        button_ [type_ "submit"] "Create"
 
 tableLogin :: TableId -> Html ()
 tableLogin tableId =
@@ -151,10 +157,11 @@ spectatorView = toHtml . show
 
 card :: [Attributes] -> Card -> Html ()
 card as c = div_ (class_ "card" : as) $ do
-  span_ [class_ "rank top"] $ rank <> suit
+  span_ [class_ "rank top"] corner
   span_ [class_ "suit"] suit
-  span_ [class_ "rank bottom"] $ rank <> suit
+  span_ [class_ "rank bottom"] corner
   where
+    corner = rank <> suit
     suit = case Card.suit c of
       Bells -> bell []
       Acorns -> acorn []
