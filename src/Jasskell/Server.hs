@@ -104,8 +104,10 @@ websocketApp env tm pending = rejectOnError . runExceptT . runAppT env $ do
 routes :: Env -> TableManager -> Wai.Application
 routes env tm request respond = respond <=< runAppT env $
   case Wai.pathInfo request of
-    [] | method == HTTP.methodGet -> getRoot tm request
-    ["tables"] | method == HTTP.methodPost -> postTables request
+    [] | method == HTTP.methodGet -> getRoot request
+    ["tables"]
+      | method == HTTP.methodGet -> getTables request
+      | method == HTTP.methodPost -> postTables request
     ["tables", Id.decodeText -> Right tableId]
       | method == HTTP.methodGet -> getTable tableId request
     ["tables", Id.decodeText -> Right tableId, "join"]
@@ -123,11 +125,16 @@ responseHtml headers =
   where
     ct = (HTTP.hContentType, "text/html; charset=utf-8")
 
-getRoot :: TableManager -> Wai.Request -> AppT IO Wai.Response
-getRoot _tm request = do
+getRoot :: Wai.Request -> AppT IO Wai.Response
+getRoot request = do
   mplayer <- getPlayerSession request
   stdGen <- Random.newStdGen
   pure . responseHtml [] . Render.page "Jasskell" $ Render.index stdGen mplayer
+
+getTables :: Wai.Request -> AppT IO Wai.Response
+getTables _request = do
+  tables <- Table.getPublicTables
+  pure . responseHtml [] . Render.fragment $ Render.tableList tables
 
 postTables :: Wai.Request -> AppT IO Wai.Response
 postTables request = do

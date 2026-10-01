@@ -5,8 +5,9 @@ module Jasskell.Table
   ( TableManager,
     withManager,
     TableId,
-    Handle (tableId),
+    PublicTable (..),
     create,
+    getPublicTables,
     join,
     Connection (..),
     Message (..),
@@ -27,12 +28,13 @@ import Data.IntMap.Coercible qualified as IntMap
 import Data.Maybe (isNothing)
 import Data.Profunctor (Profunctor (lmap), dimap)
 import Data.Time (UTCTime, getCurrentTime)
+import Data.Vector (Vector)
 import Data.Vector qualified as Vector
 import Data.Vector4 (Vector4)
 import Data.Vector4 qualified as Vector4
 import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
-import Hasql.TH (maybeStatement, resultlessStatement)
+import Hasql.TH (maybeStatement, resultlessStatement, vectorStatement)
 import Jasskell.App
 import Jasskell.Card (Card)
 import Jasskell.GameState (GameState, GameView)
@@ -40,7 +42,7 @@ import Jasskell.GameState qualified as GameState
 import Jasskell.Id (Id (..))
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
-import Jasskell.Player (Nickname, Player (..), PlayerId)
+import Jasskell.Player (Nickname (..), Player (..), PlayerId)
 import Jasskell.Player qualified as Player
 import Jasskell.Variant (Variant)
 import System.Random qualified as Random
@@ -141,6 +143,39 @@ insertTable =
     [resultlessStatement|
       insert into tables (table_id, created_by)
       values ($1::int8, $2::int8)
+    |]
+
+data PublicTable = PublicTable
+  { id :: TableId,
+    creatorName :: Nickname,
+    seatsTaken :: Int
+  }
+  deriving (Show)
+
+getPublicTables :: (MonadIO m) => AppT m (Vector PublicTable)
+getPublicTables = useDB $ Hasql.statement () selectPublicTables
+
+-- TODO: ignore tables with active games (or put them at the end)
+selectPublicTables :: Hasql.Statement () (Vector PublicTable)
+selectPublicTables =
+  fmap
+    ( Vector.map $ \(tableId, nickname, seatsTaken) ->
+        PublicTable
+          { id = Id.fromInt64 tableId,
+            creatorName = Nickname nickname,
+            seatsTaken = fromIntegral seatsTaken
+          }
+    )
+    [vectorStatement|
+      select
+        t.table_id::int8,
+        any_value(p.nickname)::text,
+        count(s.table_id)::int8 as seats_taken
+      from tables as t
+      join players as p on p.player_id = t.created_by
+      left join seats as s on s.table_id = t.table_id
+      group by t.table_id
+      order by seats_taken desc, t.table_id asc
     |]
 
 join ::

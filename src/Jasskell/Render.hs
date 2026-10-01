@@ -2,6 +2,7 @@ module Jasskell.Render
   ( fragment,
     page,
     index,
+    tableList,
     tableLogin,
     tableConnect,
     waitingView,
@@ -16,6 +17,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
+import Data.Vector (Vector)
 import Data.Vector.Unboxed qualified as VU
 import Data.Vector4 qualified as Vector4
 import Jasskell.Card (Card, Rank (..), Suit (..))
@@ -29,6 +31,7 @@ import Jasskell.Static qualified as Static
 import Jasskell.Table
   ( Command (..),
     PlayerView (..),
+    PublicTable (..),
     SpectatorView (..),
     TableId,
     WaitingView (..),
@@ -48,6 +51,7 @@ page titel body = runIdentity . execHtmlT $ do
     head_ $ do
       meta_ [charset_ "utf-8"]
       meta_ [name_ "htmx-config", content_ "ws.pauseOnBackground:false"]
+      meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1"]
       title_ $ toHtml titel
       link_ [rel_ "stylesheet", href_ Static.style.path]
       script_
@@ -74,6 +78,18 @@ index gen mplayer = do
 
   main_ [id_ "play", class_ "container grid"] $ do
     section_ $ do
+      h2_ "Open tables"
+      div_
+        [ id_ "table-list",
+          hxGet_ "/tables",
+          hxTrigger_ "revealed once",
+          hxSwap_ "outerHTML",
+          makeAttributes "aria-busy" "true",
+          style_ "height: var(--max-height);"
+        ]
+        mempty
+
+    section_ $ do
       h2_ "New table"
       form_ [method_ "post", action_ "/tables"] $ do
         when (isNothing mplayer) $ label_ $ do
@@ -92,6 +108,28 @@ index gen mplayer = do
           "Private"
           input_ [type_ "checkbox", name_ "private"]
         button_ [type_ "submit"] "Create"
+
+tableList :: Vector PublicTable -> Html ()
+tableList tables =
+  ul_
+    [ id_
+        "table-list",
+      hxGet_ "/tables",
+      hxTrigger_ "every 5s [document.visibilityState === 'visible']",
+      hxSwap_ "outerMorph"
+    ]
+    $ forM_ tables
+    $ \table ->
+      let tableId = Id.encodeText table.id
+       in li_ [id_ tableId] $ do
+            strong_ $ toHtml table.creatorName.toText
+            small_ $ toHtml $ show table.seatsTaken <> "/4 players"
+            a_
+              [ href_ $ "/tables/" <> tableId,
+                role_ "button",
+                class_ $ if table.seatsTaken < 4 then "primary" else "secondary"
+              ]
+              "Join"
 
 tableLogin :: TableId -> Html ()
 tableLogin tableId =

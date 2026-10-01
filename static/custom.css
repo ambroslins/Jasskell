@@ -60,15 +60,15 @@ svg.icon {
 .card {
   height: var(--card-height);
   aspect-ratio: 2 / 3;
-  border-radius: calc(var(--card-height)*0.05);
+  border-radius: calc(var(--card-height)*.05);
   background: #fbfaf6;
   border: 1px solid #ddd7ca;
-  padding: calc(var(--card-height)*0.025) calc(var(--card-height)*0.03);
+  padding: calc(var(--card-height)*.025) calc(var(--card-height)*.03);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  font-size: calc(var(--card-height)*0.125);
+  font-size: calc(var(--card-height)*.125);
   color: var(--pico-color);
 
   .rank {
@@ -94,7 +94,7 @@ svg.icon {
 }
 
 #hero {
-  min-height: 100vh;
+  min-height: calc(100vh + 12px); /* So we don't reveal the play section */
   align-items: center;
 }
 
@@ -112,16 +112,47 @@ svg.icon {
   }
 
   .card:nth-child(1) {
-    transform: translateX(calc(var(--card-height)*-0.18)) translateY(calc(var(--card-height)*+0.018)) rotate(-18deg);
+    transform: translateX(calc(var(--card-height)*-.18)) translateY(calc(var(--card-height)*+.018)) rotate(-18deg);
   }
   .card:nth-child(2) {
-    transform: translateX(calc(var(--card-height)*-0.06)) translateY(calc(var(--card-height)*+0.006)) rotate(-6deg);
+    transform: translateX(calc(var(--card-height)*-.06)) translateY(calc(var(--card-height)*+.006)) rotate(-6deg);
   }
   .card:nth-child(3) {
-    transform: translateX(calc(var(--card-height)*+0.06)) translateY(calc(var(--card-height)*-0.006)) rotate(+6deg);
+    transform: translateX(calc(var(--card-height)*+.06)) translateY(calc(var(--card-height)*-.006)) rotate(+6deg);
   }
   .card:nth-child(4) {
-    transform: translateX(calc(var(--card-height)*+0.18)) translateY(calc(var(--card-height)*-0.018)) rotate(+18deg);
+    transform: translateX(calc(var(--card-height)*+.18)) translateY(calc(var(--card-height)*-.018)) rotate(+18deg);
   }
 }
+
+#table-list {
+  --max-height: 20rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  min-height: 10rem;
+  max-height: var(--max-height);
+  overflow-y: auto;
+  background: var(--pico-card-background-color);
+  box-shadow: var(--pico-card-box-shadow);
+  border: var(--pico-border-width) solid var(--pico-form-element-border-color);
+  border-radius: var(--pico-border-radius);
+
+  li {
+    list-style: none;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: .5rem .75rem;
+    border-bottom: var(--pico-border-width) solid var(--pico-table-border-color);
+  }
+
+  li:last-child { border-bottom: none; }
+  li:nth-child(odd) { background: var(--pico-table-row-stripped-background-color); }
+  li > :first-child { flex: 1; }
+  li small { color: var(--pico-muted-color); }
+  li [role=button] { padding: .3rem .9rem; }
+}
+
 
