@@ -155,4 +155,52 @@ svg.icon {
   li [role=button] { padding: .3rem .9rem; }
 }
 
+#toasts {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 1rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  gap: .5rem;
+  padding-inline: 1rem;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  width: min(100%, 16rem);
+  padding: .75rem .5rem;
+  background: var(--pico-card-background-color);
+  color: var(--pico-color);
+  border: 1px solid var(--pico-del-color);
+  border-radius: var(--pico-border-radius);
+  box-shadow: var(--pico-card-box-shadow);
+  animation: toast-in .2s ease-out;
+
+  p { flex: 1; margin: 0; }
+
+  button.close {
+    width: auto;
+    margin: 0;
+    padding: 0 .25rem;
+    background: none;
+    border: none;
+    box-shadow: none;
+    color: var(--pico-muted-color);
+    font-size: 1.25rem;
+    line-height: 1;
+  }
+  button.close.hover { color: var(--pico-color); }
+}
+
+.toast.leaving { animation: toast-out .2s ease-in forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(.75rem); } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(.75rem); } }
+@media (prefers-reduced-motion: reduce) { .toast, .toast.leaving { animation: none; } }
+
+
 

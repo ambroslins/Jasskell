@@ -62,6 +62,7 @@ page titel body = runIdentity . execHtmlT $ do
     body_ $ do
       svgSymbols
       body
+      div_ [id_ "toasts"] mempty
 
 index :: Random.StdGen -> Maybe Player -> Html ()
 index gen mplayer = do
