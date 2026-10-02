@@ -95,6 +95,7 @@ library
     binary,
     brotli,
     bytestring,
+    case-insensitive,
     containers,
     cookie,
     crypton,

@@ -17,15 +17,15 @@ import Crypto.Hash.Algorithms (SHA256)
 import Data.ByteArray (convert)
 import Data.ByteString (ByteString)
 import Data.ByteString.Base64.URL qualified as Base64URL
+import Data.ByteString.Builder qualified as Builder
 import Data.ByteString.Char8 qualified as BS
 import Data.ByteString.Lazy (LazyByteString)
 import Data.ByteString.Lazy qualified as LBS
+import Data.CaseInsensitive qualified as CI
 import Data.FileEmbed (embedFileRelative)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
-import Network.HTTP.Types (hCacheControl, hContentType)
-import Network.HTTP.Types.Header (hAcceptEncoding, hContentEncoding)
-import Network.HTTP.Types.Status (status200)
+import Network.HTTP.Types qualified as HTTP
 import Network.Wai qualified as Wai
 
 data Asset = Asset
@@ -48,22 +48,25 @@ data EncodingWeights = EncodingWeights {brotli, gzip :: Float}
 
 handleAsset :: Asset -> Wai.Middleware
 handleAsset asset next request respond
-  | Wai.rawPathInfo request == asset.pathBS =
-      respond $ Wai.responseLBS status200 responseHeaders content
+  | Wai.rawPathInfo request == asset.pathBS && Wai.requestMethod request == HTTP.methodGet =
+      respond $ Wai.responseLBS HTTP.status200 responseHeaders content
   | otherwise = next request respond
   where
     requestHeaders = Wai.requestHeaders request
-    weights = parseAcceptEncoding $ lookup hAcceptEncoding requestHeaders
+    weights = parseAcceptEncoding $ lookup HTTP.hAcceptEncoding requestHeaders
     (content, encoding)
       | weights.gzip > weights.brotli = (asset.contentGzip, Just "gzip")
       | weights.brotli > 0.0 = (asset.contentBrotli, Just "br")
       | otherwise = (asset.content, Nothing)
     responseHeaders =
-      (hCacheControl, "public, max-age=31536000, immutable")
-        : (hContentType, asset.contentType.header)
+      (HTTP.hCacheControl, "public, max-age=31536000, immutable")
+        : (HTTP.hContentLength, showInt64BS $ LBS.length content)
+        : (HTTP.hContentType, asset.contentType.header)
+        : (HTTP.hVary, CI.original HTTP.hAcceptEncoding)
         : case encoding of
           Nothing -> []
-          Just alg -> [(hContentEncoding, alg)]
+          Just alg -> [(HTTP.hContentEncoding, alg)]
+    showInt64BS = LBS.toStrict . Builder.toLazyByteString . Builder.int64Dec
 
 parseAcceptEncoding :: Maybe ByteString -> EncodingWeights
 parseAcceptEncoding = maybe none (foldl' go none . BS.split ',')
