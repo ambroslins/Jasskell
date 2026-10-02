@@ -17,56 +17,120 @@ import Crypto.Hash.Algorithms (SHA256)
 import Data.ByteArray (convert)
 import Data.ByteString (ByteString)
 import Data.ByteString.Base64.URL qualified as Base64URL
-import Data.ByteString.Builder qualified as Builder
 import Data.ByteString.Char8 qualified as BS
 import Data.ByteString.Lazy (LazyByteString)
 import Data.ByteString.Lazy qualified as LBS
 import Data.CaseInsensitive qualified as CI
 import Data.FileEmbed (embedFileRelative)
+import Data.List qualified as List
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
 import Network.HTTP.Types qualified as HTTP
 import Network.Wai qualified as Wai
 
+data Encoded = Encoded
+  { body :: LazyByteString,
+    headers :: HTTP.ResponseHeaders
+  }
+
 data Asset = Asset
-  { content :: LazyByteString,
-    contentGzip :: ~LazyByteString,
-    contentBrotli :: ~LazyByteString,
+  { content :: Encoded,
+    contentGzip :: Encoded,
+    contentBrotli :: Encoded,
     pathBS :: ByteString,
-    contentType :: ContentType,
     path :: Text,
     sha256Base64 :: Text
   }
 
 handlers :: Wai.Middleware
-handlers =
-  handleAsset style
-    . handleAsset script
+handlers next request respond =
+  case List.find (\a -> a.pathBS == rawPath) assets of
+    Just asset
+      | method == HTTP.methodGet || method == HTTP.methodHead ->
+          let content
+                | weights.gzip > weights.brotli = asset.contentGzip
+                | weights.brotli > 0.0 = asset.contentBrotli
+                | otherwise = asset.content
+           in respond $ Wai.responseLBS HTTP.status200 content.headers content.body
+      | otherwise ->
+          respond $ Wai.responseLBS HTTP.status405 [(HTTP.hAllow, "GET, HEAD")] mempty
+    Nothing -> next request respond
+  where
+    method = Wai.requestMethod request
+    rawPath = Wai.rawPathInfo request
+    requestHeaders = Wai.requestHeaders request
+    weights = parseAcceptEncoding $ lookup HTTP.hAcceptEncoding requestHeaders
+    assets = [script, style]
+
+style, script :: Asset
+style =
+  makeAsset
+    "style"
+    css
+    [ $(embedFileRelative "static/pico-2.1.1.green.min.css"),
+      $(embedFileRelative "static/custom.css")
+    ]
+script =
+  makeAsset
+    "script"
+    js
+    [ $(embedFileRelative "static/htmx-4.0.0.min.js"),
+      $(embedFileRelative "static/hx-ws-4.0.0.min.js")
+    ]
+
+makeAsset :: ByteString -> ContentType -> [ByteString] -> Asset
+makeAsset name contentType chunks =
+  Asset
+    { content = encode Nothing content,
+      contentGzip =
+        encode (Just "gzip") $ GZip.compressWith gzipParams content,
+      contentBrotli =
+        encode (Just "br") $ Brotli.compressWith brotliParams content,
+      path = decodeUtf8 pathBS,
+      pathBS,
+      sha256Base64 = decodeUtf8 hash
+    }
+  where
+    content = LBS.fromChunks chunks
+    pathBS =
+      "/static/"
+        <> BS.intercalate "." [name, BS.take 8 hash, contentType.extension]
+    hash =
+      Base64URL.encodeUnpadded . convert $
+        Crypto.Hash.hashlazy @SHA256 content
+    encode encoding body =
+      Encoded
+        { body,
+          headers =
+            (HTTP.hContentLength, BS.pack . show $ LBS.length body)
+              : (HTTP.hContentType, contentType.header)
+              : (HTTP.hCacheControl, "public, max-age=31536000, immutable")
+              : (HTTP.hVary, CI.original HTTP.hAcceptEncoding)
+              : foldMap (\alg -> [(HTTP.hContentEncoding, alg)]) encoding
+        }
+    gzipParams =
+      GZip.defaultCompressParams
+        { GZip.compressLevel = GZip.compressionLevel 9,
+          GZip.compressMemoryLevel = GZip.maxMemoryLevel
+        }
+    brotliParams =
+      Brotli.defaultCompressParams
+        { Brotli.compressMode = Brotli.CompressionModeText,
+          Brotli.compressLevel = Brotli.CompressionLevel11,
+          Brotli.compressSizeHint = fromIntegral (LBS.length content)
+        }
+
+data ContentType = ContentType
+  { extension :: ByteString,
+    header :: ByteString
+  }
+
+css, js :: ContentType
+css = ContentType {extension = "css", header = "text/css; charset=utf-8"}
+js = ContentType {extension = "js", header = "application/javascript; charset=utf-8"}
 
 data EncodingWeights = EncodingWeights {brotli, gzip :: Float}
   deriving (Show)
-
-handleAsset :: Asset -> Wai.Middleware
-handleAsset asset next request respond
-  | Wai.rawPathInfo request == asset.pathBS && Wai.requestMethod request == HTTP.methodGet =
-      respond $ Wai.responseLBS HTTP.status200 responseHeaders content
-  | otherwise = next request respond
-  where
-    requestHeaders = Wai.requestHeaders request
-    weights = parseAcceptEncoding $ lookup HTTP.hAcceptEncoding requestHeaders
-    (content, encoding)
-      | weights.gzip > weights.brotli = (asset.contentGzip, Just "gzip")
-      | weights.brotli > 0.0 = (asset.contentBrotli, Just "br")
-      | otherwise = (asset.content, Nothing)
-    responseHeaders =
-      (HTTP.hCacheControl, "public, max-age=31536000, immutable")
-        : (HTTP.hContentLength, showInt64BS $ LBS.length content)
-        : (HTTP.hContentType, asset.contentType.header)
-        : (HTTP.hVary, CI.original HTTP.hAcceptEncoding)
-        : case encoding of
-          Nothing -> []
-          Just alg -> [(HTTP.hContentEncoding, alg)]
-    showInt64BS = LBS.toStrict . Builder.toLazyByteString . Builder.int64Dec
 
 parseAcceptEncoding :: Maybe ByteString -> EncodingWeights
 parseAcceptEncoding = maybe none (foldl' go none . BS.split ',')
@@ -88,65 +152,8 @@ parseAcceptEncoding = maybe none (foldl' go none . BS.split ',')
       if BS.null rest
         then pure $ fromIntegral i
         else do
-          (frac, trailing) <- BS.stripPrefix "." rest >>= BS.readInt
+          digits <- BS.stripPrefix "." rest
+          (frac, trailing) <- BS.readInt digits
           guard $ BS.null trailing
-          let !base = 10.0 ^^ BS.length trailing
+          let !base = 10.0 ^^ BS.length digits
           pure $ fromIntegral i + fromIntegral frac / base
-
-style :: Asset
-style =
-  makeAsset
-    "style"
-    css
-    [ $(embedFileRelative "static/pico-2.1.1.green.min.css"),
-      $(embedFileRelative "static/custom.css")
-    ]
-
-script :: Asset
-script =
-  makeAsset
-    "script"
-    js
-    [ $(embedFileRelative "static/htmx-4.0.0.min.js"),
-      $(embedFileRelative "static/hx-ws-4.0.0.min.js")
-    ]
-
-makeAsset :: ByteString -> ContentType -> [ByteString] -> Asset
-makeAsset name contentType chunks =
-  Asset
-    { content,
-      contentGzip = GZip.compressWith gzipParams content,
-      contentBrotli = Brotli.compressWith brotliParams content,
-      path = decodeUtf8 pathBS,
-      pathBS,
-      contentType,
-      sha256Base64 = decodeUtf8 hash
-    }
-  where
-    content = LBS.fromChunks chunks
-    pathBS =
-      "/static/"
-        <> BS.intercalate "." [name, BS.take 8 hash, contentType.extension]
-    hash =
-      Base64URL.encodeUnpadded . convert $
-        Crypto.Hash.hashlazy @SHA256 content
-    gzipParams =
-      GZip.defaultCompressParams
-        { GZip.compressLevel = GZip.compressionLevel 9,
-          GZip.compressMemoryLevel = GZip.maxMemoryLevel
-        }
-    brotliParams =
-      Brotli.defaultCompressParams
-        { Brotli.compressMode = Brotli.CompressionModeText
-        }
-
-data ContentType = ContentType
-  { extension :: ByteString,
-    header :: ByteString
-  }
-
-css :: ContentType
-css = ContentType {extension = "css", header = "text/css; charset=utf-8"}
-
-js :: ContentType
-js = ContentType {extension = "js", header = "application/javascript; charset=utf-8"}
