@@ -5,7 +5,6 @@ module Jasskell.Server (application) where
 import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.STM qualified as STM
 import Control.Monad ((<=<))
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson (eitherDecode)
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
@@ -48,9 +47,9 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
     Nothing -> throw reject $ WS.defaultRejectRequest {WS.rejectCode = 401}
     Just sc -> pure sc
   player <-
-    liftIO (Player.fromSessionCookie db sessionCookie) >>= \case
+    Player.fromSessionCookie db sessionCookie >>= \case
       Left err -> do
-        liftIO $ logError logger "invalid session cookie" ["error" =: show err]
+        logError logger "invalid session cookie" ["error" =: show err]
         throw reject $ WS.defaultRejectRequest {WS.rejectCode = 401}
       Right s -> pure s
   Table.join logger db player tableId tm $ \case
@@ -60,7 +59,7 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
       WS.withPingThread wsConn 30 (pure ()) $ do
         logDebug logger "accepted websocket request" []
         let sendLoop = do
-              msg <- liftIO $ WS.receiveData @LazyByteString wsConn
+              msg <- WS.receiveData @LazyByteString wsConn
               case eitherDecode msg of
                 Left err -> logError logger "decode websocket message" ["error" =: err]
                 Right cmd -> do
@@ -71,7 +70,7 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
               msg <- STM.atomically tableConn.receive
               logDebug logger "got table message" ["message" =: show msg]
               case msg of
-                ConnectionClosed -> liftIO $ WS.sendTextData @Text wsConn "closed"
+                ConnectionClosed -> WS.sendTextData @Text wsConn "closed"
                 UpdateWaiting view -> do
                   sendBuilder wsConn $ Render.fragment $ Render.waitingView view
                   receiveLoop
@@ -92,7 +91,7 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
     parseSessionCookie headers = do
       cookies <- lookup HTTP.hCookie headers
       lookup Player.sessionCookieName $ parseCookies cookies
-    sendBuilder c = liftIO . WS.sendTextData c . Builder.toLazyByteString
+    sendBuilder c = WS.sendTextData c . Builder.toLazyByteString
 
 routes :: Logger -> DB.Pool -> Wai.Application
 routes logger db request respond =
@@ -142,7 +141,7 @@ postTables logger db request = do
           Nothing ->
             pure $ Wai.responseBuilder HTTP.status401 [] "Unauthorized"
           Just nickname -> do
-            (player, setCookie) <- liftIO $ Player.newSession db nickname
+            (player, setCookie) <- Player.newSession db nickname
             createTable player.id [setCookieHeader setCookie]
         Just player -> createTable player.id []
   where
@@ -171,7 +170,7 @@ postTableJoin db tableId request = do
       pure . Wai.responseBuilder HTTP.status400 [] $
         Form.renderErrors errors
     Right nickname -> do
-      (player, setCookie) <- liftIO $ Player.newSession db nickname
+      (player, setCookie) <- Player.newSession db nickname
       pure
         . responseHtml [setCookieHeader setCookie]
         . Render.fragment
@@ -179,8 +178,8 @@ postTableJoin db tableId request = do
   where
     formParser = Form.field "nickname" (Player.parseNickname <=< Form.text)
 
-consumeRequestBody :: (MonadIO m) => Wai.Request -> m ByteString
-consumeRequestBody = liftIO . fmap BS.toStrict . Wai.consumeRequestBodyStrict
+consumeRequestBody :: Wai.Request -> IO ByteString
+consumeRequestBody = fmap BS.toStrict . Wai.consumeRequestBodyStrict
 
 getPlayerSession :: Logger -> DB.Pool -> Wai.Request -> IO (Maybe Player)
 getPlayerSession logger db request =
@@ -190,7 +189,7 @@ getPlayerSession logger db request =
    in case mSessionCookie of
         Nothing -> pure Nothing
         Just sessionCookie ->
-          liftIO (Player.fromSessionCookie db sessionCookie) >>= \case
+          Player.fromSessionCookie db sessionCookie >>= \case
             Left err -> do
               logWarning logger "invalid session cookie" ["error" =: show err]
               pure Nothing
