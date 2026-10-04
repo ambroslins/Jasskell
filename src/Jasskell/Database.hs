@@ -1,5 +1,12 @@
-module Jasskell.Database (Config (..), Pool, withPool, use) where
+module Jasskell.Database
+  ( Config (..),
+    Pool,
+    withPool,
+    use,
+  )
+where
 
+import Control.Exception (throwIO)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Data.Text (Text)
@@ -41,6 +48,6 @@ withPool config run =
         <> Hasql.password config.password
         <> Hasql.dbname config.name
 
-use :: (MonadIO m) => (Hasql.Pool.UsageError -> m a) -> Pool -> Hasql.Session a -> m a
-use onError (Pool pool) session =
-  liftIO (Hasql.Pool.use pool session) >>= either onError pure
+use :: (MonadIO m) => Pool -> Hasql.Session a -> m a
+use (Pool pool) session =
+  liftIO $ Hasql.Pool.use pool session >>= either throwIO pure

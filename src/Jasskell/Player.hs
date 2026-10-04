@@ -15,7 +15,6 @@ where
 import Control.Monad (unless)
 import Control.Monad.Except (runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad.Trans (lift)
 import Crypto.Hash (Digest, digestFromByteString, hash)
 import Crypto.Hash.Algorithms (SHA256)
 import Crypto.Random (getRandomBytes)
@@ -32,7 +31,7 @@ import Data.Text qualified as Text
 import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
 import Hasql.TH (maybeStatement, resultlessStatement)
-import Jasskell.App
+import Jasskell.Database qualified as DB
 import Jasskell.Id (Id)
 import Jasskell.Id qualified as Id
 import Web.Cookie (SetCookie (..), defaultSetCookie, sameSiteStrict)
@@ -60,13 +59,13 @@ data Player = Player
   }
   deriving (Eq, Show)
 
-newSession :: (MonadIO m) => Nickname -> AppT m (Player, SetCookie)
-newSession nickname = do
+newSession :: DB.Pool -> Nickname -> IO (Player, SetCookie)
+newSession db nickname = do
   sessionId <- Id.new
   secret <- liftIO $ getRandomBytes 32
   let !secretSHA256 = hash @ByteString @SHA256 secret
       !player = Player {id = sessionId, nickname}
-  useDB $ Hasql.statement (sessionId, nickname, secretSHA256) insertPlayer
+  DB.use db $ Hasql.statement (sessionId, nickname, secretSHA256) insertPlayer
   pure (player, makeSessionCookie sessionId secret)
 
 insertPlayer :: Hasql.Statement (PlayerId, Nickname, Digest SHA256) ()
@@ -105,13 +104,13 @@ data SessionError
   | SessionSecretHashMismatch
   deriving (Eq, Show)
 
-fromSessionCookie :: (MonadIO m) => ByteString -> AppT m (Either SessionError Player)
-fromSessionCookie cookie = runExceptT $ do
+fromSessionCookie :: DB.Pool -> ByteString -> IO (Either SessionError Player)
+fromSessionCookie db cookie = runExceptT $ do
   (playerId, secret) <- case parseSessionCookie cookie of
     Left e -> throwError $ InvalidSessionCookie e
     Right x -> pure x
   (nickname, secretSHA256) <-
-    lift (useDB $ Hasql.statement playerId selectPlayerById)
+    liftIO (DB.use db $ Hasql.statement playerId selectPlayerById)
       >>= \case
         Nothing -> throwError $ PlayerNotFound playerId
         Just x -> pure x

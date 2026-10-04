@@ -15,6 +15,7 @@ import Data.ByteString.Char8 qualified as BS
 import Data.ByteString.Lazy (LazyByteString)
 import Data.Text (Text)
 import Jasskell.App (AppT, Env (..), hoistAppT, runAppT)
+import Jasskell.Database qualified as DB
 import Jasskell.Form qualified as Form
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
@@ -33,15 +34,15 @@ import UnliftIO.Async qualified as Async
 import UnliftIO.STM (atomically)
 import Web.Cookie (SetCookie, parseCookies, renderSetCookieBS)
 
-application :: Env -> TableManager -> Wai.Application
-application env tableManager =
-  websocketsOr WS.defaultConnectionOptions (websocketApp env tableManager)
+application :: DB.Pool -> Env -> TableManager -> Wai.Application
+application db env tableManager =
+  websocketsOr WS.defaultConnectionOptions (websocketApp db env tableManager)
     . requestLogger env.logger
     . Static.handlers
-    $ routes env tableManager
+    $ routes db env
 
-websocketApp :: Env -> TableManager -> WS.ServerApp
-websocketApp env tm pending = rejectOnError . runExceptT . runAppT env $ do
+websocketApp :: DB.Pool -> Env -> TableManager -> WS.ServerApp
+websocketApp db env tm pending = rejectOnError . runExceptT . runAppT env $ do
   let request = WS.pendingRequest pending
   tableId <- case parseTableId (WS.requestPath request) of
     Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
@@ -50,13 +51,13 @@ websocketApp env tm pending = rejectOnError . runExceptT . runAppT env $ do
     Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 401}
     Just sc -> pure sc
   player <-
-    Player.fromSessionCookie sessionCookie >>= \case
+    liftIO (Player.fromSessionCookie db sessionCookie) >>= \case
       Left err -> do
         logError "invalid session cookie" ["error" =: show err]
         throwError $ WS.defaultRejectRequest {WS.rejectCode = 401}
       Right s -> pure s
   hoistAppT ExceptT $
-    Table.join player tableId tm $
+    Table.join db player tableId tm $
       runExceptT . \case
         Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
         Just tableConn -> lift $ do
@@ -101,17 +102,17 @@ websocketApp env tm pending = rejectOnError . runExceptT . runAppT env $ do
       lookup Player.sessionCookieName $ parseCookies cookies
     sendBuilder c = liftIO . WS.sendTextData c . Builder.toLazyByteString
 
-routes :: Env -> TableManager -> Wai.Application
-routes env tm request respond = respond <=< runAppT env $
+routes :: DB.Pool -> Env -> Wai.Application
+routes db env request respond = respond <=< runAppT env $
   case Wai.pathInfo request of
-    [] | method == HTTP.methodGet -> getRoot request
+    [] | method == HTTP.methodGet -> getRoot db request
     ["tables"]
-      | method == HTTP.methodGet -> getTables request
-      | method == HTTP.methodPost -> postTables request
+      | method == HTTP.methodGet -> getTables db request
+      | method == HTTP.methodPost -> postTables db request
     ["tables", Id.decodeText -> Right tableId]
-      | method == HTTP.methodGet -> getTable tableId request
+      | method == HTTP.methodGet -> getTable db tableId request
     ["tables", Id.decodeText -> Right tableId, "join"]
-      | method == HTTP.methodPost -> postTableJoin tableId request
+      | method == HTTP.methodPost -> postTableJoin db tableId request
     _ -> pure notFound
   where
     method = Wai.requestMethod request
@@ -125,37 +126,37 @@ responseHtml headers =
   where
     ct = (HTTP.hContentType, "text/html; charset=utf-8")
 
-getRoot :: Wai.Request -> AppT IO Wai.Response
-getRoot request = do
-  mplayer <- getPlayerSession request
+getRoot :: DB.Pool -> Wai.Request -> AppT IO Wai.Response
+getRoot db request = do
+  mplayer <- getPlayerSession db request
   stdGen <- Random.newStdGen
   pure . responseHtml [] . Render.page "Jasskell" $ Render.index stdGen mplayer
 
-getTables :: Wai.Request -> AppT IO Wai.Response
-getTables _request = do
-  tables <- Table.getPublicTables
+getTables :: DB.Pool -> Wai.Request -> AppT IO Wai.Response
+getTables db _request = do
+  tables <- Table.getPublicTables db
   pure . responseHtml [] . Render.fragment $ Render.tableList tables
 
-postTables :: Wai.Request -> AppT IO Wai.Response
-postTables request = do
+postTables :: DB.Pool -> Wai.Request -> AppT IO Wai.Response
+postTables db request = do
   requestBody <- consumeRequestBody request
   case Form.parseByteString formParser requestBody of
     Left errors ->
       pure . Wai.responseBuilder HTTP.status400 [] $
         Form.renderErrors errors
     Right mnickname ->
-      getPlayerSession request >>= \case
+      getPlayerSession db request >>= \case
         Nothing -> case mnickname of
           Nothing ->
             pure $ Wai.responseBuilder HTTP.status401 [] "Unauthorized"
           Just nickname -> do
-            (player, setCookie) <- Player.newSession nickname
+            (player, setCookie) <- liftIO $ Player.newSession db nickname
             createTable player.id [setCookieHeader setCookie]
         Just player -> createTable player.id []
   where
     formParser = Form.optional "nickname" (Player.parseNickname <=< Form.text)
     createTable playerId headers = do
-      tableId <- Table.create playerId
+      tableId <- Table.create db playerId
       let location = "/tables/" <> Id.encodeByteString tableId
       pure $
         Wai.responseBuilder
@@ -163,22 +164,22 @@ postTables request = do
           ((HTTP.hLocation, location) : headers)
           mempty
 
-getTable :: TableId -> Wai.Request -> AppT IO Wai.Response
-getTable tableId request = do
-  mplayer <- getPlayerSession request
+getTable :: DB.Pool -> TableId -> Wai.Request -> AppT IO Wai.Response
+getTable db tableId request = do
+  mplayer <- getPlayerSession db request
   pure . responseHtml [] . Render.page "Jaskell" $ case mplayer of
     Nothing -> Render.tableLogin tableId
     Just player -> Render.tableConnect player tableId
 
-postTableJoin :: TableId -> Wai.Request -> AppT IO Wai.Response
-postTableJoin tableId request = do
+postTableJoin :: DB.Pool -> TableId -> Wai.Request -> AppT IO Wai.Response
+postTableJoin db tableId request = do
   requestBody <- consumeRequestBody request
   case Form.parseByteString formParser requestBody of
     Left errors ->
       pure . Wai.responseBuilder HTTP.status400 [] $
         Form.renderErrors errors
     Right nickname -> do
-      (player, setCookie) <- Player.newSession nickname
+      (player, setCookie) <- liftIO $ Player.newSession db nickname
       pure
         . responseHtml [setCookieHeader setCookie]
         . Render.fragment
@@ -189,15 +190,15 @@ postTableJoin tableId request = do
 consumeRequestBody :: (MonadIO m) => Wai.Request -> m ByteString
 consumeRequestBody = liftIO . fmap BS.toStrict . Wai.consumeRequestBodyStrict
 
-getPlayerSession :: Wai.Request -> AppT IO (Maybe Player)
-getPlayerSession request =
+getPlayerSession :: DB.Pool -> Wai.Request -> AppT IO (Maybe Player)
+getPlayerSession db request =
   let mSessionCookie = do
         cookies <- lookup HTTP.hCookie $ Wai.requestHeaders request
         lookup Player.sessionCookieName $ parseCookies cookies
    in case mSessionCookie of
         Nothing -> pure Nothing
         Just sessionCookie ->
-          Player.fromSessionCookie sessionCookie >>= \case
+          liftIO (Player.fromSessionCookie db sessionCookie) >>= \case
             Left err -> do
               logWarning "invalid session cookie" ["error" =: show err]
               pure Nothing

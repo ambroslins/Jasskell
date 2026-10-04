@@ -37,6 +37,7 @@ import Hasql.Statement qualified as Hasql
 import Hasql.TH (maybeStatement, resultlessStatement, vectorStatement)
 import Jasskell.App
 import Jasskell.Card (Card)
+import Jasskell.Database qualified as DB
 import Jasskell.GameState (GameState, GameView)
 import Jasskell.GameState qualified as GameState
 import Jasskell.Id (Id (..))
@@ -46,7 +47,7 @@ import Jasskell.Player (Nickname (..), Player (..), PlayerId)
 import Jasskell.Player qualified as Player
 import Jasskell.Variant (Variant)
 import System.Random qualified as Random
-import UnliftIO (MonadUnliftIO, bracket, finally)
+import UnliftIO (bracket, finally)
 import UnliftIO.Async (Async, asyncWithUnmask)
 import UnliftIO.Exception (evaluate)
 import UnliftIO.MVar
@@ -130,10 +131,10 @@ data Input
   | PlayerCommand Player Command
   deriving (Eq, Show)
 
-create :: (MonadIO m) => PlayerId -> AppT m TableId
-create createdBy = do
+create :: DB.Pool -> PlayerId -> AppT IO TableId
+create db createdBy = do
   tableId <- Id.new
-  useDB $ Hasql.statement (tableId, createdBy) insertTable
+  DB.use db $ Hasql.statement (tableId, createdBy) insertTable
   pure tableId
 
 insertTable :: Hasql.Statement (TableId, PlayerId) ()
@@ -152,8 +153,8 @@ data PublicTable = PublicTable
   }
   deriving (Show)
 
-getPublicTables :: (MonadIO m) => AppT m (Vector PublicTable)
-getPublicTables = useDB $ Hasql.statement () selectPublicTables
+getPublicTables :: DB.Pool -> AppT IO (Vector PublicTable)
+getPublicTables db = DB.use db $ Hasql.statement () selectPublicTables
 
 -- TODO: ignore tables with active games (or put them at the end)
 selectPublicTables :: Hasql.Statement () (Vector PublicTable)
@@ -179,17 +180,17 @@ selectPublicTables =
     |]
 
 join ::
-  (MonadUnliftIO m) =>
+  DB.Pool ->
   Player ->
   TableId ->
   TableManager ->
-  (Maybe Connection -> AppT m a) ->
-  AppT m a
-join player tableId manager handler = do
+  (Maybe Connection -> AppT IO a) ->
+  AppT IO a
+join db player tableId manager handler = do
   tables <- readMVar manager.tables
   case IntMap.lookup tableId tables of
     Nothing ->
-      spawnTable tableId manager >>= \case
+      spawnTable db tableId manager >>= \case
         Nothing -> handler Nothing
         Just t -> go t
     Just t -> go t
@@ -221,9 +222,9 @@ join player tableId manager handler = do
               STM.writeTBQueue table.inputQueue $ PlayerLeft player
       bracket acquire release $ \() -> handler (Just connection)
 
-spawnTable :: (MonadUnliftIO m) => TableId -> TableManager -> AppT m (Maybe Handle)
-spawnTable tableId manager =
-  useDB (Hasql.statement tableId selectTableById) >>= \case
+spawnTable :: DB.Pool -> TableId -> TableManager -> AppT IO (Maybe Handle)
+spawnTable db tableId manager =
+  DB.use db (Hasql.statement tableId selectTableById) >>= \case
     Nothing -> pure Nothing
     Just table -> do
       inputQueue <- newTBQueueIO 16
@@ -239,7 +240,7 @@ spawnTable tableId manager =
                     Connected c -> atomically $ STM.writeTMVar c.messageBox ConnectionClosed
                     Disconnected _ -> pure ()
             thread <- asyncWithUnmask $ \unmask ->
-              unmask (tableLoop table inputQueue clients) `finally` deregister
+              unmask (tableLoop db table inputQueue clients) `finally` deregister
             let !handle = Handle {tableId, inputQueue, clients, thread}
                 !ts = IntMap.insert tableId handle tables
             pure (ts, Just handle)
@@ -289,8 +290,8 @@ selectTableById =
       where table_id = $1::int8
     |]
 
-tableLoop :: (MonadIO m) => Table -> TBQueue Input -> TVar (IntMap PlayerId ClientState) -> AppT m ()
-tableLoop table inputQueue clientsVar = go initial
+tableLoop :: DB.Pool -> Table -> TBQueue Input -> TVar (IntMap PlayerId ClientState) -> AppT IO ()
+tableLoop db table inputQueue clientsVar = go initial
   where
     initial = Waiting table.seats
     broadcast clients makeMsg = do
@@ -304,7 +305,7 @@ tableLoop table inputQueue clientsVar = go initial
         Waiting seats -> case input of
           PlayerJoined player
             | player.id == table.creator && all isNothing seats -> do
-                useDB $ Hasql.statement (table.id, player.id, 0) insertSeat
+                DB.use db $ Hasql.statement (table.id, player.id, 0) insertSeat
                 pure $ Waiting $ Vector4.set 0 (Just player) seats
             | otherwise -> pure state
           PlayerLeft _ -> pure state
@@ -313,7 +314,7 @@ tableLoop table inputQueue clientsVar = go initial
               | any (maybe False $ \p -> p.id == player.id) seats -> error "already seated" -- TODO: already seated
               | Just _ <- Vector4.index seat seats -> error "already taken" -- TODO: already taken
               | otherwise -> do
-                  useDB $ Hasql.statement (table.id, player.id, seat) insertSeat
+                  DB.use db $ Hasql.statement (table.id, player.id, seat) insertSeat
                   pure $ Waiting $ Vector4.set seat (Just player) seats
             StartGame -> case sequence seats of
               Nothing -> error "game not full"

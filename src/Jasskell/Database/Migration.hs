@@ -18,21 +18,21 @@ import Hasql.Transaction.Sessions
     Mode (Write),
     transactionNoRetry,
   )
+import Jasskell.App (AppT)
 import Jasskell.Database qualified as DB
 import Jasskell.Logger
-import UnliftIO.Exception (throwIO)
 
 data Migration = Migration
   { name :: !Text,
     sql :: !ByteString
   }
 
-runMigrations :: (HasCallStack, MonadIO m, MonadLogger m) => DB.Pool -> m ()
+runMigrations :: (HasCallStack) => DB.Pool -> AppT IO ()
 runMigrations pool = do
-  DB.use throwIO pool createSchemaMigrationsTable
+  DB.use pool createSchemaMigrationsTable
   forM_ (zip [1 ..] migrations) $ \(s, m) -> do
     start <- liftIO getMonotonicTimeNSec
-    applied <- DB.use throwIO pool $ transactionNoRetry ReadCommitted Write $ do
+    applied <- DB.use pool $ transactionNoRetry ReadCommitted Write $ do
       Transaction.sql "select pg_advisory_xact_lock(5432)"
       already <- Transaction.statement s isAlreadyApplied
       if already
