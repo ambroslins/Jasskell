@@ -13,7 +13,6 @@ module Jasskell.Player
 where
 
 import Control.Monad (unless)
-import Control.Monad.Except (runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Crypto.Hash (Digest, digestFromByteString, hash)
 import Crypto.Hash.Algorithms (SHA256)
@@ -34,6 +33,7 @@ import Hasql.TH (maybeStatement, resultlessStatement)
 import Jasskell.Database qualified as DB
 import Jasskell.Id (Id)
 import Jasskell.Id qualified as Id
+import Jasskell.Throw
 import Web.Cookie (SetCookie (..), defaultSetCookie, sameSiteStrict)
 
 type PlayerId = Id Player
@@ -105,16 +105,17 @@ data SessionError
   deriving (Eq, Show)
 
 fromSessionCookie :: DB.Pool -> ByteString -> IO (Either SessionError Player)
-fromSessionCookie db cookie = runExceptT $ do
+fromSessionCookie db cookie = trying $ \sessionError -> do
   (playerId, secret) <- case parseSessionCookie cookie of
-    Left e -> throwError $ InvalidSessionCookie e
+    Left e -> throw sessionError $ InvalidSessionCookie e
     Right x -> pure x
   (nickname, secretSHA256) <-
-    liftIO (DB.use db $ Hasql.statement playerId selectPlayerById)
+    DB.use db (Hasql.statement playerId selectPlayerById)
       >>= \case
-        Nothing -> throwError $ PlayerNotFound playerId
+        Nothing -> throw sessionError $ PlayerNotFound playerId
         Just x -> pure x
-  unless (hash secret == secretSHA256) $ throwError SessionSecretHashMismatch
+  unless (hash secret == secretSHA256) $
+    throw sessionError SessionSecretHashMismatch
   pure $! Player {id = playerId, nickname}
 
 selectPlayerById :: Hasql.Statement PlayerId (Maybe (Nickname, Digest SHA256))

@@ -5,9 +5,7 @@ module Jasskell.Server (application) where
 import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.STM qualified as STM
 import Control.Monad ((<=<))
-import Control.Monad.Except (ExceptT (..), runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Trans (lift)
 import Data.Aeson (eitherDecode)
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
@@ -25,6 +23,7 @@ import Jasskell.Render qualified as Render
 import Jasskell.Static qualified as Static
 import Jasskell.Table (Connection (..), Message (..), TableId, TableManager)
 import Jasskell.Table qualified as Table
+import Jasskell.Throw
 import Network.HTTP.Types qualified as HTTP
 import Network.Wai qualified as Wai
 import Network.Wai.Handler.WebSockets (websocketsOr)
@@ -40,58 +39,53 @@ application logger db tableManager =
     $ routes logger db
 
 websocketApp :: Logger -> DB.Pool -> TableManager -> WS.ServerApp
-websocketApp logger db tm pending = rejectOnError . runExceptT $ do
+websocketApp logger db tm pending = handling handleReject $ \reject -> do
   let request = WS.pendingRequest pending
   tableId <- case parseTableId (WS.requestPath request) of
-    Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
+    Nothing -> throw reject $ WS.defaultRejectRequest {WS.rejectCode = 404}
     Just t -> pure t
   sessionCookie <- case parseSessionCookie (WS.requestHeaders request) of
-    Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 401}
+    Nothing -> throw reject $ WS.defaultRejectRequest {WS.rejectCode = 401}
     Just sc -> pure sc
   player <-
     liftIO (Player.fromSessionCookie db sessionCookie) >>= \case
       Left err -> do
         liftIO $ logError logger "invalid session cookie" ["error" =: show err]
-        throwError $ WS.defaultRejectRequest {WS.rejectCode = 401}
+        throw reject $ WS.defaultRejectRequest {WS.rejectCode = 401}
       Right s -> pure s
-  ExceptT $
-    Table.join logger db player tableId tm $
-      runExceptT . \case
-        Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
-        Just tableConn -> lift $ do
-          wsConn <- liftIO $ WS.acceptRequest pending
-          WS.withPingThread wsConn 30 (pure ()) $ do
-            logDebug logger "accepted websocket request" []
-            let sendLoop = do
-                  msg <- liftIO $ WS.receiveData @LazyByteString wsConn
-                  case eitherDecode msg of
-                    Left err -> logError logger "decode websocket message" ["error" =: err]
-                    Right cmd -> do
-                      logDebug logger "got command" ["message" =: show cmd]
-                      STM.atomically $ tableConn.send cmd
-                  sendLoop
-                receiveLoop = do
-                  msg <- STM.atomically tableConn.receive
-                  logDebug logger "got table message" ["message" =: show msg]
-                  case msg of
-                    ConnectionClosed -> liftIO $ WS.sendTextData @Text wsConn "closed"
-                    UpdateWaiting view -> do
-                      sendBuilder wsConn $ Render.fragment $ Render.waitingView view
-                      receiveLoop
-                    UpdatePlayer view -> do
-                      sendBuilder wsConn $ Render.fragment $ Render.playerView view
-                      receiveLoop
-                    UpdateSpectator view -> do
-                      sendBuilder wsConn $ Render.fragment $ Render.spectatorView view
-                      receiveLoop
-            Async.race_ sendLoop receiveLoop
+  Table.join logger db player tableId tm $ \case
+    Nothing -> throw reject $ WS.defaultRejectRequest {WS.rejectCode = 404}
+    Just tableConn -> do
+      wsConn <- WS.acceptRequest pending
+      WS.withPingThread wsConn 30 (pure ()) $ do
+        logDebug logger "accepted websocket request" []
+        let sendLoop = do
+              msg <- liftIO $ WS.receiveData @LazyByteString wsConn
+              case eitherDecode msg of
+                Left err -> logError logger "decode websocket message" ["error" =: err]
+                Right cmd -> do
+                  logDebug logger "got command" ["message" =: show cmd]
+                  STM.atomically $ tableConn.send cmd
+              sendLoop
+            receiveLoop = do
+              msg <- STM.atomically tableConn.receive
+              logDebug logger "got table message" ["message" =: show msg]
+              case msg of
+                ConnectionClosed -> liftIO $ WS.sendTextData @Text wsConn "closed"
+                UpdateWaiting view -> do
+                  sendBuilder wsConn $ Render.fragment $ Render.waitingView view
+                  receiveLoop
+                UpdatePlayer view -> do
+                  sendBuilder wsConn $ Render.fragment $ Render.playerView view
+                  receiveLoop
+                UpdateSpectator view -> do
+                  sendBuilder wsConn $ Render.fragment $ Render.spectatorView view
+                  receiveLoop
+        Async.race_ sendLoop receiveLoop
   where
-    rejectOnError m =
-      m >>= \case
-        Left rr -> do
-          logError logger "reject websocket request" ["code" =: WS.rejectCode rr]
-          liftIO $ WS.rejectRequestWith pending rr
-        Right () -> pure ()
+    handleReject rr = do
+      logError logger "reject websocket request" ["code" =: WS.rejectCode rr]
+      WS.rejectRequestWith pending rr
     parseTableId path = do
       t <- BS.stripPrefix "/tables/" path
       either (const Nothing) Just $ Id.decodeByteString t

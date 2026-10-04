@@ -12,9 +12,9 @@ module Jasskell.Render
 where
 
 import Control.Monad (forM_, when)
-import Control.Monad.Identity (runIdentity)
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
+import Data.Functor.Identity (runIdentity)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Vector (Vector)
