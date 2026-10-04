@@ -1,7 +1,6 @@
 module Jasskell.Logger
   ( Logger,
     withStderrLogger,
-    MonadLogger (..),
     Level (..),
     Pair,
     (=:),
@@ -27,10 +26,6 @@ import Control.Exception.Annotation
   )
 import Control.Exception.Context (getAllExceptionAnnotations)
 import Control.Monad (when)
-import Control.Monad.Except (ExceptT)
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader (ReaderT, ask)
-import Control.Monad.Trans (lift)
 import Data.Aeson (ToJSON (toEncoding), fromEncoding)
 import Data.ByteString.Builder (Builder)
 import Data.ByteString.Char8 qualified as BS
@@ -64,34 +59,11 @@ infix 6 =:
 (=:) :: (ToJSON a) => Text -> a -> Pair
 key =: value = Pair key (fromEncoding $ toEncoding value)
 
-class MonadLogger m where
-  askLogger :: m Logger
-
-instance MonadLogger ((->) Logger) where
-  askLogger = id
-
-instance (Monad m) => MonadLogger (ReaderT Logger m) where
-  askLogger = ask
-
-instance (Monad m, MonadLogger m) => MonadLogger (ExceptT e m) where
-  askLogger = lift askLogger
-
-log :: (MonadIO m, MonadLogger m) => Level -> Text -> [Pair] -> m ()
-log level msg pairs = do
-  (Logger logger) <- askLogger
-  liftIO $ logger level msg pairs
-
-logDebug :: (MonadIO m, MonadLogger m) => Text -> [Pair] -> m ()
-logDebug = log Debug
-
-logInfo :: (MonadIO m, MonadLogger m) => Text -> [Pair] -> m ()
-logInfo = log Info
-
-logWarning :: (MonadIO m, MonadLogger m) => Text -> [Pair] -> m ()
-logWarning = log Warning
-
-logError :: (MonadIO m, MonadLogger m) => Text -> [Pair] -> m ()
-logError = log Error
+logDebug, logInfo, logWarning, logError :: Logger -> Text -> [Pair] -> IO ()
+logDebug (Logger log) = log Debug
+logInfo (Logger log) = log Info
+logWarning (Logger log) = log Warning
+logError (Logger log) = log Error
 
 showLevel :: Level -> LogStr
 showLevel = \case

@@ -18,7 +18,6 @@ import Hasql.Transaction.Sessions
     Mode (Write),
     transactionNoRetry,
   )
-import Jasskell.App (AppT)
 import Jasskell.Database qualified as DB
 import Jasskell.Logger
 
@@ -27,8 +26,8 @@ data Migration = Migration
     sql :: !ByteString
   }
 
-runMigrations :: (HasCallStack) => DB.Pool -> AppT IO ()
-runMigrations pool = do
+runMigrations :: (HasCallStack) => Logger -> DB.Pool -> IO ()
+runMigrations logger pool = do
   DB.use pool createSchemaMigrationsTable
   forM_ (zip [1 ..] migrations) $ \(s, m) -> do
     start <- liftIO getMonotonicTimeNSec
@@ -43,16 +42,11 @@ runMigrations pool = do
           pure True
     end <- liftIO getMonotonicTimeNSec
     let !durationMs = fromIntegral (end - start) * 1e-6 :: Double
+        info = ["seq" =: s, "name" =: m.name, "duration_ms" =: durationMs]
     if applied
-      then
-        logInfo
-          "migration applied"
-          ["seq" =: s, "name" =: m.name, "duration_ms" =: durationMs]
-      else
-        logDebug
-          "skipping migration: already applied"
-          ["seq" =: s, "name" =: m.name, "duration_ms" =: durationMs]
-  logInfo "migrations done" ["seq" =: length migrations]
+      then logInfo logger "migration applied" info
+      else logDebug logger "skipping migration: already applied" info
+  logInfo logger "migrations done" ["seq" =: length migrations]
 
 migrations :: [Migration]
 migrations =

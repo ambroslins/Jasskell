@@ -2,7 +2,6 @@ module Jasskell.Main where
 
 import Env (auto, def, var)
 import Env qualified as Envparse
-import Jasskell.App (Env (..), runAppT)
 import Jasskell.Database qualified as DB
 import Jasskell.Database.Migration (runMigrations)
 import Jasskell.Logger (Level (..), withStderrLogger)
@@ -35,7 +34,6 @@ main = do
   config <- Envparse.parse (Envparse.header "jasskell 0.1.0") configParser
   withStderrLogger Debug $ \logger ->
     DB.withPool config.database $ \db -> do
-      let env = Env {logger}
-      runAppT env (runMigrations db)
+      runMigrations logger db
       Table.withManager $ \tableManager ->
-        Warp.run config.port $ Server.application db env tableManager
+        Warp.run config.port $ Server.application logger db tableManager

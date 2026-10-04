@@ -14,7 +14,7 @@ where
 
 import Control.Monad (unless)
 import Control.Monad.Except (runExceptT, throwError)
-import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.IO.Class (liftIO)
 import Crypto.Hash (Digest, digestFromByteString, hash)
 import Crypto.Hash.Algorithms (SHA256)
 import Crypto.Random (getRandomBytes)

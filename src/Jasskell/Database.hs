@@ -6,9 +6,7 @@ module Jasskell.Database
   )
 where
 
-import Control.Exception (throwIO)
-import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.IO.Unlift (MonadUnliftIO)
+import Control.Exception (bracket, throwIO)
 import Data.Text (Text)
 import Data.Word (Word16)
 import Hasql.Connection.Settings qualified as Hasql
@@ -16,7 +14,6 @@ import Hasql.Pool qualified
 import Hasql.Pool.Config qualified
 import Hasql.Session qualified as Hasql
 import Pqi.Ffi qualified
-import UnliftIO (bracket)
 
 data Config = Config
   { host :: Text,
@@ -30,11 +27,11 @@ data Config = Config
 
 newtype Pool = Pool Hasql.Pool.Pool
 
-withPool :: (MonadUnliftIO m) => Config -> (Pool -> m a) -> m a
+withPool :: Config -> (Pool -> IO a) -> IO a
 withPool config run =
   bracket
-    (liftIO $ Hasql.Pool.acquire Pqi.Ffi.adapter poolConfig)
-    (liftIO . Hasql.Pool.release)
+    (Hasql.Pool.acquire Pqi.Ffi.adapter poolConfig)
+    Hasql.Pool.release
     (run . Pool)
   where
     poolConfig =
@@ -48,6 +45,6 @@ withPool config run =
         <> Hasql.password config.password
         <> Hasql.dbname config.name
 
-use :: (MonadIO m) => Pool -> Hasql.Session a -> m a
+use :: Pool -> Hasql.Session a -> IO a
 use (Pool pool) session =
-  liftIO $ Hasql.Pool.use pool session >>= either throwIO pure
+  Hasql.Pool.use pool session >>= either throwIO pure

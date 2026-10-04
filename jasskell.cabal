@@ -61,7 +61,6 @@ library
   exposed-modules:
     Data.IntMap.Coercible
     Data.Vector4
-    Jasskell.App
     Jasskell.Card
     Jasskell.Card.Internal
     Jasskell.Card.Seq
@@ -119,8 +118,6 @@ library
     text,
     time,
     transformers,
-    unliftio,
-    unliftio-core,
     unordered-containers,
     vector,
     wai,

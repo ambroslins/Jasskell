@@ -18,9 +18,13 @@ module Jasskell.Table
   )
 where
 
+import Control.Concurrent.Async (Async)
+import Control.Concurrent.Async qualified as Async
+import Control.Concurrent.MVar (MVar, modifyMVarMasked, modifyMVar_, newMVar, readMVar)
+import Control.Concurrent.STM (STM)
 import Control.Concurrent.STM qualified as STM
+import Control.Exception (bracket, evaluate, finally)
 import Control.Monad (forM_)
-import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson.TH qualified
 import Data.Bifunctor (bimap)
 import Data.IntMap.Coercible (IntMap)
@@ -35,7 +39,6 @@ import Data.Vector4 qualified as Vector4
 import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
 import Hasql.TH (maybeStatement, resultlessStatement, vectorStatement)
-import Jasskell.App
 import Jasskell.Card (Card)
 import Jasskell.Database qualified as DB
 import Jasskell.GameState (GameState, GameView)
@@ -47,27 +50,6 @@ import Jasskell.Player (Nickname (..), Player (..), PlayerId)
 import Jasskell.Player qualified as Player
 import Jasskell.Variant (Variant)
 import System.Random qualified as Random
-import UnliftIO (bracket, finally)
-import UnliftIO.Async (Async, asyncWithUnmask)
-import UnliftIO.Exception (evaluate)
-import UnliftIO.MVar
-  ( MVar,
-    modifyMVarMasked,
-    modifyMVar_,
-    newMVar,
-    readMVar,
-  )
-import UnliftIO.STM
-  ( STM,
-    TBQueue,
-    TMVar,
-    TVar,
-    atomically,
-    newEmptyTMVarIO,
-    newTBQueueIO,
-    newTVarIO,
-    readTVarIO,
-  )
 
 type TableId = Id Handle
 
@@ -77,8 +59,8 @@ newtype TableManager = TableManager
 
 data Handle = Handle
   { tableId :: TableId,
-    inputQueue :: TBQueue Input,
-    clients :: TVar (IntMap PlayerId ClientState),
+    inputQueue :: STM.TBQueue Input,
+    clients :: STM.TVar (IntMap PlayerId ClientState),
     thread :: Async ()
   }
   deriving (Eq)
@@ -89,7 +71,7 @@ data Table = Table
     seats :: Vector4 (Maybe Player)
   }
 
-withManager :: (MonadIO m) => (TableManager -> m a) -> m a
+withManager :: (TableManager -> IO a) -> IO a
 withManager f = do
   tm <- TableManager <$> newMVar IntMap.empty
   -- TODO: reaper thread
@@ -98,7 +80,7 @@ withManager f = do
 
 data Client = Client
   { player :: Player,
-    messageBox :: TMVar Message
+    messageBox :: STM.TMVar Message
   }
   deriving (Eq)
 
@@ -131,7 +113,7 @@ data Input
   | PlayerCommand Player Command
   deriving (Eq, Show)
 
-create :: DB.Pool -> PlayerId -> AppT IO TableId
+create :: DB.Pool -> PlayerId -> IO TableId
 create db createdBy = do
   tableId <- Id.new
   DB.use db $ Hasql.statement (tableId, createdBy) insertTable
@@ -153,7 +135,7 @@ data PublicTable = PublicTable
   }
   deriving (Show)
 
-getPublicTables :: DB.Pool -> AppT IO (Vector PublicTable)
+getPublicTables :: DB.Pool -> IO (Vector PublicTable)
 getPublicTables db = DB.use db $ Hasql.statement () selectPublicTables
 
 -- TODO: ignore tables with active games (or put them at the end)
@@ -180,30 +162,31 @@ selectPublicTables =
     |]
 
 join ::
+  Logger ->
   DB.Pool ->
   Player ->
   TableId ->
   TableManager ->
-  (Maybe Connection -> AppT IO a) ->
-  AppT IO a
-join db player tableId manager handler = do
+  (Maybe Connection -> IO a) ->
+  IO a
+join logger db player tableId manager handler = do
   tables <- readMVar manager.tables
   case IntMap.lookup tableId tables of
     Nothing ->
-      spawnTable db tableId manager >>= \case
+      spawnTable logger db tableId manager >>= \case
         Nothing -> handler Nothing
         Just t -> go t
     Just t -> go t
   where
     go table = do
-      messageBox <- newEmptyTMVarIO
+      messageBox <- STM.newEmptyTMVarIO
       let client = Client {player, messageBox}
           connection =
             Connection
               { receive = STM.takeTMVar messageBox,
                 send = STM.writeTBQueue table.inputQueue . PlayerCommand player
               }
-          acquire = atomically $ do
+          acquire = STM.atomically $ do
             clients <- STM.readTVar table.clients
             case IntMap.lookup player.id clients of
               Nothing -> pure ()
@@ -212,35 +195,35 @@ join db player tableId manager handler = do
               IntMap.insert player.id (Connected client) clients
             STM.writeTBQueue table.inputQueue $ PlayerJoined player
           release _ = do
-            lastSeen <- liftIO getCurrentTime
+            lastSeen <- getCurrentTime
             let disconnect = \case
                   Connected c | c == client -> Disconnected lastSeen
                   cs -> cs
-            atomically $ do
+            STM.atomically $ do
               STM.modifyTVar' table.clients $
                 IntMap.adjust disconnect player.id
               STM.writeTBQueue table.inputQueue $ PlayerLeft player
       bracket acquire release $ \() -> handler (Just connection)
 
-spawnTable :: DB.Pool -> TableId -> TableManager -> AppT IO (Maybe Handle)
-spawnTable db tableId manager =
+spawnTable :: Logger -> DB.Pool -> TableId -> TableManager -> IO (Maybe Handle)
+spawnTable logger db tableId manager =
   DB.use db (Hasql.statement tableId selectTableById) >>= \case
     Nothing -> pure Nothing
     Just table -> do
-      inputQueue <- newTBQueueIO 16
-      clients <- newTVarIO IntMap.empty
+      inputQueue <- STM.newTBQueueIO 16
+      clients <- STM.newTVarIO IntMap.empty
       modifyMVarMasked manager.tables $ \tables ->
         case IntMap.lookup tableId tables of
           Just handle -> pure (tables, Just handle)
           Nothing -> do
             let deregister = do
                   modifyMVar_ manager.tables (evaluate . IntMap.delete tableId)
-                  cs <- readTVarIO clients
+                  cs <- STM.readTVarIO clients
                   forM_ cs $ \case
-                    Connected c -> atomically $ STM.writeTMVar c.messageBox ConnectionClosed
+                    Connected c -> STM.atomically $ STM.writeTMVar c.messageBox ConnectionClosed
                     Disconnected _ -> pure ()
-            thread <- asyncWithUnmask $ \unmask ->
-              unmask (tableLoop db table inputQueue clients) `finally` deregister
+            thread <- Async.asyncWithUnmask $ \unmask ->
+              unmask (tableLoop logger db table inputQueue clients) `finally` deregister
             let !handle = Handle {tableId, inputQueue, clients, thread}
                 !ts = IntMap.insert tableId handle tables
             pure (ts, Just handle)
@@ -290,17 +273,17 @@ selectTableById =
       where table_id = $1::int8
     |]
 
-tableLoop :: DB.Pool -> Table -> TBQueue Input -> TVar (IntMap PlayerId ClientState) -> AppT IO ()
-tableLoop db table inputQueue clientsVar = go initial
+tableLoop :: Logger -> DB.Pool -> Table -> STM.TBQueue Input -> STM.TVar (IntMap PlayerId ClientState) -> IO ()
+tableLoop logger db table inputQueue clientsVar = go initial
   where
     initial = Waiting table.seats
     broadcast clients makeMsg = do
       IntMap.forWithKey_ clients $ \playerId cs -> case cs of
-        Connected client -> atomically $ STM.writeTMVar client.messageBox (makeMsg playerId)
+        Connected client -> STM.atomically $ STM.writeTMVar client.messageBox (makeMsg playerId)
         Disconnected _ -> pure ()
     go state = do
-      input <- atomically $ STM.readTBQueue inputQueue
-      logDebug "got table input" ["input" =: show input]
+      input <- STM.atomically $ STM.readTBQueue inputQueue
+      logDebug logger "got table input" ["input" =: show input]
       s <- case state of
         Waiting seats -> case input of
           PlayerJoined player
@@ -333,11 +316,11 @@ tableLoop db table inputQueue clientsVar = go initial
                 PlayCard card -> case GameState.playCard card gameState of
                   Left e -> error $ "play card: " <> show e
                   Right gs -> do
-                    logDebug "card played" ["gameState" =: show gs]
+                    logDebug logger "card played" ["gameState" =: show gs]
                     pure $ Playing seats gs
           _ -> pure state
 
-      clients <- readTVarIO clientsVar
+      clients <- STM.readTVarIO clientsVar
       broadcast clients $ case s of
         Waiting seats -> \playerId ->
           let isPlayer = maybe False (\p -> p.id == playerId)

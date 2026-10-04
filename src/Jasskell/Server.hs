@@ -2,10 +2,11 @@
 
 module Jasskell.Server (application) where
 
+import Control.Concurrent.Async qualified as Async
+import Control.Concurrent.STM qualified as STM
 import Control.Monad ((<=<))
 import Control.Monad.Except (ExceptT (..), runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.IO.Unlift (liftIOOp)
 import Control.Monad.Trans (lift)
 import Data.Aeson (eitherDecode)
 import Data.ByteString (ByteString)
@@ -14,7 +15,6 @@ import Data.ByteString.Builder qualified as Builder
 import Data.ByteString.Char8 qualified as BS
 import Data.ByteString.Lazy (LazyByteString)
 import Data.Text (Text)
-import Jasskell.App (AppT, Env (..), hoistAppT, runAppT)
 import Jasskell.Database qualified as DB
 import Jasskell.Form qualified as Form
 import Jasskell.Id qualified as Id
@@ -30,19 +30,17 @@ import Network.Wai qualified as Wai
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets qualified as WS
 import System.Random qualified as Random
-import UnliftIO.Async qualified as Async
-import UnliftIO.STM (atomically)
 import Web.Cookie (SetCookie, parseCookies, renderSetCookieBS)
 
-application :: DB.Pool -> Env -> TableManager -> Wai.Application
-application db env tableManager =
-  websocketsOr WS.defaultConnectionOptions (websocketApp db env tableManager)
-    . requestLogger env.logger
+application :: Logger -> DB.Pool -> TableManager -> Wai.Application
+application logger db tableManager =
+  websocketsOr WS.defaultConnectionOptions (websocketApp logger db tableManager)
+    . requestLogger logger
     . Static.handlers
-    $ routes db env
+    $ routes logger db
 
-websocketApp :: DB.Pool -> Env -> TableManager -> WS.ServerApp
-websocketApp db env tm pending = rejectOnError . runExceptT . runAppT env $ do
+websocketApp :: Logger -> DB.Pool -> TableManager -> WS.ServerApp
+websocketApp logger db tm pending = rejectOnError . runExceptT $ do
   let request = WS.pendingRequest pending
   tableId <- case parseTableId (WS.requestPath request) of
     Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
@@ -53,28 +51,28 @@ websocketApp db env tm pending = rejectOnError . runExceptT . runAppT env $ do
   player <-
     liftIO (Player.fromSessionCookie db sessionCookie) >>= \case
       Left err -> do
-        logError "invalid session cookie" ["error" =: show err]
+        liftIO $ logError logger "invalid session cookie" ["error" =: show err]
         throwError $ WS.defaultRejectRequest {WS.rejectCode = 401}
       Right s -> pure s
-  hoistAppT ExceptT $
-    Table.join db player tableId tm $
+  ExceptT $
+    Table.join logger db player tableId tm $
       runExceptT . \case
         Nothing -> throwError $ WS.defaultRejectRequest {WS.rejectCode = 404}
         Just tableConn -> lift $ do
           wsConn <- liftIO $ WS.acceptRequest pending
-          liftIOOp (WS.withPingThread wsConn 30 (pure ())) $ do
-            logDebug "accepted websocket request" []
+          WS.withPingThread wsConn 30 (pure ()) $ do
+            logDebug logger "accepted websocket request" []
             let sendLoop = do
                   msg <- liftIO $ WS.receiveData @LazyByteString wsConn
                   case eitherDecode msg of
-                    Left err -> logError "decode websocket message" ["error" =: err]
+                    Left err -> logError logger "decode websocket message" ["error" =: err]
                     Right cmd -> do
-                      logDebug "got command" ["message" =: show cmd]
-                      atomically $ tableConn.send cmd
+                      logDebug logger "got command" ["message" =: show cmd]
+                      STM.atomically $ tableConn.send cmd
                   sendLoop
                 receiveLoop = do
-                  msg <- atomically tableConn.receive
-                  logDebug "got table message" ["message" =: show msg]
+                  msg <- STM.atomically tableConn.receive
+                  logDebug logger "got table message" ["message" =: show msg]
                   case msg of
                     ConnectionClosed -> liftIO $ WS.sendTextData @Text wsConn "closed"
                     UpdateWaiting view -> do
@@ -90,8 +88,8 @@ websocketApp db env tm pending = rejectOnError . runExceptT . runAppT env $ do
   where
     rejectOnError m =
       m >>= \case
-        Left rr -> runAppT env $ do
-          logError "reject websocket request" ["code" =: WS.rejectCode rr]
+        Left rr -> do
+          logError logger "reject websocket request" ["code" =: WS.rejectCode rr]
           liftIO $ WS.rejectRequestWith pending rr
         Right () -> pure ()
     parseTableId path = do
@@ -102,15 +100,15 @@ websocketApp db env tm pending = rejectOnError . runExceptT . runAppT env $ do
       lookup Player.sessionCookieName $ parseCookies cookies
     sendBuilder c = liftIO . WS.sendTextData c . Builder.toLazyByteString
 
-routes :: DB.Pool -> Env -> Wai.Application
-routes db env request respond = respond <=< runAppT env $
-  case Wai.pathInfo request of
-    [] | method == HTTP.methodGet -> getRoot db request
+routes :: Logger -> DB.Pool -> Wai.Application
+routes logger db request respond =
+  respond =<< case Wai.pathInfo request of
+    [] | method == HTTP.methodGet -> getRoot logger db request
     ["tables"]
       | method == HTTP.methodGet -> getTables db request
-      | method == HTTP.methodPost -> postTables db request
+      | method == HTTP.methodPost -> postTables logger db request
     ["tables", Id.decodeText -> Right tableId]
-      | method == HTTP.methodGet -> getTable db tableId request
+      | method == HTTP.methodGet -> getTable logger db tableId request
     ["tables", Id.decodeText -> Right tableId, "join"]
       | method == HTTP.methodPost -> postTableJoin db tableId request
     _ -> pure notFound
@@ -126,26 +124,26 @@ responseHtml headers =
   where
     ct = (HTTP.hContentType, "text/html; charset=utf-8")
 
-getRoot :: DB.Pool -> Wai.Request -> AppT IO Wai.Response
-getRoot db request = do
-  mplayer <- getPlayerSession db request
+getRoot :: Logger -> DB.Pool -> Wai.Request -> IO Wai.Response
+getRoot logger db request = do
+  mplayer <- getPlayerSession logger db request
   stdGen <- Random.newStdGen
   pure . responseHtml [] . Render.page "Jasskell" $ Render.index stdGen mplayer
 
-getTables :: DB.Pool -> Wai.Request -> AppT IO Wai.Response
+getTables :: DB.Pool -> Wai.Request -> IO Wai.Response
 getTables db _request = do
   tables <- Table.getPublicTables db
   pure . responseHtml [] . Render.fragment $ Render.tableList tables
 
-postTables :: DB.Pool -> Wai.Request -> AppT IO Wai.Response
-postTables db request = do
+postTables :: Logger -> DB.Pool -> Wai.Request -> IO Wai.Response
+postTables logger db request = do
   requestBody <- consumeRequestBody request
   case Form.parseByteString formParser requestBody of
     Left errors ->
       pure . Wai.responseBuilder HTTP.status400 [] $
         Form.renderErrors errors
     Right mnickname ->
-      getPlayerSession db request >>= \case
+      getPlayerSession logger db request >>= \case
         Nothing -> case mnickname of
           Nothing ->
             pure $ Wai.responseBuilder HTTP.status401 [] "Unauthorized"
@@ -164,14 +162,14 @@ postTables db request = do
           ((HTTP.hLocation, location) : headers)
           mempty
 
-getTable :: DB.Pool -> TableId -> Wai.Request -> AppT IO Wai.Response
-getTable db tableId request = do
-  mplayer <- getPlayerSession db request
+getTable :: Logger -> DB.Pool -> TableId -> Wai.Request -> IO Wai.Response
+getTable logger db tableId request = do
+  mplayer <- getPlayerSession logger db request
   pure . responseHtml [] . Render.page "Jaskell" $ case mplayer of
     Nothing -> Render.tableLogin tableId
     Just player -> Render.tableConnect player tableId
 
-postTableJoin :: DB.Pool -> TableId -> Wai.Request -> AppT IO Wai.Response
+postTableJoin :: DB.Pool -> TableId -> Wai.Request -> IO Wai.Response
 postTableJoin db tableId request = do
   requestBody <- consumeRequestBody request
   case Form.parseByteString formParser requestBody of
@@ -190,8 +188,8 @@ postTableJoin db tableId request = do
 consumeRequestBody :: (MonadIO m) => Wai.Request -> m ByteString
 consumeRequestBody = liftIO . fmap BS.toStrict . Wai.consumeRequestBodyStrict
 
-getPlayerSession :: DB.Pool -> Wai.Request -> AppT IO (Maybe Player)
-getPlayerSession db request =
+getPlayerSession :: Logger -> DB.Pool -> Wai.Request -> IO (Maybe Player)
+getPlayerSession logger db request =
   let mSessionCookie = do
         cookies <- lookup HTTP.hCookie $ Wai.requestHeaders request
         lookup Player.sessionCookieName $ parseCookies cookies
@@ -200,7 +198,7 @@ getPlayerSession db request =
         Just sessionCookie ->
           liftIO (Player.fromSessionCookie db sessionCookie) >>= \case
             Left err -> do
-              logWarning "invalid session cookie" ["error" =: show err]
+              logWarning logger "invalid session cookie" ["error" =: show err]
               pure Nothing
             Right player -> pure $ Just player
 
