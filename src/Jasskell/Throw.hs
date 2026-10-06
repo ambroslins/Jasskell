@@ -1,12 +1,15 @@
 {-# LANGUAGE FieldSelectors #-}
 
+-- | A poor man's version of [Bluefin.Capability.Throw](https://hackage-content.haskell.org/package/bluefin-0.10.1.0/docs/Bluefin-Capability-Throw.html).
+-- Note that nested throws are correctly handle since we create a unique tag
+-- for each scope.
+-- Unlike bluefin (and other effect systems), we don't prevent the effect to escape.
 module Jasskell.Throw
   ( Throw,
     throw,
     trying,
     handling,
     catching,
-    earlyReturn,
   )
 where
 
@@ -42,6 +45,3 @@ handling h body = trying body >>= either h pure
 
 catching :: (Throw e -> IO a) -> (e -> IO a) -> IO a
 catching = flip handling
-
-earlyReturn :: (Throw a -> IO a) -> IO a
-earlyReturn = handling pure

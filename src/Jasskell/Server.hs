@@ -11,12 +11,13 @@ import Data.ByteString.Builder (Builder)
 import Data.ByteString.Builder qualified as Builder
 import Data.ByteString.Char8 qualified as BS
 import Data.ByteString.Lazy (LazyByteString)
+import Data.Functor ((<&>))
 import Data.Text (Text)
 import Jasskell.Database qualified as DB
 import Jasskell.Form qualified as Form
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
-import Jasskell.Player (Player)
+import Jasskell.Player (Player (id))
 import Jasskell.Player qualified as Player
 import Jasskell.Render qualified as Render
 import Jasskell.Static qualified as Static
@@ -119,7 +120,8 @@ responseHtml headers =
 
 getRoot :: Logger -> DB.Pool -> Wai.Request -> IO Wai.Response
 getRoot logger db request = do
-  mplayer <- getPlayerSession logger db request
+  mplayer <- handling (const $ pure Nothing) $ \sessionError ->
+    getPlayerSession logger db sessionError request
   stdGen <- Random.newStdGen
   pure . responseHtml [] . Render.page "Jasskell" $ Render.index stdGen mplayer
 
@@ -131,22 +133,17 @@ getTables db _request = do
 postTables :: Logger -> DB.Pool -> Wai.Request -> IO Wai.Response
 postTables logger db request = do
   requestBody <- consumeRequestBody request
-  case Form.parseByteString formParser requestBody of
-    Left errors ->
-      pure . Wai.responseBuilder HTTP.status400 [] $
-        Form.renderErrors errors
-    Right mnickname ->
-      getPlayerSession logger db request >>= \case
-        Nothing -> case mnickname of
-          Nothing ->
-            pure $ Wai.responseBuilder HTTP.status401 [] "Unauthorized"
-          Just nickname -> do
-            (player, setCookie) <- Player.newSession db nickname
-            createTable player.id [setCookieHeader setCookie]
-        Just player -> createTable player.id []
-  where
-    formParser = Form.optional "nickname" (Player.parseNickname <=< Form.text)
-    createTable playerId headers = do
+  handling (pure . responseSessionError) $ \sessionError -> do
+    msession <- getPlayerSession logger db sessionError request
+    handling (pure . responseFormErrors) $ \formErrors -> do
+      let parser = case msession of
+            Nothing ->
+              Form.field "nickname" (Player.parseNickname <=< Form.text)
+                <&> \nickname -> do
+                  (player, setCookie) <- Player.newSession db nickname
+                  pure (player.id, [setCookieHeader setCookie])
+            Just player -> pure $ pure (player.id, [])
+      (playerId, headers) <- either (throw formErrors) id $ Form.parseByteString parser requestBody
       tableId <- Table.create db playerId
       let location = "/tables/" <> Id.encodeByteString tableId
       pure $
@@ -154,10 +151,14 @@ postTables logger db request = do
           HTTP.status303
           ((HTTP.hLocation, location) : headers)
           mempty
+  where
+    responseFormErrors = Wai.responseBuilder HTTP.status400 [] . Form.renderErrors
+    responseSessionError = const $ Wai.responseLBS HTTP.status401 [] "Invalid Session"
 
 getTable :: Logger -> DB.Pool -> TableId -> Wai.Request -> IO Wai.Response
 getTable logger db tableId request = do
-  mplayer <- getPlayerSession logger db request
+  mplayer <- handling (const $ pure Nothing) $
+    \sessionError -> getPlayerSession logger db sessionError request
   pure . responseHtml [] . Render.page "Jaskell" $ case mplayer of
     Nothing -> Render.tableLogin tableId
     Just player -> Render.tableConnect player tableId
@@ -181,8 +182,8 @@ postTableJoin db tableId request = do
 consumeRequestBody :: Wai.Request -> IO ByteString
 consumeRequestBody = fmap BS.toStrict . Wai.consumeRequestBodyStrict
 
-getPlayerSession :: Logger -> DB.Pool -> Wai.Request -> IO (Maybe Player)
-getPlayerSession logger db request =
+getPlayerSession :: Logger -> DB.Pool -> Throw Player.SessionError -> Wai.Request -> IO (Maybe Player)
+getPlayerSession logger db sessionError request =
   let mSessionCookie = do
         cookies <- lookup HTTP.hCookie $ Wai.requestHeaders request
         lookup Player.sessionCookieName $ parseCookies cookies
@@ -192,7 +193,7 @@ getPlayerSession logger db request =
           Player.fromSessionCookie db sessionCookie >>= \case
             Left err -> do
               logWarning logger "invalid session cookie" ["error" =: show err]
-              pure Nothing
+              throw sessionError err
             Right player -> pure $ Just player
 
 setCookieHeader :: SetCookie -> HTTP.Header
