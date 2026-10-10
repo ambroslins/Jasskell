@@ -4,11 +4,7 @@ module Jasskell.Logger
     Level (..),
     Pair,
     (=:),
-    logDebug,
-    logInfo,
-    logWarning,
-    logError,
-    withCtx,
+    withContext,
     requestLogger,
   )
 where
@@ -36,6 +32,7 @@ import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Format.ISO8601 (iso8601Show)
 import GHC.Clock (getMonotonicTimeNSec)
+import GHC.Records (HasField (..))
 import Network.HTTP.Types (Status (..), hContentLength)
 import Network.Wai qualified as Wai
 import System.Log.FastLogger
@@ -60,14 +57,20 @@ infix 6 =:
 (=:) :: (ToJSON a) => Text -> a -> Pair
 key =: value = Pair key (fromEncoding $ toEncoding value)
 
-logDebug, logInfo, logWarning, logError :: Logger -> Text -> [Pair] -> IO ()
-logDebug (Logger log) = log Debug
-logInfo (Logger log) = log Info
-logWarning (Logger log) = log Warning
-logError (Logger log) = log Error
+instance HasField "debug" Logger (Text -> [Pair] -> IO ()) where
+  getField (Logger log) = log Debug
 
-withCtx :: Logger -> [Pair] -> Logger
-withCtx (Logger log) ctx = Logger (\level msg pairs -> log level msg (ctx ++ pairs))
+instance HasField "info" Logger (Text -> [Pair] -> IO ()) where
+  getField (Logger log) = log Info
+
+instance HasField "warning" Logger (Text -> [Pair] -> IO ()) where
+  getField (Logger log) = log Warning
+
+instance HasField "error" Logger (Text -> [Pair] -> IO ()) where
+  getField (Logger log) = log Error
+
+withContext :: Logger -> [Pair] -> Logger
+withContext (Logger log) ctx = Logger (\level msg pairs -> log level msg (ctx ++ pairs))
 
 showLevel :: Level -> LogStr
 showLevel = \case

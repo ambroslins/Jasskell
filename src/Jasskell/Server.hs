@@ -50,7 +50,7 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
   player <-
     Player.fromSessionCookie db sessionCookie >>= \case
       Left err -> do
-        logError logger "invalid session cookie" ["error" =: show err]
+        logger.error "invalid session cookie" ["error" =: show err]
         throw reject $ WS.defaultRejectRequest {WS.rejectCode = 401}
       Right s -> pure s
   maybe (throw reject $ WS.defaultRejectRequest {WS.rejectCode = 404}) pure
@@ -58,18 +58,18 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
     $ \tableConn -> do
       wsConn <- WS.acceptRequest pending
       WS.withPingThread wsConn 30 (pure ()) $ do
-        logDebug logger "accepted websocket request" []
+        logger.debug "accepted websocket request" []
         let sendLoop = do
               msg <- WS.receiveData @LazyByteString wsConn
               case eitherDecode msg of
-                Left err -> logError logger "decode websocket message" ["error" =: err]
+                Left err -> logger.error "decode websocket message" ["error" =: err]
                 Right cmd -> do
-                  logDebug logger "got command" ["message" =: show cmd]
+                  logger.debug "got command" ["message" =: show cmd]
                   STM.atomically $ tableConn.send cmd
               sendLoop
             receiveLoop = do
               msg <- STM.atomically tableConn.receive
-              logDebug logger "got table message" ["message" =: show msg]
+              logger.debug "got table message" ["message" =: show msg]
               case msg of
                 ConnectionClosed -> WS.sendTextData @Text wsConn "closed"
                 UpdateWaiting view -> do
@@ -84,7 +84,7 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
         Async.race_ sendLoop receiveLoop
   where
     handleReject rr = do
-      logError logger "reject websocket request" ["code" =: WS.rejectCode rr]
+      logger.error "reject websocket request" ["code" =: WS.rejectCode rr]
       WS.rejectRequestWith pending rr
     parseTableId path = do
       t <- BS.stripPrefix "/tables/" path
@@ -192,7 +192,7 @@ getPlayerSession logger db sessionError request =
         Just sessionCookie ->
           Player.fromSessionCookie db sessionCookie >>= \case
             Left err -> do
-              logWarning logger "invalid session cookie" ["error" =: show err]
+              logger.warning "invalid session cookie" ["error" =: show err]
               throw sessionError err
             Right player -> pure $ Just player
 

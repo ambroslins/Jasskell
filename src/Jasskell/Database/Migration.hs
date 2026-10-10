@@ -44,9 +44,9 @@ runMigrations logger pool = do
     let !durationMs = fromIntegral (end - start) * 1e-6 :: Double
         info = ["seq" =: s, "name" =: m.name, "duration_ms" =: durationMs]
     if applied
-      then logInfo logger "migration applied" info
-      else logDebug logger "skipping migration: already applied" info
-  logInfo logger "migrations done" ["seq" =: length migrations]
+      then logger.info "migration applied" info
+      else logger.debug "skipping migration: already applied" info
+  logger.info "migrations done" ["seq" =: length migrations]
 
 migrations :: [Migration]
 migrations =

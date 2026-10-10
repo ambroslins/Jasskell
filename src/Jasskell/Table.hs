@@ -22,7 +22,7 @@ import Control.Concurrent (forkIOWithUnmask)
 import Control.Concurrent.MVar (MVar, modifyMVarMasked, modifyMVar_, newMVar, readMVar)
 import Control.Concurrent.STM (STM)
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (SomeException (..), bracket, evaluate, finally, try)
+import Control.Exception (SomeException (..), bracket, evaluate, try)
 import Control.Monad (forM_, unless)
 import Data.Aeson.TH qualified
 import Data.Bifunctor (bimap)
@@ -213,18 +213,18 @@ spawnTable l db snapshot manager = do
         let !table = Table {id = snapshot.id, inbox, clients, closed}
         _threadId <- forkIOWithUnmask $ \unmask -> do
           result <- try $ unmask $ do
-            logDebug logger "table started" []
+            logger.debug "table started" []
             tableLoop logger db table state
           modifyMVar_ manager.tables (evaluate . IntMap.delete snapshot.id)
           STM.atomically $ STM.writeTVar closed True
           unmask $ case result of
-            Left (SomeException e) -> logError logger "table crashed" ["exception" =: show e]
-            Right () -> logDebug logger "table closed" []
+            Left (SomeException e) -> logger.error "table crashed" ["exception" =: show e]
+            Right () -> logger.debug "table closed" []
 
         let !ts = IntMap.insert snapshot.id table tables
         pure (ts, table)
   where
-    logger = withCtx l ["table_id" =: Id.encodeText snapshot.id]
+    logger = withContext l ["table_id" =: Id.encodeText snapshot.id]
 
 restoreState :: Snapshot -> TableState
 restoreState snapshot = Waiting snapshot.seats
@@ -287,7 +287,7 @@ tableLoop logger db table = go
         Disconnected _ -> pure ()
     go state = do
       input <- STM.atomically $ STM.readTBQueue table.inbox
-      logDebug logger "got table input" ["input" =: show input]
+      logger.debug "got table input" ["input" =: show input]
       s <- case state of
         Waiting seats -> case input of
           PlayerJoined _ -> pure state
@@ -317,7 +317,7 @@ tableLoop logger db table = go
                 PlayCard card -> case GameState.playCard card gameState of
                   Left e -> error $ "play card: " <> show e
                   Right gs -> do
-                    logDebug logger "card played" ["gameState" =: show gs]
+                    logger.debug "card played" ["gameState" =: show gs]
                     pure $ Playing seats gs
           _ -> pure state
 
