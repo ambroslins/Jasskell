@@ -8,6 +8,7 @@ module Jasskell.Logger
     logInfo,
     logWarning,
     logError,
+    withCtx,
     requestLogger,
   )
 where
@@ -64,6 +65,9 @@ logDebug (Logger log) = log Debug
 logInfo (Logger log) = log Info
 logWarning (Logger log) = log Warning
 logError (Logger log) = log Error
+
+withCtx :: Logger -> [Pair] -> Logger
+withCtx (Logger log) ctx = Logger (\level msg pairs -> log level msg (ctx ++ pairs))
 
 showLevel :: Level -> LogStr
 showLevel = \case

@@ -67,7 +67,7 @@ migrations =
       """
       create table tables (
         table_id int8 primary key,
-        created_by int8 not null, -- references players
+        created_by int8 references players(player_id) on delete set null,
         created_at timestamptz not null default now()
       )
       """,
@@ -76,10 +76,11 @@ migrations =
       """
       create table seats (
         table_id int8 not null references tables(table_id),
-        index int4 not null,
-        player_id int8 not null, -- references players
+        seat int4 not null check (seat >= 0),
+        player_id int8 references players(player_id) on delete set null,
 
-        primary key (table_id, index)
+        primary key (table_id, seat),
+        unique (table_id, player_id)
       )
       """
   ]

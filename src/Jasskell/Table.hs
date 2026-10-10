@@ -18,18 +18,16 @@ module Jasskell.Table
   )
 where
 
-import Control.Concurrent.Async (Async)
-import Control.Concurrent.Async qualified as Async
+import Control.Concurrent (forkIOWithUnmask)
 import Control.Concurrent.MVar (MVar, modifyMVarMasked, modifyMVar_, newMVar, readMVar)
 import Control.Concurrent.STM (STM)
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (bracket, evaluate, finally)
-import Control.Monad (forM_)
+import Control.Exception (SomeException (..), bracket, evaluate, finally, try)
+import Control.Monad (forM_, unless)
 import Data.Aeson.TH qualified
 import Data.Bifunctor (bimap)
 import Data.IntMap.Coercible (IntMap)
 import Data.IntMap.Coercible qualified as IntMap
-import Data.Maybe (isNothing)
 import Data.Profunctor (Profunctor (lmap), dimap)
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Vector (Vector)
@@ -38,7 +36,7 @@ import Data.Vector4 (Vector4)
 import Data.Vector4 qualified as Vector4
 import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
-import Hasql.TH (maybeStatement, resultlessStatement, vectorStatement)
+import Hasql.TH (maybeStatement, resultlessStatement, rowsAffectedStatement, vectorStatement)
 import Jasskell.Card (Card)
 import Jasskell.Database qualified as DB
 import Jasskell.GameState (GameState, GameView)
@@ -48,28 +46,23 @@ import Jasskell.Id qualified as Id
 import Jasskell.Logger
 import Jasskell.Player (Nickname (..), Player (..), PlayerId)
 import Jasskell.Player qualified as Player
+import Jasskell.Throw
 import Jasskell.Variant (Variant)
 import System.Random qualified as Random
 
-type TableId = Id Handle
+type TableId = Id Table
 
 newtype TableManager = TableManager
-  { tables :: MVar (IntMap TableId Handle)
+  { tables :: MVar (IntMap TableId Table)
   }
-
-data Handle = Handle
-  { tableId :: TableId,
-    inputQueue :: STM.TBQueue Input,
-    clients :: STM.TVar (IntMap PlayerId ClientState),
-    thread :: Async ()
-  }
-  deriving (Eq)
 
 data Table = Table
   { id :: TableId,
-    creator :: PlayerId,
-    seats :: Vector4 (Maybe Player)
+    inbox :: STM.TBQueue Input,
+    clients :: STM.TVar (IntMap PlayerId Client),
+    closed :: STM.TVar Bool
   }
+  deriving (Eq)
 
 withManager :: (TableManager -> IO a) -> IO a
 withManager f = do
@@ -80,13 +73,14 @@ withManager f = do
 
 data Client = Client
   { player :: Player,
-    messageBox :: STM.TMVar Message
+    state :: ClientState
   }
   deriving (Eq)
 
 data ClientState
-  = Connected Client
+  = Connected (STM.TMVar Message)
   | Disconnected UTCTime
+  deriving (Eq)
 
 data Connection = Connection
   { receive :: STM Message,
@@ -167,137 +161,144 @@ join ::
   Player ->
   TableId ->
   TableManager ->
-  (Maybe Connection -> IO a) ->
-  IO a
-join logger db player tableId manager handler = do
+  (Connection -> IO a) ->
+  IO (Maybe a)
+join logger db player tableId manager handler = handling pure $ \notFound -> do
   tables <- readMVar manager.tables
-  case IntMap.lookup tableId tables of
+  table <- case IntMap.lookup tableId tables of
     Nothing ->
-      spawnTable logger db tableId manager >>= \case
-        Nothing -> handler Nothing
-        Just t -> go t
-    Just t -> go t
+      getTableSnapshot db tableId >>= \case
+        Nothing -> throw notFound Nothing
+        Just snapshot -> spawnTable logger db snapshot manager
+    Just t -> pure t
+  messageBox <- STM.newEmptyTMVarIO
+  let client = Client {player, state = Connected messageBox}
+      connection =
+        Connection
+          { receive = do
+              closed <- STM.readTVar table.closed
+              if closed
+                then pure ConnectionClosed
+                else STM.takeTMVar messageBox,
+            send = STM.writeTBQueue table.inbox . PlayerCommand player
+          }
+      acquire = STM.atomically $ do
+        clients <- STM.readTVar table.clients
+        case IntMap.lookup player.id clients of
+          Nothing -> pure ()
+          Just _old -> undefined -- TODO: force leave player
+        STM.writeTVar table.clients $!
+          IntMap.insert player.id client clients
+        STM.writeTBQueue table.inbox $ PlayerJoined player
+      release _ = do
+        disconnected <- Disconnected <$> getCurrentTime
+        STM.atomically $ do
+          STM.modifyTVar' table.clients $
+            IntMap.adjust
+              (\c -> if c == client then client {state = disconnected} else c)
+              player.id
+          STM.writeTBQueue table.inbox $ PlayerLeft player
+  bracket acquire release $ \() -> Just <$> handler connection
+
+spawnTable :: Logger -> DB.Pool -> Snapshot -> TableManager -> IO Table
+spawnTable l db snapshot manager = do
+  inbox <- STM.newTBQueueIO 16
+  clients <- STM.newTVarIO IntMap.empty
+  let !state = restoreState snapshot
+  modifyMVarMasked manager.tables $ \tables ->
+    case IntMap.lookup snapshot.id tables of
+      Just table -> pure (tables, table)
+      Nothing -> do
+        closed <- STM.newTVarIO False
+        let !table = Table {id = snapshot.id, inbox, clients, closed}
+        _threadId <- forkIOWithUnmask $ \unmask -> do
+          result <- try $ unmask $ do
+            logDebug logger "table started" []
+            tableLoop logger db table state
+          modifyMVar_ manager.tables (evaluate . IntMap.delete snapshot.id)
+          STM.atomically $ STM.writeTVar closed True
+          unmask $ case result of
+            Left (SomeException e) -> logError logger "table crashed" ["exception" =: show e]
+            Right () -> logDebug logger "table closed" []
+
+        let !ts = IntMap.insert snapshot.id table tables
+        pure (ts, table)
   where
-    go table = do
-      messageBox <- STM.newEmptyTMVarIO
-      let client = Client {player, messageBox}
-          connection =
-            Connection
-              { receive = STM.takeTMVar messageBox,
-                send = STM.writeTBQueue table.inputQueue . PlayerCommand player
-              }
-          acquire = STM.atomically $ do
-            clients <- STM.readTVar table.clients
-            case IntMap.lookup player.id clients of
-              Nothing -> pure ()
-              Just _old -> undefined -- TODO: force leave player
-            STM.writeTVar table.clients $!
-              IntMap.insert player.id (Connected client) clients
-            STM.writeTBQueue table.inputQueue $ PlayerJoined player
-          release _ = do
-            lastSeen <- getCurrentTime
-            let disconnect = \case
-                  Connected c | c == client -> Disconnected lastSeen
-                  cs -> cs
-            STM.atomically $ do
-              STM.modifyTVar' table.clients $
-                IntMap.adjust disconnect player.id
-              STM.writeTBQueue table.inputQueue $ PlayerLeft player
-      bracket acquire release $ \() -> handler (Just connection)
+    logger = withCtx l ["table_id" =: Id.encodeText snapshot.id]
 
-spawnTable :: Logger -> DB.Pool -> TableId -> TableManager -> IO (Maybe Handle)
-spawnTable logger db tableId manager =
-  DB.use db (Hasql.statement tableId selectTableById) >>= \case
-    Nothing -> pure Nothing
-    Just table -> do
-      inputQueue <- STM.newTBQueueIO 16
-      clients <- STM.newTVarIO IntMap.empty
-      modifyMVarMasked manager.tables $ \tables ->
-        case IntMap.lookup tableId tables of
-          Just handle -> pure (tables, Just handle)
-          Nothing -> do
-            let deregister = do
-                  modifyMVar_ manager.tables (evaluate . IntMap.delete tableId)
-                  cs <- STM.readTVarIO clients
-                  forM_ cs $ \case
-                    Connected c -> STM.atomically $ STM.writeTMVar c.messageBox ConnectionClosed
-                    Disconnected _ -> pure ()
-            thread <- Async.asyncWithUnmask $ \unmask ->
-              unmask (tableLoop logger db table inputQueue clients) `finally` deregister
-            let !handle = Handle {tableId, inputQueue, clients, thread}
-                !ts = IntMap.insert tableId handle tables
-            pure (ts, Just handle)
+restoreState :: Snapshot -> TableState
+restoreState snapshot = Waiting snapshot.seats
 
-selectTableById :: Hasql.Statement TableId (Maybe Table)
-selectTableById =
+data Snapshot = Snapshot
+  { id :: TableId,
+    creator :: PlayerId,
+    seats :: Vector4 (Maybe Player)
+  }
+
+getTableSnapshot :: DB.Pool -> TableId -> IO (Maybe Snapshot)
+getTableSnapshot db tableId =
+  DB.use db (Hasql.statement tableId selectTableSnapshot)
+
+selectTableSnapshot :: Hasql.Statement TableId (Maybe Snapshot)
+selectTableSnapshot =
   dimap
     Id.toInt64
-    ( fmap $ \(tableId, createdBy, is, playerIds, nicknames) ->
-        Table
-          { id = Id.fromInt64 tableId,
-            creator = Id.fromInt64 createdBy,
-            seats =
-              Vector.foldl'
-                ( \v (i, playerId, nickname) ->
-                    Vector4.set
-                      (fromIntegral i)
-                      ( Just $
-                          Player
-                            { id = Id.fromInt64 playerId,
-                              nickname = maybe "" Player.Nickname nickname
-                            }
-                      )
-                      v
-                )
-                (Vector4.replicate Nothing)
-                $ Vector.zip3 is playerIds nicknames
-          }
-    )
+    (fmap decode)
     [maybeStatement|
       select
         t.table_id::int8,
         t.created_by::int8,
-        coalesce(s.indices, '{}'::int4[])::int4[],
+        coalesce(s.seats, '{}'::int4[])::int4[],
         coalesce(s.player_ids, '{}'::int8[])::int8[],
-        coalesce(s.nicknames, '{}'::text[])::text?[]
+        coalesce(s.nicknames, '{}'::text[])::text[]
       from tables as t
       left join lateral (
         select
-          array_agg(s.index order by s.index) as indices,
-          array_agg(s.player_id order by s.index) as player_ids,
-          array_agg(p.nickname order by s.index) as nicknames
+          array_agg(s.seat order by s.seat) as seats,
+          array_agg(s.player_id order by s.seat) as player_ids,
+          array_agg(p.nickname order by s.seat) as nicknames
         from seats as s
         left join players as p on p.player_id = s.player_id
-        where s.table_id = t.table_id
+        where s.table_id = t.table_id and p.player_id is not null
       ) as s on true
-      where table_id = $1::int8
+      where table_id = $1::int8 and created_by is not null
     |]
-
-tableLoop :: Logger -> DB.Pool -> Table -> STM.TBQueue Input -> STM.TVar (IntMap PlayerId ClientState) -> IO ()
-tableLoop logger db table inputQueue clientsVar = go initial
   where
-    initial = Waiting table.seats
+    decode (tableId, creatdBy, indices, playerIds, nicknames) =
+      Snapshot
+        { id = Id.fromInt64 tableId,
+          creator = Id.fromInt64 creatdBy,
+          seats =
+            Vector.foldl' setSeat (Vector4.replicate Nothing) $
+              Vector.zip3 indices playerIds nicknames
+        }
+    setSeat v (i, p, n) =
+      Vector4.set
+        (fromIntegral i)
+        (Just $ Player {id = Id.fromInt64 p, nickname = Player.Nickname n})
+        v
+
+tableLoop :: Logger -> DB.Pool -> Table -> TableState -> IO ()
+tableLoop logger db table = go
+  where
     broadcast clients makeMsg = do
-      IntMap.forWithKey_ clients $ \playerId cs -> case cs of
-        Connected client -> STM.atomically $ STM.writeTMVar client.messageBox (makeMsg playerId)
+      forM_ clients $ \client -> case client.state of
+        Connected box -> STM.atomically $ STM.writeTMVar box (makeMsg client.player.id)
         Disconnected _ -> pure ()
     go state = do
-      input <- STM.atomically $ STM.readTBQueue inputQueue
+      input <- STM.atomically $ STM.readTBQueue table.inbox
       logDebug logger "got table input" ["input" =: show input]
       s <- case state of
         Waiting seats -> case input of
-          PlayerJoined player
-            | player.id == table.creator && all isNothing seats -> do
-                DB.use db $ Hasql.statement (table.id, player.id, 0) insertSeat
-                pure $ Waiting $ Vector4.set 0 (Just player) seats
-            | otherwise -> pure state
+          PlayerJoined _ -> pure state
           PlayerLeft _ -> pure state
           PlayerCommand player cmd -> case cmd of
             TakeSeat seat
               | any (maybe False $ \p -> p.id == player.id) seats -> error "already seated" -- TODO: already seated
               | Just _ <- Vector4.index seat seats -> error "already taken" -- TODO: already taken
               | otherwise -> do
-                  DB.use db $ Hasql.statement (table.id, player.id, seat) insertSeat
+                  ok <- DB.use db $ Hasql.statement (table.id, player.id, seat) insertSeat
+                  unless ok $ error "TODO: not inserted"
                   pure $ Waiting $ Vector4.set seat (Just player) seats
             StartGame -> case sequence seats of
               Nothing -> error "game not full"
@@ -320,7 +321,7 @@ tableLoop logger db table inputQueue clientsVar = go initial
                     pure $ Playing seats gs
           _ -> pure state
 
-      clients <- STM.readTVarIO clientsVar
+      clients <- STM.readTVarIO table.clients
       broadcast clients $ case s of
         Waiting seats -> \playerId ->
           let isPlayer = maybe False (\p -> p.id == playerId)
@@ -331,16 +332,21 @@ tableLoop logger db table inputQueue clientsVar = go initial
             Just i -> UpdatePlayer $ playerViewFor i seats gameState
       go s
 
-insertSeat :: Hasql.Statement (TableId, PlayerId, Vector4.Index4) ()
+insertSeat :: Hasql.Statement (TableId, PlayerId, Vector4.Index4) Bool
 insertSeat =
-  lmap
-    ( \(tableId, playerId, index) ->
-        (Id.toInt64 tableId, Id.toInt64 playerId, fromIntegral $ fromEnum index)
-    )
-    [resultlessStatement|
-      insert into seats (table_id, player_id, index)
-      values ($1::int8, $2::int8, $3::int8)
+  dimap
+    encode
+    (> 0)
+    [rowsAffectedStatement|
+      insert into seats (table_id, player_id, seat)
+      values ($1::int8, $2::int8, $3::int4)
+      on conflict (table_id, seat) do update
+        set player_id = excluded.player_id
+      where seats.player_id is null
     |]
+  where
+    encode (tableId, playerId, seat) =
+      (Id.toInt64 tableId, Id.toInt64 playerId, fromIntegral $ fromEnum seat)
 
 data TableState
   = Waiting (Vector4 (Maybe Player))

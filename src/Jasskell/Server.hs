@@ -21,7 +21,7 @@ import Jasskell.Player (Player (id))
 import Jasskell.Player qualified as Player
 import Jasskell.Render qualified as Render
 import Jasskell.Static qualified as Static
-import Jasskell.Table (Connection (..), Message (..), TableId, TableManager)
+import Jasskell.Table (Message (..), TableId, TableManager)
 import Jasskell.Table qualified as Table
 import Jasskell.Throw
 import Network.HTTP.Types qualified as HTTP
@@ -53,9 +53,9 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
         logError logger "invalid session cookie" ["error" =: show err]
         throw reject $ WS.defaultRejectRequest {WS.rejectCode = 401}
       Right s -> pure s
-  Table.join logger db player tableId tm $ \case
-    Nothing -> throw reject $ WS.defaultRejectRequest {WS.rejectCode = 404}
-    Just tableConn -> do
+  maybe (throw reject $ WS.defaultRejectRequest {WS.rejectCode = 404}) pure
+    <=< Table.join logger db player tableId tm
+    $ \tableConn -> do
       wsConn <- WS.acceptRequest pending
       WS.withPingThread wsConn 30 (pure ()) $ do
         logDebug logger "accepted websocket request" []
