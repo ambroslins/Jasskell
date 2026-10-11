@@ -28,6 +28,7 @@ import Data.Aeson.TH qualified
 import Data.Bifunctor (bimap)
 import Data.IntMap.Coercible (IntMap)
 import Data.IntMap.Coercible qualified as IntMap
+import Data.Maybe (isJust, isNothing)
 import Data.Profunctor (Profunctor (lmap), dimap)
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Vector (Vector)
@@ -98,13 +99,26 @@ data Message
   = UpdateWaiting WaitingView
   | UpdatePlayer PlayerView
   | UpdateSpectator SpectatorView
-  | ConnectionClosed
+  | Rejected Rejection
+  | Superseded
+  | TableClosed
+  deriving (Show)
+
+data Rejection
+  = SeatTaken
+  | AlreadySeated
+  | NotAPlayer
+  | VariantAlreadyDeclared
+  | GameAlreadyStarted
+  | GameNotStarted
+  | NotYourTurn
+  | IllegalCard GameState.IllegalCard
   deriving (Show)
 
 data Input
-  = PlayerJoined Player
-  | PlayerLeft Player
-  | PlayerCommand Player Command
+  = PlayerJoined PlayerId
+  | PlayerLeft PlayerId
+  | PlayerCommand PlayerId Command
   deriving (Eq, Show)
 
 create :: DB.Pool -> PlayerId -> IO TableId
@@ -178,18 +192,18 @@ join logger db player tableId manager handler = handling pure $ \notFound -> do
           { receive = do
               closed <- STM.readTVar table.closed
               if closed
-                then pure ConnectionClosed
+                then pure TableClosed
                 else STM.takeTMVar messageBox,
-            send = STM.writeTBQueue table.inbox . PlayerCommand player
+            send = STM.writeTBQueue table.inbox . PlayerCommand player.id
           }
       acquire = STM.atomically $ do
         clients <- STM.readTVar table.clients
         case IntMap.lookup player.id clients of
-          Nothing -> pure ()
-          Just _old -> undefined -- TODO: force leave player
+          Just Client {state = Connected box} -> STM.writeTMVar box Superseded
+          _ -> pure ()
         STM.writeTVar table.clients $!
           IntMap.insert player.id client clients
-        STM.writeTBQueue table.inbox $ PlayerJoined player
+        STM.writeTBQueue table.inbox $ PlayerJoined player.id
       release _ = do
         disconnected <- Disconnected <$> getCurrentTime
         STM.atomically $ do
@@ -197,7 +211,7 @@ join logger db player tableId manager handler = handling pure $ \notFound -> do
             IntMap.adjust
               (\c -> if c == client then client {state = disconnected} else c)
               player.id
-          STM.writeTBQueue table.inbox $ PlayerLeft player
+          STM.writeTBQueue table.inbox $ PlayerLeft player.id
   bracket acquire release $ \() -> Just <$> handler connection
 
 spawnTable :: Logger -> DB.Pool -> Snapshot -> TableManager -> IO Table
@@ -281,56 +295,90 @@ selectTableSnapshot =
 tableLoop :: Logger -> DB.Pool -> Table -> TableState -> IO ()
 tableLoop logger db table = go
   where
-    broadcast clients makeMsg = do
-      forM_ clients $ \client -> case client.state of
-        Connected box -> STM.atomically $ STM.writeTMVar box (makeMsg client.player.id)
-        Disconnected _ -> pure ()
     go state = do
       input <- STM.atomically $ STM.readTBQueue table.inbox
       logger.debug "got table input" ["input" =: show input]
-      s <- case state of
-        Waiting seats -> case input of
-          PlayerJoined _ -> pure state
-          PlayerLeft _ -> pure state
-          PlayerCommand player cmd -> case cmd of
-            TakeSeat seat
-              | any (maybe False $ \p -> p.id == player.id) seats -> error "already seated" -- TODO: already seated
-              | Just _ <- Vector4.index seat seats -> error "already taken" -- TODO: already taken
-              | otherwise -> do
-                  ok <- DB.use db $ Hasql.statement (table.id, player.id, seat) insertSeat
-                  unless ok $ error "TODO: not inserted"
-                  pure $ Waiting $ Vector4.set seat (Just player) seats
-            StartGame -> case sequence seats of
-              Nothing -> error "game not full"
-              Just takenSeats -> do
-                stdGen <- Random.newStdGen
-                let gameState = GameState.new stdGen
-                pure $ Playing takenSeats gameState
-            _ -> pure state -- TODO: invalid command
-        Playing seats gameState -> case input of
-          PlayerCommand player cmd
-            | (Vector4.index (GameState.currentPlayer gameState) seats).id /= player.id -> error "not the current player"
-            | otherwise -> case cmd of
-                DeclareVariant variant -> case GameState.declareVariant variant gameState of
-                  Left e -> error $ "declare variant: " <> show e
-                  Right gs -> pure $ Playing seats gs
-                PlayCard card -> case GameState.playCard card gameState of
-                  Left e -> error $ "play card: " <> show e
-                  Right gs -> do
-                    logger.debug "card played" ["gameState" =: show gs]
-                    pure $ Playing seats gs
-          _ -> pure state
-
       clients <- STM.readTVarIO table.clients
-      broadcast clients $ case s of
-        Waiting seats -> \playerId ->
-          let isPlayer = maybe False (\p -> p.id == playerId)
-           in UpdateWaiting $ waitingViewFor (Vector4.findIndex isPlayer seats) seats
-        Playing seats gameState -> \playerId ->
-          case Vector4.findIndex (\p -> p.id == playerId) seats of
-            Nothing -> UpdateSpectator $ spectatorView seats gameState
-            Just i -> UpdatePlayer $ playerViewFor i seats gameState
-      go s
+      case input of
+        PlayerJoined playerId -> do
+          case IntMap.lookup playerId clients of
+            Just Client {state = Connected box} ->
+              STM.atomically $ STM.writeTMVar box $ renderState state playerId
+            _ -> pure ()
+          go state
+        PlayerLeft _ -> go state
+        PlayerCommand playerId cmd ->
+          go =<< case IntMap.lookup playerId clients of
+            Nothing -> pure state
+            Just Client {player, state = clientState} ->
+              applyCommand db table.id state player cmd >>= \case
+                Left rejection -> case clientState of
+                  Disconnected _ -> pure state
+                  Connected box -> do
+                    STM.atomically $ STM.writeTMVar box $ Rejected rejection
+                    pure state
+                Right s -> do
+                  let render = renderState s
+                  forM_ clients $ \client -> case client.state of
+                    Disconnected _ -> pure ()
+                    Connected box -> STM.atomically $ STM.writeTMVar box $ render client.player.id
+                  pure s
+    renderState state = case state of
+      Waiting seats -> \playerId ->
+        let isPlayer = maybe False (\p -> p.id == playerId)
+         in UpdateWaiting $ waitingViewFor (Vector4.findIndex isPlayer seats) seats
+      Playing seats gameState -> \playerId ->
+        case Vector4.findIndex (\p -> p.id == playerId) seats of
+          Nothing -> UpdateSpectator $ spectatorView seats gameState
+          Just i -> UpdatePlayer $ playerViewFor i seats gameState
+
+applyCommand :: DB.Pool -> TableId -> TableState -> Player -> Command -> IO (Either Rejection TableState)
+applyCommand db tableId state player cmd = trying $ \reject -> case cmd of
+  TakeSeat seat -> case state of
+    Playing _ _ -> throw reject GameAlreadyStarted
+    Waiting seats
+      | isJust playerSeat -> throw reject AlreadySeated
+      | isJust (Vector4.index seat seats) -> throw reject SeatTaken
+      | otherwise -> do
+          ok <- DB.use db $ Hasql.statement (tableId, player.id, seat) insertSeat
+          unless ok $ error "seat insert failed"
+          pure $ Waiting $ Vector4.set seat (Just player) seats
+  StartGame -> case state of
+    Playing _ _ -> throw reject GameAlreadyStarted
+    Waiting seats -> case sequence seats of
+      Nothing -> error "table not full"
+      Just s
+        | isNothing playerSeat -> throw reject NotAPlayer
+        | otherwise -> do
+            stdGen <- Random.newStdGen
+            let gameState = GameState.new stdGen
+            -- TODO: Save game to database
+            pure $ Playing s gameState
+  DeclareVariant variant -> case state of
+    Waiting _ -> throw reject GameNotStarted
+    Playing seats gameState -> do
+      checkCurrentPlayer reject gameState
+      case GameState.declareVariant variant gameState of
+        Left _ -> throw reject VariantAlreadyDeclared
+        Right gs -> pure $ Playing seats gs
+  PlayCard card -> case state of
+    Waiting _ -> throw reject GameNotStarted
+    Playing seats gameState -> do
+      checkCurrentPlayer reject gameState
+      case GameState.playCard card gameState of
+        Left illegal -> throw reject $ IllegalCard illegal
+        Right gs -> do
+          -- TODO: save played card event
+          pure $ Playing seats gs
+  where
+    playerSeat = case state of
+      Waiting seats -> Vector4.findIndex (maybe False $ \p -> p.id == player.id) seats
+      Playing seats _ -> Vector4.findIndex (\p -> p.id == player.id) seats
+    checkCurrentPlayer reject gs = case playerSeat of
+      Nothing -> throw reject NotYourTurn
+      Just s
+        | s /= GameState.currentPlayer gs -> throw reject NotYourTurn
+        | otherwise -> pure ()
 
 insertSeat :: Hasql.Statement (TableId, PlayerId, Vector4.Index4) Bool
 insertSeat =

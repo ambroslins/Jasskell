@@ -13,6 +13,7 @@ import Data.ByteString.Char8 qualified as BS
 import Data.ByteString.Lazy (LazyByteString)
 import Data.Functor ((<&>))
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Jasskell.Database qualified as DB
 import Jasskell.Form qualified as Form
 import Jasskell.Id qualified as Id
@@ -71,7 +72,9 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
               msg <- STM.atomically tableConn.receive
               logger.debug "got table message" ["message" =: show msg]
               case msg of
-                ConnectionClosed -> WS.sendTextData @Text wsConn "closed"
+                TableClosed -> WS.sendTextData @Text wsConn "closed"
+                Superseded -> WS.sendTextData @Text wsConn "superseded"
+                Rejected rejection -> WS.sendTextData @Text wsConn $ Text.show rejection
                 UpdateWaiting view -> do
                   sendBuilder wsConn $ Render.fragment $ Render.waitingView view
                   receiveLoop
