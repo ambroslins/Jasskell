@@ -14,12 +14,14 @@ where
 import Control.Monad (forM_, when)
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
+import Data.Fin qualified as Fin
 import Data.Functor.Identity (runIdentity)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
+import Data.Vec qualified as Vec
 import Data.Vector (Vector)
 import Data.Vector.Unboxed qualified as VU
-import Data.Vector4 qualified as Vector4
+import GHC.TypeLits (KnownNat)
 import Jasskell.Card (Card, Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
 import Jasskell.Card.Seq qualified as CardSeq
@@ -156,36 +158,36 @@ tableConnect player tableId = do
     $ div_ [id_ "message"]
     $ p_ "connecting"
 
-waitingView :: WaitingView -> Html ()
+waitingView :: forall n. (KnownNat n) => WaitingView n -> Html ()
 waitingView view = do
-  Vector4.iforM_ view.seats $ \i m -> case m of
+  Vec.iforM_ view.seats $ \i m -> case m of
     Nothing -> div_ $ do
       "Empty"
       button_ [hxWsSend_, hxVals_ $ TakeSeat i] "Take"
     Just nickname
       | Just i == view.yourSeat -> div_ "You"
       | otherwise -> div_ $ toHtml nickname.toText
-  when (all isJust view.seats) $ button_ [hxWsSend_, hxVals_ StartGame] "Start"
+  when (Vec.all isJust view.seats) $ button_ [hxWsSend_, hxVals_ $ StartGame @n] "Start"
 
-playerView :: PlayerView -> Html ()
+playerView :: forall n. (KnownNat n) => PlayerView n -> Html ()
 playerView view = do
   div_ . toHtml $ show view
   div_ $ case view.game.variant of
     Nothing
       | view.game.currentPlayer == 0 -> forM_ [minBound .. maxBound] $ \s ->
-          button_ [hxWsSend_, hxVals_ $ DeclareVariant $ Trump s] $ toHtml $ show s
+          button_ [hxWsSend_, hxVals_ $ DeclareVariant @n $ Trump s] $ toHtml $ show s
       | otherwise -> "Waiting for leader to declare variant"
     Just v -> toHtml $ show v
-  Vector4.iforM_ view.seats $ \i nickname ->
+  Vec.iforM_ view.seats $ \i nickname ->
     article_ $ do
       div_ . toHtml $ if i == 0 then "You" else nickname.toText
-      case CardSeq.index view.game.playedCards (fromEnum $ i - view.game.trickLeader) of
+      case CardSeq.index view.game.playedCards (Fin.toInt $ i - view.game.trickLeader) of
         Nothing -> div_ "-"
         Just c -> div_ . toHtml $ Card.abbreviation c
   forM_ view.game.hand $ \handCard ->
     button_
       [ hxWsSend_,
-        hxVals_ $ PlayCard handCard.card,
+        hxVals_ $ PlayCard @n handCard.card,
         if handCard.status == Playable then mempty else disabled_ "true"
       ]
       $ toHtml

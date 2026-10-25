@@ -59,8 +59,9 @@ library
   import: warnings, extensions
   -- Modules exported by the library.
   exposed-modules:
+    Data.Fin
     Data.IntMap.Coercible
-    Data.Vector4
+    Data.Vec
     Jasskell.Card
     Jasskell.Card.Internal
     Jasskell.Card.Seq
@@ -109,6 +110,7 @@ library
     http-types,
     lucid2,
     pqi-ffi,
+    primitive,
     profunctors,
     ram,
     random,

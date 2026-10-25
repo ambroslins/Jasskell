@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Jasskell.Card.Internal
   ( Suit (..),
@@ -18,6 +19,7 @@ where
 import Data.Aeson.TH (defaultOptions, deriveJSON)
 import Data.Bits ((.&.), (.|.))
 import Data.Bits qualified as Bits
+import Data.Vec qualified as Vec
 import Data.Vector.Generic qualified as VG
 import Data.Vector.Generic.Mutable qualified as VGM
 import Data.Vector.Primitive (Prim)
@@ -41,7 +43,7 @@ data Rank
   deriving (Eq, Ord, Bounded, Enum, Show)
 
 newtype Card = Card Int
-  deriving (Eq, Show, Prim)
+  deriving newtype (Eq, Show, Prim, Vec.Elem)
 
 newtype instance VU.MVector s Card = MV_Card (VU.MVector s Int)
 
@@ -64,7 +66,7 @@ make s r =
   Card $ fromEnum r `Bits.unsafeShiftL` 2 .|. fromEnum s
 
 newtype CardSet = CardSet Word64
-  deriving (Eq, Show)
+  deriving newtype (Eq, Show, Vec.Elem)
 
 empty :: CardSet
 empty = CardSet 0

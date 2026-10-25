@@ -54,9 +54,8 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
         logger.error "invalid session cookie" ["error" =: show err]
         throw reject $ WS.defaultRejectRequest {WS.rejectCode = 401}
       Right s -> pure s
-  maybe (throw reject $ WS.defaultRejectRequest {WS.rejectCode = 404}) pure
-    <=< Table.join logger db player tableId tm
-    $ \tableConn -> do
+  result <- Table.join logger db player tableId tm $
+    \tableConn -> do
       wsConn <- WS.acceptRequest pending
       WS.withPingThread wsConn 30 (pure ()) $ do
         logger.debug "accepted websocket request" []
@@ -85,6 +84,7 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
                   sendBuilder wsConn $ Render.fragment $ Render.spectatorView view
                   receiveLoop
         Async.race_ sendLoop receiveLoop
+  maybe (throw reject $ WS.defaultRejectRequest {WS.rejectCode = 404}) pure result
   where
     handleReject rr = do
       logger.error "reject websocket request" ["code" =: WS.rejectCode rr]

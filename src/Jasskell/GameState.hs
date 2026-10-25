@@ -20,10 +20,13 @@ where
 
 import Control.Monad (guard)
 import Data.Bifunctor (first)
+import Data.Fin (Fin)
+import Data.Fin qualified as Fin
 import Data.Maybe (fromMaybe)
+import Data.Vec (Vec)
+import Data.Vec qualified as Vec
 import Data.Vector.Unboxed qualified as VU
-import Data.Vector4 (Index4 (..), Vector4)
-import Data.Vector4 qualified as Vector4
+import GHC.TypeLits (KnownNat)
 import Jasskell.Card (Card, Rank (..), Suit)
 import Jasskell.Card qualified as Card
 import Jasskell.Card.Seq (CardSeq)
@@ -35,35 +38,35 @@ import Jasskell.Variant qualified as Variant
 import System.Random qualified as Random
 import Prelude hiding (round)
 
-data GameState = GameState
+data GameState n = GameState
   { randomGen :: Random.StdGen,
-    rounds :: [Round],
+    rounds :: [Round n],
     variant :: Maybe Variant,
-    hands :: Vector4 CardSet,
+    hands :: Vec n CardSet,
     playedCards :: CardSeq,
-    tricks :: [Trick],
-    leader :: Index4,
+    tricks :: [Trick n],
+    leader :: Fin n,
     shoved :: Bool
   }
   deriving (Show)
 
-data Round = Round
+data Round n = Round
   { variant :: Variant,
-    tricks :: [Trick],
-    leader :: Index4,
+    tricks :: [Trick n],
+    leader :: Fin n,
     shoved :: Bool
   }
   deriving (Show)
 
-data Trick = Trick
+data Trick n = Trick
   { cards :: CardSeq,
-    leader :: Index4,
-    winner :: Index4,
+    leader :: Fin n,
+    winner :: Fin n,
     points :: Int
   }
   deriving (Show)
 
-new :: Random.StdGen -> GameState
+new :: (KnownNat n) => Random.StdGen -> GameState n
 new gen =
   GameState
     { randomGen = gen',
@@ -75,38 +78,38 @@ new gen =
       leader =
         fromMaybe
           (error "Jasskell.GameState.new: no weli card")
-          (Vector4.findIndex (CardSet.member Card.weli) hands),
+          (Vec.findIndex (CardSet.member Card.weli) hands),
       shoved = False
     }
   where
     (hands, gen') = deal gen
 
-deal :: Random.StdGen -> (Vector4 CardSet, Random.StdGen)
+deal :: (KnownNat n) => Random.StdGen -> (Vec n CardSet, Random.StdGen)
 deal = first split . CardSet.shuffle
   where
     split v =
-      Vector4.generate $ \i ->
+      Vec.generate $ \i ->
         VU.foldl' (flip CardSet.insert) CardSet.empty $
-          VU.slice (fromEnum i * 9) 9 v
+          VU.slice (Fin.toInt i * 9) 9 v
 
-trickLeader :: GameState -> Index4
+trickLeader :: GameState n -> Fin n
 trickLeader gs = case gs.tricks of
   [] -> gs.leader
   t : _ -> t.winner
 
-currentPlayer :: GameState -> Index4
+currentPlayer :: (KnownNat n) => GameState n -> Fin n
 currentPlayer game = case game.variant of
   Nothing
     | game.shoved -> game.leader + 2
     | otherwise -> game.leader
   Just _ -> case closeTrick game of
     Just gs -> trickLeader gs
-    Nothing -> trickLeader game + toEnum (CardSeq.length game.playedCards)
+    Nothing -> trickLeader game + Fin.unsafe (CardSeq.length game.playedCards)
 
 data DeclareError = VariantAlreadyDeclared
   deriving (Eq, Show)
 
-declareVariant :: Variant -> GameState -> Either DeclareError GameState
+declareVariant :: Variant -> GameState n -> Either DeclareError (GameState n)
 declareVariant v gs = case gs.variant of
   Just _ -> Left VariantAlreadyDeclared
   -- We need to update some other field to make the record update unambiguous.
@@ -117,7 +120,7 @@ data ShoveError
   | VariantAlreadyDefined
   deriving (Eq, Show)
 
-shove :: GameState -> Either ShoveError GameState
+shove :: GameState n -> Either ShoveError (GameState n)
 shove gs = case gs.variant of
   Just _ -> Left VariantAlreadyDefined
   Nothing
@@ -125,15 +128,15 @@ shove gs = case gs.variant of
     -- We need to update some other field to make the record update unambiguous.
     | otherwise -> Right gs {shoved = True, randomGen = gs.randomGen}
 
-data IllegalCard
+data IllegalCard n
   = VariantNotChosen
-  | NotYourTurn Index4
+  | NotYourTurn (Fin n)
   | NotInHand
   | DoesNotFollow Suit
   | WouldUndertrump Card
   deriving (Eq, Show)
 
-data CardStatus = Playable | Illegal IllegalCard
+data CardStatus n = Playable | Illegal (IllegalCard n)
   deriving (Eq, Show)
 
 -- | The 'CardStatus' for the current player.
@@ -146,12 +149,12 @@ data CardStatus = Playable | Illegal IllegalCard
 --
 -- Callers holding another seat must check turn order themselves; this
 -- function assumes the caller is 'currentPlayer'.
-currentCardStatus :: GameState -> Card -> CardStatus
+currentCardStatus :: (KnownNat n) => GameState n -> Card -> CardStatus n
 currentCardStatus gameState = \card ->
   if card `CardSet.member` hand then status card else Illegal NotInHand
   where
     !gs = fromMaybe gameState $ closeTrick gameState
-    !hand = Vector4.index (currentPlayer gs) gs.hands
+    !hand = Vec.index gs.hands (currentPlayer gs)
     !status = case gs.variant of
       Nothing -> const $ Illegal VariantNotChosen
       Just variant -> case CardSeq.toList gs.playedCards of
@@ -182,26 +185,26 @@ currentCardStatus gameState = \card ->
                      in CardSet.filter (\card -> comp card highest == LT) trumps
               _ -> CardSet.empty
 
-playCard :: Card -> GameState -> Either IllegalCard GameState
+playCard :: (KnownNat n) => Card -> GameState n -> Either (IllegalCard n) (GameState n)
 playCard card gameState = case currentCardStatus gs card of
   Illegal e -> Left e
   Playable ->
     pure $
       gs
         { playedCards = CardSeq.push card gs.playedCards,
-          hands = Vector4.modify current (CardSet.delete card) gs.hands
+          hands = Vec.modify current (CardSet.delete card) gs.hands
         }
   where
     gs = fromMaybe gameState (closeTrick gameState)
     current = currentPlayer gs
 
-closeTrick :: GameState -> Maybe GameState
+closeTrick :: (KnownNat n) => GameState n -> Maybe (GameState n)
 closeTrick gs = do
   let cards = gs.playedCards
   guard $ CardSeq.length cards == 4
   v <- gs.variant
   let leader = trickLeader gs
-      lead = Card.suit $ CardSeq.unsafeIndex cards (fromEnum leader)
+      lead = Card.suit $ CardSeq.unsafeIndex cards (Fin.toInt leader)
       trick =
         Trick
           { leader,
@@ -218,11 +221,11 @@ closeTrick gs = do
         variant = Just $ Variant.next v
       }
 
-closeRound :: GameState -> Maybe GameState
+closeRound :: GameState 4 -> Maybe (GameState 4)
 closeRound game = do
   let gs = fromMaybe game (closeTrick game)
   v <- gs.variant
-  guard $ all CardSet.null gs.hands
+  guard $ Vec.all CardSet.null gs.hands
   let round =
         Round
           { leader = gs.leader,
@@ -243,21 +246,21 @@ closeRound game = do
         shoved = False
       }
 
-data HandCard = HandCard {card :: Card, status :: CardStatus}
+data HandCard n = HandCard {card :: Card, status :: CardStatus n}
   deriving (Show)
 
-data GameView = GameView
+data GameView n = GameView
   { variant :: Maybe Variant,
-    hand :: [HandCard],
+    hand :: [HandCard n],
     playedCards :: CardSeq,
-    leader :: Index4,
-    trickLeader :: Index4,
-    currentPlayer :: Index4,
+    leader :: Fin n,
+    trickLeader :: Fin n,
+    currentPlayer :: Fin n,
     shoved :: Bool
   }
   deriving (Show)
 
-viewFor :: Index4 -> GameState -> GameView
+viewFor :: (KnownNat n) => Fin n -> GameState n -> GameView n
 viewFor i gameState =
   GameView
     { variant = gameState.variant,
@@ -269,7 +272,7 @@ viewFor i gameState =
       shoved = gameState.shoved
     }
   where
-    handCards = CardSet.toList $ Vector4.index i gameState.hands
+    handCards = CardSet.toList $ Vec.index gameState.hands i
     current = currentPlayer gameState
     statusOf =
       if current == i

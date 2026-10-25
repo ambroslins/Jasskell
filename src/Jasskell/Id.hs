@@ -16,7 +16,6 @@ module Jasskell.Id
 where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Aeson (ToJSON)
 import Data.Binary.Get qualified as Get
 import Data.Binary.Put qualified as Put
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))

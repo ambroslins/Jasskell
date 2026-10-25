@@ -1,5 +1,4 @@
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Jasskell.Table
   ( TableManager,
@@ -24,17 +23,23 @@ import Control.Concurrent.STM (STM)
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (SomeException (..), bracket, evaluate, try)
 import Control.Monad (forM_, unless)
-import Data.Aeson.TH qualified
+import Data.Aeson (FromJSON, ToJSON (..))
+import Data.Aeson qualified as Aeson
 import Data.Bifunctor (bimap)
+import Data.Fin (Fin)
+import Data.Fin qualified as Fin
 import Data.IntMap.Coercible (IntMap)
 import Data.IntMap.Coercible qualified as IntMap
 import Data.Maybe (isJust, isNothing)
 import Data.Profunctor (Profunctor (lmap), dimap)
 import Data.Time (UTCTime, getCurrentTime)
+import Data.Type.Equality (type (:~:) (Refl))
+import Data.Vec (Vec)
+import Data.Vec qualified as Vec
 import Data.Vector (Vector)
 import Data.Vector qualified as Vector
-import Data.Vector4 (Vector4)
-import Data.Vector4 qualified as Vector4
+import GHC.Generics (Generic)
+import GHC.TypeLits (KnownNat, sameNat)
 import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
 import Hasql.TH (maybeStatement, resultlessStatement, rowsAffectedStatement, vectorStatement)
@@ -53,14 +58,16 @@ import System.Random qualified as Random
 
 type TableId = Id Table
 
+data Some f = forall n. (KnownNat n) => Some (f n)
+
 newtype TableManager = TableManager
-  { tables :: MVar (IntMap TableId Table)
+  { tables :: MVar (IntMap TableId (Some Table))
   }
 
-data Table = Table
+data Table n = Table
   { id :: TableId,
-    inbox :: STM.TBQueue Input,
-    clients :: STM.TVar (IntMap PlayerId Client),
+    inbox :: STM.TBQueue (Input n),
+    clients :: STM.TVar (IntMap PlayerId (Client n)),
     closed :: STM.TVar Bool
   }
   deriving (Eq)
@@ -72,39 +79,39 @@ withManager f = do
   -- TODO: stop all tables on cleanup
   f tm
 
-data Client = Client
+data Client n = Client
   { player :: Player,
-    state :: ClientState
+    state :: ClientState n
   }
   deriving (Eq)
 
-data ClientState
-  = Connected (STM.TMVar Message)
+data ClientState n
+  = Connected (STM.TMVar (Message n))
   | Disconnected UTCTime
   deriving (Eq)
 
-data Connection = Connection
-  { receive :: STM Message,
-    send :: Command -> STM ()
+data Connection n = Connection
+  { receive :: STM (Message n),
+    send :: Command n -> STM ()
   }
 
-data Command
-  = TakeSeat Vector4.Index4
+data Command n
+  = TakeSeat (Fin n)
   | StartGame
   | DeclareVariant Variant
   | PlayCard Card
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
-data Message
-  = UpdateWaiting WaitingView
-  | UpdatePlayer PlayerView
+data Message n
+  = UpdateWaiting (WaitingView n)
+  | UpdatePlayer (PlayerView n)
   | UpdateSpectator SpectatorView
-  | Rejected Rejection
+  | Rejected (Rejection n)
   | Superseded
   | TableClosed
   deriving (Show)
 
-data Rejection
+data Rejection n
   = SeatTaken
   | AlreadySeated
   | NotAPlayer
@@ -112,13 +119,13 @@ data Rejection
   | GameAlreadyStarted
   | GameNotStarted
   | NotYourTurn
-  | IllegalCard GameState.IllegalCard
+  | IllegalCard (GameState.IllegalCard n)
   deriving (Show)
 
-data Input
+data Input n
   = PlayerJoined PlayerId
   | PlayerLeft PlayerId
-  | PlayerCommand PlayerId Command
+  | PlayerCommand PlayerId (Command n)
   deriving (Eq, Show)
 
 create :: DB.Pool -> PlayerId -> IO TableId
@@ -175,15 +182,15 @@ join ::
   Player ->
   TableId ->
   TableManager ->
-  (Connection -> IO a) ->
+  (forall n. (KnownNat n) => Connection n -> IO a) ->
   IO (Maybe a)
 join logger db player tableId manager handler = handling pure $ \notFound -> do
   tables <- readMVar manager.tables
-  table <- case IntMap.lookup tableId tables of
+  Some table <- case IntMap.lookup tableId tables of
     Nothing ->
       getTableSnapshot db tableId >>= \case
         Nothing -> throw notFound Nothing
-        Just snapshot -> spawnTable logger db snapshot manager
+        Just (Some snapshot) -> Some <$> spawnTable logger db snapshot manager
     Just t -> pure t
   messageBox <- STM.newEmptyTMVarIO
   let client = Client {player, state = Connected messageBox}
@@ -214,17 +221,19 @@ join logger db player tableId manager handler = handling pure $ \notFound -> do
           STM.writeTBQueue table.inbox $ PlayerLeft player.id
   bracket acquire release $ \() -> Just <$> handler connection
 
-spawnTable :: Logger -> DB.Pool -> Snapshot -> TableManager -> IO Table
+spawnTable :: forall n. (KnownNat n) => Logger -> DB.Pool -> Snapshot n -> TableManager -> IO (Table n)
 spawnTable l db snapshot manager = do
   inbox <- STM.newTBQueueIO 16
-  clients <- STM.newTVarIO IntMap.empty
+  clients <- STM.newTVarIO @(IntMap PlayerId (Client n)) IntMap.empty
   let !state = restoreState snapshot
   modifyMVarMasked manager.tables $ \tables ->
     case IntMap.lookup snapshot.id tables of
-      Just table -> pure (tables, table)
+      Just (Some table) -> case sameNat snapshot table of
+        Nothing -> error "bad nat"
+        Just Refl -> pure (tables, table)
       Nothing -> do
         closed <- STM.newTVarIO False
-        let !table = Table {id = snapshot.id, inbox, clients, closed}
+        let !table = Table {id = snapshot.id, inbox, clients, closed} :: Table n
         _threadId <- forkIOWithUnmask $ \unmask -> do
           result <- try $ unmask $ do
             logger.debug "table started" []
@@ -235,25 +244,25 @@ spawnTable l db snapshot manager = do
             Left (SomeException e) -> logger.error "table crashed" ["exception" =: show e]
             Right () -> logger.debug "table closed" []
 
-        let !ts = IntMap.insert snapshot.id table tables
+        let !ts = IntMap.insert snapshot.id (Some table) tables
         pure (ts, table)
   where
     logger = withContext l ["table_id" =: Id.encodeText snapshot.id]
 
-restoreState :: Snapshot -> TableState
+restoreState :: Snapshot n -> TableState n
 restoreState snapshot = Waiting snapshot.seats
 
-data Snapshot = Snapshot
+data Snapshot n = Snapshot
   { id :: TableId,
     creator :: PlayerId,
-    seats :: Vector4 (Maybe Player)
+    seats :: Vec n (Maybe Player)
   }
 
-getTableSnapshot :: DB.Pool -> TableId -> IO (Maybe Snapshot)
+getTableSnapshot :: DB.Pool -> TableId -> IO (Maybe (Some Snapshot))
 getTableSnapshot db tableId =
   DB.use db (Hasql.statement tableId selectTableSnapshot)
 
-selectTableSnapshot :: Hasql.Statement TableId (Maybe Snapshot)
+selectTableSnapshot :: Hasql.Statement TableId (Maybe (Some Snapshot))
 selectTableSnapshot =
   dimap
     Id.toInt64
@@ -279,20 +288,21 @@ selectTableSnapshot =
     |]
   where
     decode (tableId, creatdBy, indices, playerIds, nicknames) =
-      Snapshot
-        { id = Id.fromInt64 tableId,
-          creator = Id.fromInt64 creatdBy,
-          seats =
-            Vector.foldl' setSeat (Vector4.replicate Nothing) $
-              Vector.zip3 indices playerIds nicknames
-        }
+      Some $
+        Snapshot
+          { id = Id.fromInt64 tableId,
+            creator = Id.fromInt64 creatdBy,
+            seats =
+              Vector.foldl' setSeat (Vec.replicate Nothing) $
+                Vector.zip3 indices playerIds nicknames
+          }
     setSeat v (i, p, n) =
-      Vector4.set
+      Vec.set @4
         (fromIntegral i)
         (Just $ Player {id = Id.fromInt64 p, nickname = Player.Nickname n})
         v
 
-tableLoop :: Logger -> DB.Pool -> Table -> TableState -> IO ()
+tableLoop :: (KnownNat n) => Logger -> DB.Pool -> Table n -> TableState n -> IO ()
 tableLoop logger db table = go
   where
     go state = do
@@ -326,26 +336,26 @@ tableLoop logger db table = go
     renderState state = case state of
       Waiting seats -> \playerId ->
         let isPlayer = maybe False (\p -> p.id == playerId)
-         in UpdateWaiting $ waitingViewFor (Vector4.findIndex isPlayer seats) seats
+         in UpdateWaiting $ waitingViewFor (Vec.findIndex isPlayer seats) seats
       Playing seats gameState -> \playerId ->
-        case Vector4.findIndex (\p -> p.id == playerId) seats of
+        case Vec.findIndex (\p -> p.id == playerId) seats of
           Nothing -> UpdateSpectator $ spectatorView seats gameState
           Just i -> UpdatePlayer $ playerViewFor i seats gameState
 
-applyCommand :: DB.Pool -> TableId -> TableState -> Player -> Command -> IO (Either Rejection TableState)
+applyCommand :: (KnownNat n) => DB.Pool -> TableId -> TableState n -> Player -> Command n -> IO (Either (Rejection n) (TableState n))
 applyCommand db tableId state player cmd = trying $ \reject -> case cmd of
   TakeSeat seat -> case state of
     Playing _ _ -> throw reject GameAlreadyStarted
     Waiting seats
       | isJust playerSeat -> throw reject AlreadySeated
-      | isJust (Vector4.index seat seats) -> throw reject SeatTaken
+      | isJust (Vec.index seats seat) -> throw reject SeatTaken
       | otherwise -> do
           ok <- DB.use db $ Hasql.statement (tableId, player.id, seat) insertSeat
           unless ok $ error "seat insert failed"
-          pure $ Waiting $ Vector4.set seat (Just player) seats
+          pure $ Waiting $ Vec.set seat (Just player) seats
   StartGame -> case state of
     Playing _ _ -> throw reject GameAlreadyStarted
-    Waiting seats -> case sequence seats of
+    Waiting seats -> case Vec.sequence seats of
       Nothing -> error "table not full"
       Just s
         | isNothing playerSeat -> throw reject NotAPlayer
@@ -372,15 +382,15 @@ applyCommand db tableId state player cmd = trying $ \reject -> case cmd of
           pure $ Playing seats gs
   where
     playerSeat = case state of
-      Waiting seats -> Vector4.findIndex (maybe False $ \p -> p.id == player.id) seats
-      Playing seats _ -> Vector4.findIndex (\p -> p.id == player.id) seats
+      Waiting seats -> Vec.findIndex (maybe False $ \p -> p.id == player.id) seats
+      Playing seats _ -> Vec.findIndex (\p -> p.id == player.id) seats
     checkCurrentPlayer reject gs = case playerSeat of
       Nothing -> throw reject NotYourTurn
       Just s
         | s /= GameState.currentPlayer gs -> throw reject NotYourTurn
         | otherwise -> pure ()
 
-insertSeat :: Hasql.Statement (TableId, PlayerId, Vector4.Index4) Bool
+insertSeat :: Hasql.Statement (TableId, PlayerId, Fin n) Bool
 insertSeat =
   dimap
     encode
@@ -394,43 +404,47 @@ insertSeat =
     |]
   where
     encode (tableId, playerId, seat) =
-      (Id.toInt64 tableId, Id.toInt64 playerId, fromIntegral $ fromEnum seat)
+      (Id.toInt64 tableId, Id.toInt64 playerId, fromIntegral $ Fin.toInt seat)
 
-data TableState
-  = Waiting (Vector4 (Maybe Player))
-  | Playing (Vector4 Player) GameState
+data TableState n
+  = Waiting (Vec n (Maybe Player))
+  | Playing (Vec n Player) (GameState n)
   deriving (Show)
 
-data WaitingView = WaitingView
-  { seats :: Vector4 (Maybe Nickname),
-    yourSeat :: Maybe Vector4.Index4
+data WaitingView n = WaitingView
+  { seats :: Vec n (Maybe Nickname),
+    yourSeat :: Maybe (Fin n)
   }
   deriving (Show)
 
-waitingViewFor :: Maybe Vector4.Index4 -> Vector4 (Maybe Player) -> WaitingView
+waitingViewFor :: (KnownNat n) => Maybe (Fin n) -> Vec n (Maybe Player) -> WaitingView n
 waitingViewFor perspective seats =
   WaitingView
-    { seats = fmap (.nickname) <$> seats,
+    { seats = Vec.map (fmap (.nickname)) seats,
       yourSeat = perspective
     }
 
-data PlayerView = PlayerView
-  { seats :: Vector4 Nickname,
-    game :: GameView
+data PlayerView n = PlayerView
+  { seats :: Vec n Nickname,
+    game :: GameView n
   }
   deriving (Show)
 
-playerViewFor :: Vector4.Index4 -> Vector4 Player -> GameState -> PlayerView
+playerViewFor :: (KnownNat n) => Fin n -> Vec n Player -> GameState n -> PlayerView n
 playerViewFor p seats gameState =
   PlayerView
-    { seats = Vector4.rotate p $ (.nickname) <$> seats,
+    { seats = Vec.rotate p $ Vec.map (.nickname) seats,
       game = GameState.viewFor p gameState
     }
 
 data SpectatorView = SpectatorView
   deriving (Show)
 
-spectatorView :: Vector4 Player -> GameState -> SpectatorView
+spectatorView :: Vec n Player -> GameState n -> SpectatorView
 spectatorView _ _ = SpectatorView
 
-$(Data.Aeson.TH.deriveJSON Data.Aeson.TH.defaultOptions ''Command)
+instance (KnownNat n) => ToJSON (Command n) where
+  toJSON = Aeson.genericToJSON Aeson.defaultOptions
+
+instance (KnownNat n) => FromJSON (Command n) where
+  parseJSON = Aeson.genericParseJSON Aeson.defaultOptions

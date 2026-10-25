@@ -1,4 +1,6 @@
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Jasskell.Player
   ( PlayerId,
@@ -27,6 +29,7 @@ import Data.Profunctor (lmap)
 import Data.String (IsString)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Vec qualified as Vec
 import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
 import Hasql.TH (maybeStatement, resultlessStatement)
@@ -39,7 +42,7 @@ import Web.Cookie (SetCookie (..), defaultSetCookie, sameSiteStrict)
 type PlayerId = Id Player
 
 newtype Nickname = Nickname {toText :: Text}
-  deriving newtype (Eq, Ord, Show, IsString)
+  deriving newtype (Eq, Ord, Show, IsString, Vec.Elem)
 
 parseNickname :: Text -> Either String Nickname
 parseNickname name
@@ -58,6 +61,7 @@ data Player = Player
     nickname :: Nickname
   }
   deriving (Eq, Show)
+  deriving (Vec.Elem) via Vec.Boxed Player
 
 newSession :: DB.Pool -> Nickname -> IO (Player, SetCookie)
 newSession db nickname = do
