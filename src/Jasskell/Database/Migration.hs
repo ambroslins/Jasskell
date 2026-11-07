@@ -63,10 +63,10 @@ migrations =
       );
       """,
     Migration
-      "create tables"
+      "create games"
       """
-      create table tables (
-        table_id int8 primary key,
+      create table games (
+        game_id int8 primary key,
         created_by int8 references players(player_id) on delete set null,
         created_at timestamptz not null default now()
       )
@@ -75,12 +75,42 @@ migrations =
       "create seats"
       """
       create table seats (
-        table_id int8 not null references tables(table_id),
+        game_id int8 not null references games(game_id) on delete cascade,
         seat int4 not null check (seat >= 0),
         player_id int8 references players(player_id) on delete set null,
 
-        primary key (table_id, seat),
-        unique (table_id, player_id)
+        primary key (game_id, seat),
+        unique (game_id, player_id)
+      )
+      """,
+    Migration
+      "create rounds"
+      """
+      create table rounds (
+        game_id int8 not null references games(game_id) on delete cascade,
+        round_number int2 not null check (round_number >= 1),
+        chooser int2 not null check (chooser >= 0),
+        variant int2,
+        initial_hands int8[] not null,
+
+        started_at timestamptz not null default now(),
+
+        primary key(game_id, round_number)
+      )
+      """,
+    Migration
+      "create played_cards"
+      """
+      create table played_cards (
+        game_id int8 not null,
+        round_number int2 not null,
+        seq int2 not null check (seq >= 0) ,
+        card int2 not null,
+
+        played_at timestamptz not null default now(),
+
+        primary key(game_id, round_number, seq),
+        foreign key (game_id, round_number) references rounds on delete cascade
       )
       """
   ]

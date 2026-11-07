@@ -71,6 +71,7 @@ library
     Jasskell.Database.Migration
     Jasskell.Dealer
     Jasskell.Form
+    Jasskell.Game
     Jasskell.Id
     Jasskell.Logger
     Jasskell.Main
@@ -79,7 +80,6 @@ library
     Jasskell.Round
     Jasskell.Server
     Jasskell.Static
-    Jasskell.Table
     Jasskell.Throw
     Jasskell.Variant
     Jasskell.View

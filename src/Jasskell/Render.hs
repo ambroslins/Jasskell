@@ -2,9 +2,9 @@ module Jasskell.Render
   ( fragment,
     page,
     index,
-    tableList,
-    tableLogin,
-    tableConnect,
+    gameList,
+    gameLogin,
+    gameConnect,
     waitingView,
     playerView,
     spectatorView,
@@ -25,16 +25,16 @@ import Jasskell.Card (Card, Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
 import Jasskell.Card.Set qualified as CardSet
 import Jasskell.Dealer qualified as Dealer
+import Jasskell.Game
+  ( Action (..),
+    GameId,
+    PublicGame (..),
+  )
 import Jasskell.Id qualified as Id
 import Jasskell.Player (Nickname (..), Player (..))
 import Jasskell.Round (CardStatus (Playable))
 import Jasskell.Round qualified as Round
 import Jasskell.Static qualified as Static
-import Jasskell.Table
-  ( Action (..),
-    PublicTable (..),
-    TableId,
-  )
 import Jasskell.Variant (Variant (..))
 import Jasskell.View qualified as View
 import Lucid
@@ -79,10 +79,10 @@ index gen mplayer = do
 
   main_ [id_ "play", class_ "container grid"] $ do
     section_ $ do
-      h2_ "Open tables"
+      h2_ "Open games"
       div_
-        [ id_ "table-list",
-          hxGet_ "/tables",
+        [ id_ "game-list",
+          hxGet_ "/games",
           hxTrigger_ "revealed once",
           hxSwap_ "outerHTML",
           makeAttributes "aria-busy" "true",
@@ -91,8 +91,8 @@ index gen mplayer = do
         mempty
 
     section_ $ do
-      h2_ "New table"
-      form_ [method_ "post", action_ "/tables"] $ do
+      h2_ "New game"
+      form_ [method_ "post", action_ "/games"] $ do
         when (isNothing mplayer) $ label_ $ do
           "Nickname"
           input_
@@ -110,32 +110,32 @@ index gen mplayer = do
           input_ [type_ "checkbox", name_ "private"]
         button_ [type_ "submit"] "Create"
 
-tableList :: Vector PublicTable -> Html ()
-tableList tables =
+gameList :: Vector PublicGame -> Html ()
+gameList games =
   ul_
     [ id_
-        "table-list",
-      hxGet_ "/tables",
+        "game-list",
+      hxGet_ "/games",
       hxTrigger_ "every 5s [document.visibilityState === 'visible']",
       hxSwap_ "outerMorph"
     ]
-    $ forM_ tables
-    $ \table ->
-      let tableId = Id.encodeText table.id
-       in li_ [id_ tableId] $ do
-            strong_ $ toHtml table.creatorName.toText
-            small_ $ toHtml $ show table.seatsTaken <> "/4 players"
+    $ forM_ games
+    $ \game ->
+      let gameId = Id.encodeText game.id
+       in li_ [id_ gameId] $ do
+            strong_ $ toHtml game.creatorName.toText
+            small_ $ toHtml $ show game.seatsTaken <> "/4 players"
             a_
-              [ href_ $ "/tables/" <> tableId,
+              [ href_ $ "/games/" <> gameId,
                 role_ "button",
-                class_ $ if table.seatsTaken < 4 then "primary" else "secondary"
+                class_ $ if game.seatsTaken < 4 then "primary" else "secondary"
               ]
               "Join"
 
-tableLogin :: TableId -> Html ()
-tableLogin tableId =
+gameLogin :: GameId -> Html ()
+gameLogin gameId =
   form_
-    [ hxPost_ $ "/tables/" <> Id.encodeText tableId <> "/join",
+    [ hxPost_ $ "/games/" <> Id.encodeText gameId <> "/join",
       hxTarget_ "this",
       hxSwap_ "outerHTML"
     ]
@@ -145,11 +145,11 @@ tableLogin tableId =
         input_ [name_ "nickname"]
       button_ [type_ "submit"] "Submit"
 
-tableConnect :: Player -> TableId -> Html ()
-tableConnect player tableId = do
+gameConnect :: Player -> GameId -> Html ()
+gameConnect player gameId = do
   h2_ $ toHtml $ "Hello: " <> player.nickname.toText
   div_
-    [ hxWsConnect_ $ "/tables/" <> Id.encodeText tableId,
+    [ hxWsConnect_ $ "/games/" <> Id.encodeText gameId,
       hxTarget_ "#message",
       hxSwap_ "innerHTML"
     ]

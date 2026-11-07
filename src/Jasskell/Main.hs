@@ -4,9 +4,9 @@ import Env (auto, def, var)
 import Env qualified as Envparse
 import Jasskell.Database qualified as DB
 import Jasskell.Database.Migration (runMigrations)
+import Jasskell.Game qualified as Game
 import Jasskell.Logger (Level (..), withStderrLogger)
 import Jasskell.Server qualified as Server
-import Jasskell.Table qualified as Table
 import Network.Wai.Handler.Warp qualified as Warp
 
 data Config = Config
@@ -35,5 +35,5 @@ main = do
   withStderrLogger Debug $ \logger ->
     DB.withPool config.database $ \db -> do
       runMigrations logger db
-      Table.withManager $ \tableManager ->
-        Warp.run config.port $ Server.application logger db tableManager
+      Game.withManager $ \mangager ->
+        Warp.run config.port $ Server.application logger db mangager

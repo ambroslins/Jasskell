@@ -1,12 +1,12 @@
 {-# LANGUAGE QuasiQuotes #-}
 
-module Jasskell.Table
-  ( TableManager,
+module Jasskell.Game
+  ( Manager,
     withManager,
-    TableId,
-    PublicTable (..),
+    GameId,
+    PublicGame (..),
     create,
-    getPublicTables,
+    getPublicGames,
     join,
     Connection (..),
     Message (..),
@@ -57,27 +57,27 @@ import Jasskell.View qualified as View
 import System.Random.Stateful qualified as Random
 import Prelude hiding (round)
 
-type TableId = Id Table
+type GameId = Id Game
 
 data Some f = forall n. (KnownNat n) => Some (f n)
 
-newtype TableManager = TableManager
-  { tables :: MVar (IntMap TableId (Some Table))
+newtype Manager = Manager
+  { games :: MVar (IntMap GameId (Some Game))
   }
 
-data Table n = Table
-  { id :: TableId,
+data Game n = Game
+  { id :: GameId,
     ioGen :: Random.IOGenM Random.StdGen,
     eventQueue :: STM.TBQueue (Event n),
     clients :: STM.TVar (IntMap PlayerId (Client n)),
     closed :: STM.TVar Bool
   }
 
-withManager :: (TableManager -> IO a) -> IO a
+withManager :: (Manager -> IO a) -> IO a
 withManager f = do
-  tm <- TableManager <$> newMVar IntMap.empty
+  tm <- Manager <$> newMVar IntMap.empty
   -- TODO: reaper thread
-  -- TODO: stop all tables on cleanup
+  -- TODO: stop all games on cleanup
   f tm
 
 data Client n = Client
@@ -115,7 +115,7 @@ data Message n
   | UpdateSpectator (View.Spectating n)
   | Rejected (Rejection n)
   | Superseded
-  | TableClosed
+  | GameClosed
   deriving (Show)
 
 data Rejection n
@@ -129,167 +129,167 @@ data Rejection n
   | PlayError Round.PlayError
   deriving (Show)
 
-data TableState n
+data GameState n
   = Waiting (Vec n (Maybe Player))
   | Playing (Vec n Player) (Round n)
   deriving (Show)
 
-create :: DB.Pool -> PlayerId -> IO TableId
+create :: DB.Pool -> PlayerId -> IO GameId
 create db createdBy = do
-  tableId <- Id.new
-  DB.use db $ Hasql.statement (tableId, createdBy) insertTable
-  pure tableId
+  gameId <- Id.new
+  DB.use db $ Hasql.statement (gameId, createdBy) insertGame
+  pure gameId
 
-insertTable :: Hasql.Statement (TableId, PlayerId) ()
-insertTable =
+insertGame :: Hasql.Statement (GameId, PlayerId) ()
+insertGame =
   lmap
     (bimap Id.toInt64 Id.toInt64)
     [resultlessStatement|
-      insert into tables (table_id, created_by)
+      insert into games (game_id, created_by)
       values ($1::int8, $2::int8)
     |]
 
-data PublicTable = PublicTable
-  { id :: TableId,
+data PublicGame = PublicGame
+  { id :: GameId,
     creatorName :: Nickname,
     seatsTaken :: Int
   }
   deriving (Show)
 
-getPublicTables :: DB.Pool -> IO (Vector PublicTable)
-getPublicTables db = DB.use db $ Hasql.statement () selectPublicTables
+getPublicGames :: DB.Pool -> IO (Vector PublicGame)
+getPublicGames db = DB.use db $ Hasql.statement () selectPublicGames
 
--- TODO: ignore tables with active games (or put them at the end)
-selectPublicTables :: Hasql.Statement () (Vector PublicTable)
-selectPublicTables =
+-- TODO: ignore active games
+selectPublicGames :: Hasql.Statement () (Vector PublicGame)
+selectPublicGames =
   fmap
-    ( Vector.map $ \(tableId, nickname, seatsTaken) ->
-        PublicTable
-          { id = Id.fromInt64 tableId,
+    ( Vector.map $ \(gameId, nickname, seatsTaken) ->
+        PublicGame
+          { id = Id.fromInt64 gameId,
             creatorName = Nickname nickname,
             seatsTaken = fromIntegral seatsTaken
           }
     )
     [vectorStatement|
       select
-        t.table_id::int8,
+        g.game_id::int8,
         any_value(p.nickname)::text,
-        count(s.table_id)::int8 as seats_taken
-      from tables as t
-      join players as p on p.player_id = t.created_by
-      left join seats as s on s.table_id = t.table_id
-      group by t.table_id
-      order by seats_taken desc, t.table_id asc
+        count(s.game_id)::int8 as seats_taken
+      from games as g
+      join players as p on p.player_id = g.created_by
+      left join seats as s on s.game_id = g.game_id
+      group by g.game_id
+      order by seats_taken desc, g.game_id asc
     |]
 
 join ::
   Logger ->
   DB.Pool ->
   Player ->
-  TableId ->
-  TableManager ->
+  GameId ->
+  Manager ->
   (forall n. (KnownNat n) => Connection n -> IO a) ->
   IO (Maybe a)
-join logger db player tableId manager handler = handling pure $ \notFound -> do
-  tables <- readMVar manager.tables
-  Some table <- case IntMap.lookup tableId tables of
+join logger db player gameId manager handler = handling pure $ \notFound -> do
+  games <- readMVar manager.games
+  Some game <- case IntMap.lookup gameId games of
     Nothing ->
-      getTableSnapshot db tableId >>= \case
+      getGameSnapshot db gameId >>= \case
         Nothing -> throw notFound Nothing
-        Just (Some snapshot) -> Some <$> spawnTable logger db snapshot manager
+        Just (Some snapshot) -> Some <$> spawnGame logger db snapshot manager
     Just t -> pure t
   messageBox <- STM.newEmptyTMVarIO
   let client = Client {player, state = Connected messageBox}
       connection =
         Connection
           { receive = do
-              closed <- STM.readTVar table.closed
+              closed <- STM.readTVar game.closed
               if closed
-                then pure TableClosed
+                then pure GameClosed
                 else STM.takeTMVar messageBox,
-            send = STM.writeTBQueue table.eventQueue . PlayerAction player.id
+            send = STM.writeTBQueue game.eventQueue . PlayerAction player.id
           }
       acquire = STM.atomically $ do
-        clients <- STM.readTVar table.clients
+        clients <- STM.readTVar game.clients
         case IntMap.lookup player.id clients of
           Just Client {state = Connected box} -> STM.writeTMVar box Superseded
           _ -> pure ()
-        STM.writeTVar table.clients $!
+        STM.writeTVar game.clients $!
           IntMap.insert player.id client clients
-        STM.writeTBQueue table.eventQueue $ PlayerJoined player.id
+        STM.writeTBQueue game.eventQueue $ PlayerJoined player.id
       release _ = do
         disconnected <- Disconnected <$> getCurrentTime
         STM.atomically $ do
-          STM.modifyTVar' table.clients $
+          STM.modifyTVar' game.clients $
             IntMap.adjust
               (\c -> if c == client then client {state = disconnected} else c)
               player.id
-          STM.writeTBQueue table.eventQueue $ PlayerLeft player.id
+          STM.writeTBQueue game.eventQueue $ PlayerLeft player.id
   bracket acquire release $ \() -> Just <$> handler connection
 
-spawnTable :: forall n. (KnownNat n) => Logger -> DB.Pool -> Snapshot n -> TableManager -> IO (Table n)
-spawnTable l db snapshot manager = do
+spawnGame :: forall n. (KnownNat n) => Logger -> DB.Pool -> Snapshot n -> Manager -> IO (Game n)
+spawnGame l db snapshot manager = do
   eventQueue <- STM.newTBQueueIO 16
   clients <- STM.newTVarIO @(IntMap PlayerId (Client n)) IntMap.empty
   let !state = restoreState snapshot
-  modifyMVarMasked manager.tables $ \tables ->
-    case IntMap.lookup snapshot.id tables of
-      Just (Some table) -> case sameNat snapshot table of
+  modifyMVarMasked manager.games $ \games ->
+    case IntMap.lookup snapshot.id games of
+      Just (Some game) -> case sameNat snapshot game of
         Nothing -> error "bad nat"
-        Just Refl -> pure (tables, table)
+        Just Refl -> pure (games, game)
       Nothing -> do
         closed <- STM.newTVarIO False
         ioGen <- Random.newStdGen >>= Random.newIOGenM
-        let !table =
-              Table
+        let !game =
+              Game
                 { id = snapshot.id,
                   ioGen,
                   eventQueue,
                   clients,
                   closed
                 } ::
-                Table n
+                Game n
         _threadId <- forkIOWithUnmask $ \unmask -> do
           result <- try $ unmask $ do
-            logger.debug "table started" []
-            tableLoop logger db table state
-          modifyMVar_ manager.tables (evaluate . IntMap.delete snapshot.id)
+            logger.debug "game started" []
+            gameLoop logger db game state
+          modifyMVar_ manager.games (evaluate . IntMap.delete snapshot.id)
           STM.atomically $ STM.writeTVar closed True
           unmask $ case result of
-            Left (SomeException e) -> logger.error "table crashed" ["exception" =: show e]
-            Right () -> logger.debug "table closed" []
+            Left (SomeException e) -> logger.error "game crashed" ["exception" =: show e]
+            Right () -> logger.debug "game closed" []
 
-        let !ts = IntMap.insert snapshot.id (Some table) tables
-        pure (ts, table)
+        let !ts = IntMap.insert snapshot.id (Some game) games
+        pure (ts, game)
   where
-    logger = withContext l ["table_id" =: Id.encodeText snapshot.id]
+    logger = withContext l ["game_id" =: Id.encodeText snapshot.id]
 
-restoreState :: Snapshot n -> TableState n
+restoreState :: Snapshot n -> GameState n
 restoreState snapshot = Waiting snapshot.seats
 
 data Snapshot n = Snapshot
-  { id :: TableId,
+  { id :: GameId,
     creator :: PlayerId,
     seats :: Vec n (Maybe Player)
   }
 
-getTableSnapshot :: DB.Pool -> TableId -> IO (Maybe (Some Snapshot))
-getTableSnapshot db tableId =
-  DB.use db (Hasql.statement tableId selectTableSnapshot)
+getGameSnapshot :: DB.Pool -> GameId -> IO (Maybe (Some Snapshot))
+getGameSnapshot db gameId =
+  DB.use db (Hasql.statement gameId selectGameSnapshot)
 
-selectTableSnapshot :: Hasql.Statement TableId (Maybe (Some Snapshot))
-selectTableSnapshot =
+selectGameSnapshot :: Hasql.Statement GameId (Maybe (Some Snapshot))
+selectGameSnapshot =
   dimap
     Id.toInt64
     (fmap decode)
     [maybeStatement|
       select
-        t.table_id::int8,
-        t.created_by::int8,
+        g.game_id::int8,
+        g.created_by::int8,
         coalesce(s.seats, '{}'::int4[])::int4[],
         coalesce(s.player_ids, '{}'::int8[])::int8[],
         coalesce(s.nicknames, '{}'::text[])::text[]
-      from tables as t
+      from games as g
       left join lateral (
         select
           array_agg(s.seat order by s.seat) as seats,
@@ -297,15 +297,15 @@ selectTableSnapshot =
           array_agg(p.nickname order by s.seat) as nicknames
         from seats as s
         left join players as p on p.player_id = s.player_id
-        where s.table_id = t.table_id and p.player_id is not null
+        where s.game_id = g.game_id and p.player_id is not null
       ) as s on true
-      where table_id = $1::int8 and created_by is not null
+      where game_id = $1::int8 and created_by is not null
     |]
   where
-    decode (tableId, creatdBy, indices, playerIds, nicknames) =
+    decode (gameId, creatdBy, indices, playerIds, nicknames) =
       Some $
         Snapshot
-          { id = Id.fromInt64 tableId,
+          { id = Id.fromInt64 gameId,
             creator = Id.fromInt64 creatdBy,
             seats =
               Vector.foldl' setSeat (Vec.replicate Nothing) $
@@ -317,13 +317,13 @@ selectTableSnapshot =
         (Just $ Player {id = Id.fromInt64 p, nickname = Player.Nickname n})
         v
 
-tableLoop :: (KnownNat n) => Logger -> DB.Pool -> Table n -> TableState n -> IO ()
-tableLoop logger db table = go
+gameLoop :: (KnownNat n) => Logger -> DB.Pool -> Game n -> GameState n -> IO ()
+gameLoop logger db game = go
   where
     go state = do
-      event <- STM.atomically $ STM.readTBQueue table.eventQueue
-      logger.debug "got table event" ["event" =: show event]
-      clients <- STM.readTVarIO table.clients
+      event <- STM.atomically $ STM.readTBQueue game.eventQueue
+      logger.debug "got game event" ["event" =: show event]
+      clients <- STM.readTVarIO game.clients
       case event of
         PlayerJoined playerId -> do
           case IntMap.lookup playerId clients of
@@ -336,7 +336,7 @@ tableLoop logger db table = go
           go =<< case IntMap.lookup playerId clients of
             Nothing -> pure state
             Just Client {player, state = clientState} ->
-              applyAction db table state player action >>= \case
+              applyAction db game state player action >>= \case
                 Left rejection -> case clientState of
                   Disconnected _ -> pure state
                   Connected box -> do
@@ -355,27 +355,27 @@ tableLoop logger db table = go
           Nothing -> UpdateSpectator $ View.makeSpectating players
           Just i -> UpdatePlayer $ View.makePlaying players round i
 
-applyAction :: (KnownNat n) => DB.Pool -> Table n -> TableState n -> Player -> Action n -> IO (Either (Rejection n) (TableState n))
-applyAction db table state player action = trying $ \reject -> case action of
+applyAction :: (KnownNat n) => DB.Pool -> Game n -> GameState n -> Player -> Action n -> IO (Either (Rejection n) (GameState n))
+applyAction db game state player action = trying $ \reject -> case action of
   TakeSeat seat -> case state of
     Playing _ _ -> throw reject GameAlreadyStarted
     Waiting seats
       | isJust playerSeat -> throw reject AlreadySeated
       | isJust (Vec.index seats seat) -> throw reject SeatTaken
       | otherwise -> do
-          ok <- DB.use db $ Hasql.statement (table.id, player.id, seat) insertSeat
+          ok <- DB.use db $ Hasql.statement (game.id, player.id, seat) insertSeat
           unless ok $ error "seat insert failed"
           pure $ Waiting $ Vec.set seat (Just player) seats
   StartGame -> case state of
     Playing _ _ -> throw reject GameAlreadyStarted
     Waiting seats -> case Vec.sequence seats of
-      Nothing -> error "table not full"
+      Nothing -> error "game not full"
       Just s
         | isNothing playerSeat -> throw reject NotAPlayer
         | otherwise -> do
-            hands <- case sameNat table (Proxy @4) of
+            hands <- case sameNat game (Proxy @4) of
               Nothing -> error "only implemented for 4 players"
-              Just Refl -> Random.applyIOGen Dealer.four table.ioGen
+              Just Refl -> Random.applyIOGen Dealer.four game.ioGen
             let chooser = 0 -- TODO: choose based on weli
                 round = Round.start chooser hands
             -- TODO: Save game to database
@@ -406,21 +406,21 @@ applyAction db table state player action = trying $ \reject -> case action of
         | s /= Round.currentPlayer gs -> throw reject NotYourTurn
         | otherwise -> pure ()
 
-insertSeat :: Hasql.Statement (TableId, PlayerId, Fin n) Bool
+insertSeat :: Hasql.Statement (GameId, PlayerId, Fin n) Bool
 insertSeat =
   dimap
     encode
     (> 0)
     [rowsAffectedStatement|
-      insert into seats (table_id, player_id, seat)
+      insert into seats (game_id, player_id, seat)
       values ($1::int8, $2::int8, $3::int4)
-      on conflict (table_id, seat) do update
+      on conflict (game_id, seat) do update
         set player_id = excluded.player_id
       where seats.player_id is null
     |]
   where
-    encode (tableId, playerId, seat) =
-      (Id.toInt64 tableId, Id.toInt64 playerId, fromIntegral $ Fin.toInt seat)
+    encode (gameId, playerId, seat) =
+      (Id.toInt64 gameId, Id.toInt64 playerId, fromIntegral $ Fin.toInt seat)
 
 instance (KnownNat n) => ToJSON (Action n) where
   toJSON = Aeson.genericToJSON Aeson.defaultOptions
