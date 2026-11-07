@@ -48,6 +48,7 @@ common extensions
   default-language: GHC2024
   default-extensions:
     DuplicateRecordFields
+    MultiWayIf
     MultilineStrings
     NoFieldSelectors
     OverloadedRecordDot
@@ -68,18 +69,20 @@ library
     Jasskell.Card.Set
     Jasskell.Database
     Jasskell.Database.Migration
+    Jasskell.Dealer
     Jasskell.Form
-    Jasskell.GameState
     Jasskell.Id
     Jasskell.Logger
     Jasskell.Main
     Jasskell.Player
     Jasskell.Render
+    Jasskell.Round
     Jasskell.Server
     Jasskell.Static
     Jasskell.Table
     Jasskell.Throw
     Jasskell.Variant
+    Jasskell.View
     Lucid.Htmx
     MyLib
 

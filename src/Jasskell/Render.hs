@@ -11,10 +11,9 @@ module Jasskell.Render
   )
 where
 
-import Control.Monad (forM_, when)
+import Control.Monad (forM_, unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
-import Data.Fin qualified as Fin
 import Data.Functor.Identity (runIdentity)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
@@ -24,21 +23,20 @@ import Data.Vector.Unboxed qualified as VU
 import GHC.TypeLits (KnownNat)
 import Jasskell.Card (Card, Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
-import Jasskell.Card.Seq qualified as CardSeq
 import Jasskell.Card.Set qualified as CardSet
-import Jasskell.GameState (CardStatus (Playable), GameView (..), HandCard (..))
+import Jasskell.Dealer qualified as Dealer
 import Jasskell.Id qualified as Id
 import Jasskell.Player (Nickname (..), Player (..))
+import Jasskell.Round (CardStatus (Playable))
+import Jasskell.Round qualified as Round
 import Jasskell.Static qualified as Static
 import Jasskell.Table
-  ( Command (..),
-    PlayerView (..),
+  ( Action (..),
     PublicTable (..),
-    SpectatorView (..),
     TableId,
-    WaitingView (..),
   )
 import Jasskell.Variant (Variant (..))
+import Jasskell.View qualified as View
 import Lucid
 import Lucid.Base (makeAttributes, makeElement)
 import Lucid.Htmx
@@ -77,7 +75,7 @@ index gen mplayer = do
       a_ [href_ "#play", role_ "button"] "Play"
 
     div_ [id_ "hero-deck"] . VU.foldMap (card []) . VU.take 4 . fst $
-      CardSet.shuffle gen
+      Dealer.shuffle CardSet.deck gen
 
   main_ [id_ "play", class_ "container grid"] $ do
     section_ $ do
@@ -158,42 +156,42 @@ tableConnect player tableId = do
     $ div_ [id_ "message"]
     $ p_ "connecting"
 
-waitingView :: forall n. (KnownNat n) => WaitingView n -> Html ()
+waitingView :: forall n. (KnownNat n) => View.Waiting n -> Html ()
 waitingView view = do
   Vec.iforM_ view.seats $ \i m -> case m of
     Nothing -> div_ $ do
       "Empty"
-      button_ [hxWsSend_, hxVals_ $ TakeSeat i] "Take"
-    Just nickname
-      | Just i == view.yourSeat -> div_ "You"
-      | otherwise -> div_ $ toHtml nickname.toText
+      unless view.seated $ button_ [hxWsSend_, hxVals_ $ TakeSeat i] "Take"
+    Just player
+      | i == 0 -> div_ "You"
+      | otherwise -> div_ $ toHtml player.nickname.toText
   when (Vec.all isJust view.seats) $ button_ [hxWsSend_, hxVals_ $ StartGame @n] "Start"
 
-playerView :: forall n. (KnownNat n) => PlayerView n -> Html ()
+playerView :: forall n. (KnownNat n) => View.Playing n -> Html ()
 playerView view = do
   div_ . toHtml $ show view
-  div_ $ case view.game.variant of
+  div_ $ case view.variant of
     Nothing
-      | view.game.currentPlayer == 0 -> forM_ [minBound .. maxBound] $ \s ->
+      | view.currentPlayer == 0 -> forM_ [minBound .. maxBound] $ \s ->
           button_ [hxWsSend_, hxVals_ $ DeclareVariant @n $ Trump s] $ toHtml $ show s
       | otherwise -> "Waiting for leader to declare variant"
     Just v -> toHtml $ show v
-  Vec.iforM_ view.seats $ \i nickname ->
+  Vec.iforM_ view.players $ \i player ->
     article_ $ do
-      div_ . toHtml $ if i == 0 then "You" else nickname.toText
-      case CardSeq.index view.game.playedCards (Fin.toInt $ i - view.game.trickLeader) of
+      div_ . toHtml $ if i == 0 then "You" else player.nickname.toText
+      case Vec.index view.playedCards i of
         Nothing -> div_ "-"
         Just c -> div_ . toHtml $ Card.abbreviation c
-  forM_ view.game.hand $ \handCard ->
+  Round.foldHand view.hand $ \c status ->
     button_
       [ hxWsSend_,
-        hxVals_ $ PlayCard @n handCard.card,
-        if handCard.status == Playable then mempty else disabled_ "true"
+        hxVals_ $ PlayCard @n c,
+        if status == Playable then mempty else disabled_ "true"
       ]
       $ toHtml
-      $ Card.abbreviation handCard.card
+      $ Card.abbreviation c
 
-spectatorView :: SpectatorView -> Html ()
+spectatorView :: (KnownNat n) => View.Spectating n -> Html ()
 spectatorView = toHtml . show
 
 card :: [Attributes] -> Card -> Html ()

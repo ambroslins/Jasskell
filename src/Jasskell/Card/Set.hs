@@ -1,3 +1,4 @@
+{- HLINT ignore "Use foldM_" -}
 module Jasskell.Card.Set
   ( CardSet,
     empty,
@@ -5,7 +6,6 @@ module Jasskell.Card.Set
     notNull,
     size,
     deck,
-    shuffle,
     insert,
     delete,
     member,
@@ -14,6 +14,8 @@ module Jasskell.Card.Set
     difference,
     foldr,
     foldl',
+    foldM,
+    foldM_,
     toList,
     fromList,
     filter,
@@ -21,15 +23,11 @@ module Jasskell.Card.Set
   )
 where
 
-import Control.Monad (forM_)
+import Control.Monad (void)
 import Data.Bits ((.&.), (.|.))
 import Data.Bits qualified as Bits
-import Data.List qualified as List
-import Data.Vector.Unboxed qualified as VU
-import Data.Vector.Unboxed.Mutable qualified as VUM
+import GHC.List qualified as List
 import Jasskell.Card.Internal
-import System.Random (RandomGen)
-import System.Random.Stateful qualified as Random
 import Prelude hiding (compare, filter, foldl', foldr, null)
 
 null :: CardSet -> Bool
@@ -40,14 +38,6 @@ notNull = not . null
 
 size :: CardSet -> Int
 size (CardSet cs) = Bits.popCount cs
-
-shuffle :: forall g. (RandomGen g) => g -> (VU.Vector Card, g)
-shuffle gen = Random.runSTGen gen $ \stGen -> do
-  v <- VUM.generate 36 Card
-  forM_ [35, 34 .. 1] $ \i -> do
-    j <- Random.uniformRM (0, i) stGen
-    VUM.swap v i j
-  VU.unsafeFreeze v
 
 insert :: Card -> CardSet -> CardSet
 insert (Card c) (CardSet cs) = CardSet $ cs `Bits.setBit` fromIntegral c
@@ -85,8 +75,21 @@ foldl' f z (CardSet w) = go z w
           let !c = Card $ Bits.countTrailingZeros cs
            in go (f x c) (cs .&. (cs - 1))
 
+foldM :: (Monad m) => (a -> Card -> m a) -> a -> CardSet -> m a
+foldM f z (CardSet w) = go z w
+  where
+    go !x !cs
+      | cs == 0 = pure x
+      | otherwise = do
+          let !c = Card $ Bits.countTrailingZeros cs
+          y <- f x c
+          go y (cs .&. (cs - 1))
+
+foldM_ :: (Monad m) => (a -> Card -> m a) -> a -> CardSet -> m ()
+foldM_ f z cs = void $ foldM f z cs
+
 toList :: CardSet -> [Card]
-toList = foldr (:) []
+toList cs = List.build $ \cons nil -> foldr cons nil cs
 
 fromList :: [Card] -> CardSet
 fromList = List.foldl' (flip insert) empty

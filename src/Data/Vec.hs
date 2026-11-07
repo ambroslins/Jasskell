@@ -2,6 +2,7 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FieldSelectors #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE RequiredTypeArguments #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -10,8 +11,10 @@
 
 module Data.Vec
   ( Vec,
+    create,
     generate,
     replicate,
+    update,
     index,
     set,
     modify,
@@ -35,6 +38,7 @@ module Data.Vec
   )
 where
 
+import Control.Monad (when)
 import Control.Monad.ST (ST, runST)
 import Data.Coerce (Coercible)
 import Data.Fin (Fin, nat)
@@ -48,6 +52,7 @@ import Data.Primitive.ByteArray
     copyByteArray,
     indexByteArray,
     newByteArray,
+    setByteArray,
     sizeofByteArray,
     unsafeFreezeByteArray,
     writeByteArray,
@@ -92,6 +97,8 @@ class Elem a where
 
   copyStore :: MutableStore s a -> Int -> Store a -> Int -> Int -> ST s ()
 
+  fillStore :: MutableStore s a -> Int -> Int -> a -> ST s ()
+
   sizeOfStore :: Store a -> Int
 
 newtype Vec (n :: Nat) a = Vec (Store a)
@@ -102,20 +109,43 @@ instance (Eq a, KnownNat n, Elem a) => Eq (Vec n a) where
 instance (Show a, KnownNat n, Elem a) => Show (Vec n a) where
   show = show . toList
 
-generate :: forall n a. (KnownNat n, Elem a) => (Fin n -> a) -> Vec n a
-generate f = Vec $ runST $ do
+createStore :: forall a. (Elem a) => Int -> (forall s. MutableStore s a -> ST s ()) -> Store a
+createStore size f = runST $ do
   ms <- newStore @a size
+  f ms
+  unsafeFreezeStore @a ms
+{-# INLINE createStore #-}
+
+create :: forall n a. (KnownNat n, Elem a) => a -> (forall s. (Fin n -> a -> ST s ()) -> ST s ()) -> Vec n a
+create x f = Vec $ createStore @a size $ \ms -> do
+  fillStore ms 0 size x
+  f $ \i y -> writeStore ms (Fin.toInt i) y
+  where
+    size = nat n
+
+generate :: forall n a. (KnownNat n, Elem a) => (Fin n -> a) -> Vec n a
+generate f = Vec $ createStore @a size $ \ms ->
   let go i
         | i < size = writeStore ms i (f $! Fin.unsafe i) >> go (i + 1)
         | otherwise = pure ()
-  go 0
-  unsafeFreezeStore @a ms
+   in go 0
   where
     size = nat n
 {-# INLINE generate #-}
 
+update :: forall n a. (KnownNat n, Elem a) => Vec n a -> (forall s. (Fin n -> a -> ST s ()) -> ST s ()) -> Vec n a
+update (Vec src) f = Vec $ createStore @a size $ \ms -> do
+  copyStore @a ms 0 src 0 size
+  f $ \i x -> writeStore ms (Fin.toInt i) x
+  where
+    size = nat n
+{-# INLINE update #-}
+
 replicate :: forall n a. (KnownNat n, Elem a) => a -> Vec n a
-replicate = generate . const
+replicate x = Vec $ createStore @a size $ \ms ->
+  fillStore ms 0 size x
+  where
+    size = nat n
 {-# INLINE replicate #-}
 
 index :: (Elem a) => Vec n a -> Fin n -> a
@@ -123,13 +153,7 @@ index (Vec s) i = indexStore s (Fin.toInt i)
 {-# INLINE index #-}
 
 set :: forall n a. (KnownNat n, Elem a) => Fin n -> a -> Vec n a -> Vec n a
-set !i !x (Vec src) = Vec $ runST $ do
-  ms <- newStore @a size
-  copyStore @a ms 0 src 0 size
-  writeStore ms (Fin.toInt i) x
-  unsafeFreezeStore @a ms
-  where
-    size = nat n
+set !i !x !v = update v $ \f -> f i x
 {-# INLINE set #-}
 
 modify :: forall n a. (KnownNat n, Elem a) => Fin n -> (a -> a) -> Vec n a -> Vec n a
@@ -148,11 +172,9 @@ map f = force . fmap f . delay
 {-# INLINE map #-}
 
 rotate :: forall n a. (KnownNat n, Elem a) => Fin n -> Vec n a -> Vec n a
-rotate fin (Vec s) = Vec $ runST $ do
-  ms <- newStore @a size
+rotate fin (Vec s) = Vec $ createStore @a size $ \ms -> do
   copyStore @a ms 0 s i (size - i)
   copyStore @a ms (size - i) s 0 i
-  unsafeFreezeStore @a ms
   where
     size = nat n
     i = Fin.toInt fin
@@ -203,10 +225,7 @@ generateA f =
       (pure $ Fill $ const $ pure ())
   where
     step !i !x (Fill k) = Fill @a $ \ms -> writeStore ms (Fin.toInt i) x >> k ms
-    finish (Fill k) = Vec $ runST $ do
-      ms <- newStore @a (nat n)
-      k ms
-      unsafeFreezeStore @a ms
+    finish (Fill k) = Vec $ createStore @a (nat n) k
 {-# INLINE generateA #-}
 
 mapM :: (KnownNat n, Elem a, Elem b, Applicative f) => (a -> f b) -> Vec n a -> f (Vec n b)
@@ -241,10 +260,15 @@ instance (Prim a) => Elem (Primed a) where
   {-# INLINE writeStore #-}
   unsafeFreezeStore = unsafeFreezeByteArray
   {-# INLINE unsafeFreezeStore #-}
-  copyStore = \mba i src j n ->
+  copyStore =
     let size = sizeOf (undefined :: a)
-     in copyByteArray mba (i * size) src (j * size) (n * size)
+     in \mba i src j n ->
+          copyByteArray mba (i * size) src (j * size) (n * size)
   {-# INLINE copyStore #-}
+  fillStore =
+    let size = sizeOf (undefined :: a)
+     in \mba i j (Primed x) -> setByteArray mba (i * size) (j * size) x
+  {-# INLINE fillStore #-}
   sizeOfStore = \ba -> sizeofByteArray ba `div` sizeOf (undefined :: a)
   {-# INLINE sizeOfStore #-}
 
@@ -265,8 +289,14 @@ instance Elem (Boxed a) where
   {-# INLINE unsafeFreezeStore #-}
   copyStore = copySmallArray
   {-# INLINE copyStore #-}
+  fillStore = \msa i n (Boxed x) ->
+    let go j = when (j < i + n) $ writeSmallArray msa j x >> go (j + 1)
+     in go i
+  {-# INLINE fillStore #-}
   sizeOfStore = sizeofSmallArray
   {-# INLINE sizeOfStore #-}
+
+deriving via Primed (Fin n) instance Elem (Fin n)
 
 deriving via Primed Int instance Elem Int
 

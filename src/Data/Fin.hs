@@ -8,6 +8,7 @@ module Data.Fin
     nat,
     make,
     modulo,
+    parity,
     foldl',
     foldr,
     fins,
@@ -17,13 +18,16 @@ module Data.Fin
 where
 
 import Data.Aeson (FromJSON (..), ToJSON (..))
+import Data.Bits ((.&.))
+import Data.Coerce (coerce)
+import Data.Primitive (Prim)
 import GHC.Exts (proxy#)
 import GHC.List qualified as List
 import GHC.TypeLits (KnownNat, Nat, natVal', type (<=))
 import Prelude hiding (foldl', foldr)
 
 newtype Fin (n :: Nat) = Fin Int
-  deriving newtype (Eq, Ord, Show, ToJSON)
+  deriving newtype (Eq, Ord, Show, ToJSON, Prim)
 
 instance (KnownNat n) => Num (Fin n) where
   Fin a + Fin b = Fin $ (a + b) `rem` nat n
@@ -37,6 +41,24 @@ instance (KnownNat n) => Num (Fin n) where
 instance (KnownNat n, 1 <= n) => Bounded (Fin n) where
   minBound = Fin 0
   maxBound = Fin $ nat n - 1
+
+instance (KnownNat n) => Enum (Fin n) where
+  fromEnum (Fin i) = i
+  toEnum i
+    | 0 <= i && i < nat n = Fin i
+    | otherwise = error $ "Fin.toEnum: " <> show i <> " out of range for Fin " <> show (nat n)
+  succ (Fin i)
+    | let j = i + 1, j < nat n = Fin j
+    | otherwise = error "Fin.succ: maxBound"
+  pred (Fin i)
+    | i > 0 = Fin i
+    | otherwise = error "Fin.pred: minBound"
+  enumFrom (Fin i) = coerce [i .. nat n - 1]
+  enumFromTo (Fin i) (Fin j) = coerce [i .. j]
+  enumFromThen (Fin i) (Fin j) =
+    coerce [i, j .. if j >= i then nat n - 1 else 0]
+  enumFromThenTo (Fin i) (Fin j) (Fin k) =
+    coerce [i, j .. k]
 
 instance (KnownNat n) => FromJSON (Fin n) where
   parseJSON v =
@@ -62,6 +84,9 @@ make i
 modulo :: forall n. (KnownNat n) => Int -> Fin n
 modulo i = unsafe $ i `mod` nat n
 {-# INLINE modulo #-}
+
+parity :: forall n. Fin n -> Fin 2
+parity (Fin i) = Fin $ i .&. 1
 
 foldl' :: forall n a. (KnownNat n) => (a -> Fin n -> a) -> a -> a
 foldl' f = go 0

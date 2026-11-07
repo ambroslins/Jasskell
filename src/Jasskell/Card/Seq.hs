@@ -1,3 +1,4 @@
+{- HLINT ignore "Use foldM_" -}
 module Jasskell.Card.Seq
   ( CardSeq,
     empty,
@@ -8,6 +9,8 @@ module Jasskell.Card.Seq
     unsafeIndex,
     foldr,
     foldl',
+    foldM,
+    foldM_,
     toList,
     fromList,
     maxIndexBy,
@@ -15,11 +18,12 @@ module Jasskell.Card.Seq
 where
 
 import Control.Exception (assert)
+import Control.Monad (void)
 import Data.Bits ((.&.), (.|.))
 import Data.Bits qualified as Bits
 import Data.Coerce (coerce)
-import Data.List qualified as List
 import Data.Word (Word64)
+import GHC.List qualified as List
 import Jasskell.Card.Internal (Card (..))
 import Prelude hiding (foldl', foldr, length, null)
 
@@ -79,8 +83,16 @@ foldl' f z cs = go (length cs) z (coerce cs)
            in go (l - 1) (f x c) (s `Bits.unsafeShiftR` bitsPerCard)
       | otherwise = x
 
+foldM :: (Monad m) => (b -> Card -> m b) -> b -> CardSeq -> m b
+foldM f z0 cs = foldr go pure cs z0
+  where
+    go c k x = f x c >>= k
+
+foldM_ :: (Monad m) => (b -> Card -> m b) -> b -> CardSeq -> m ()
+foldM_ f z = void . foldM f z
+
 toList :: CardSeq -> [Card]
-toList = foldr (:) []
+toList cs = List.build $ \cons nil -> foldr cons nil cs
 
 fromList :: [Card] -> CardSeq
 fromList = List.foldl' (flip push) empty
