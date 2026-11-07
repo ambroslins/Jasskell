@@ -20,12 +20,16 @@ module Jasskell.Card.Set
     fromList,
     filter,
     filterSuit,
+    toInt64,
+    fromInt64,
   )
 where
 
 import Control.Monad (void)
 import Data.Bits ((.&.), (.|.))
 import Data.Bits qualified as Bits
+import Data.Coerce (coerce)
+import Data.Int (Int64)
 import GHC.List qualified as List
 import Jasskell.Card.Internal
 import Prelude hiding (compare, filter, foldl', foldr, null)
@@ -99,3 +103,9 @@ filter p = foldl' (\cs c -> if p c then insert c cs else cs) empty
 
 filterSuit :: Suit -> CardSet -> CardSet
 filterSuit s (CardSet cs) = CardSet $ cs .&. suitMask s
+
+toInt64 :: CardSet -> Int64
+toInt64 = coerce
+
+fromInt64 :: Int64 -> CardSet
+fromInt64 = intersection deck . CardSet

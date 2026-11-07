@@ -3,6 +3,7 @@ module Jasskell.Database
     Pool,
     withPool,
     use,
+    statement,
   )
 where
 
@@ -13,6 +14,7 @@ import Hasql.Connection.Settings qualified as Hasql
 import Hasql.Pool qualified
 import Hasql.Pool.Config qualified
 import Hasql.Session qualified as Hasql
+import Hasql.Statement qualified as Hasql
 import Pqi.Ffi qualified
 
 data Config = Config
@@ -48,3 +50,6 @@ withPool config run =
 use :: Pool -> Hasql.Session a -> IO a
 use (Pool pool) session =
   Hasql.Pool.use pool session >>= either throwIO pure
+
+statement :: Pool -> Hasql.Statement params result -> params -> IO result
+statement pool statement params = use pool $ Hasql.statement params statement

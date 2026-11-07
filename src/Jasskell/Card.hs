@@ -10,9 +10,12 @@ module Jasskell.Card
     max,
     points,
     abbreviation,
+    toInt16,
+    fromInt16,
   )
 where
 
+import Data.Int (Int16)
 import Data.Ord (Down (..), comparing)
 import Data.Text (Text)
 import Jasskell.Card.Internal
@@ -81,3 +84,11 @@ abbreviation c = s <> r
       Over -> "O"
       King -> "K"
       Ace -> "A"
+
+toInt16 :: Card -> Int16
+toInt16 (Card i) = fromIntegral i
+
+fromInt16 :: Int16 -> Maybe Card
+fromInt16 i
+  | i >= 0 && i < 36 = Just $! Card $ fromIntegral i
+  | otherwise = Nothing

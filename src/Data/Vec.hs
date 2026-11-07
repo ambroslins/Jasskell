@@ -28,7 +28,10 @@ module Data.Vec
     ifoldr,
     all,
     toList,
+    toVector,
     fromList,
+    fromVector,
+    withVector,
     generateA,
     mapM,
     sequence,
@@ -41,6 +44,7 @@ where
 import Control.Monad (when)
 import Control.Monad.ST (ST, runST)
 import Data.Coerce (Coercible)
+import Data.Data (Proxy (..))
 import Data.Fin (Fin, nat)
 import Data.Fin qualified as Fin
 import Data.Int (Int16, Int32, Int64, Int8)
@@ -68,9 +72,10 @@ import Data.Primitive.SmallArray
     writeSmallArray,
   )
 import Data.Text (Text)
+import Data.Vector.Generic qualified as Vector
 import Data.Word (Word16, Word32, Word64, Word8)
 import GHC.List qualified as List
-import GHC.TypeLits (Nat)
+import GHC.TypeLits (Nat, SomeNat (..), someNatVal)
 import GHC.TypeNats (KnownNat)
 import Prelude hiding
   ( all,
@@ -204,6 +209,10 @@ toList :: forall n a. (KnownNat n, Elem a) => Vec n a -> [a]
 toList v = List.build (\cons nil -> foldrPull cons nil (delay v))
 {-# INLINE toList #-}
 
+toVector :: forall n a v. (KnownNat n, Elem a, Vector.Vector v a) => Vec n a -> v a
+toVector = pullToVector . delay
+{-# INLINE toVector #-}
+
 fromList :: forall n a. (KnownNat n, Elem a) => [a] -> Maybe (Vec n a)
 fromList xs = runST $ do
   ms <- newStore @a size
@@ -214,6 +223,28 @@ fromList xs = runST $ do
   go 0 xs
   where
     size = nat n
+{-# INLINE fromList #-}
+
+fromVector :: forall n a v. (KnownNat n, Elem a, Vector.Vector v a) => v a -> Maybe (Vec n a)
+fromVector v
+  | Vector.length v == nat n = Just $! Vec $ vectorToStore v
+  | otherwise = Nothing
+{-# INLINE fromVector #-}
+
+vectorToStore :: forall a v. (Elem a, Vector.Vector v a) => v a -> Store a
+vectorToStore v = createStore @a (Vector.length v) $ \ms ->
+  Vector.iforM_ v $ \i x -> writeStore ms i x
+{-# INLINE vectorToStore #-}
+
+withVector ::
+  forall a r v.
+  (Elem a, Vector.Vector v a) =>
+  v a ->
+  (forall n. (KnownNat n) => Vec n a -> r) ->
+  r
+withVector v f = case someNatVal (fromIntegral $ Vector.length v) of
+  Just (SomeNat (Proxy :: Proxy n)) -> f (Vec $ vectorToStore v :: Vec n a)
+  Nothing -> error "Data.Vec.withVector: impossible: Vector has negative length"
 
 newtype Fill a = Fill (forall s. MutableStore s a -> ST s ())
 
@@ -367,3 +398,7 @@ ifoldrPull f z (Pull g) = Fin.foldr (\i r -> f i (g i) r) z
 traversePull :: (KnownNat n, Elem b, Applicative f) => (a -> f b) -> Pull n a -> f (Vec n b)
 traversePull f (Pull g) = generateA (f . g)
 {-# INLINE traversePull #-}
+
+pullToVector :: forall n a v. (KnownNat n, Elem a, Vector.Vector v a) => Pull n a -> v a
+pullToVector (Pull g) = Vector.generate (nat n) (g . Fin.unsafe)
+{-# INLINE pullToVector #-}
