@@ -265,9 +265,7 @@ instance (Prim a) => Elem (Primed a) where
      in \mba i src j n ->
           copyByteArray mba (i * size) src (j * size) (n * size)
   {-# INLINE copyStore #-}
-  fillStore =
-    let size = sizeOf (undefined :: a)
-     in \mba i j (Primed x) -> setByteArray mba (i * size) (j * size) x
+  fillStore = \mba i j (Primed x) -> setByteArray mba i j x
   {-# INLINE fillStore #-}
   sizeOfStore = \ba -> sizeofByteArray ba `div` sizeOf (undefined :: a)
   {-# INLINE sizeOfStore #-}
