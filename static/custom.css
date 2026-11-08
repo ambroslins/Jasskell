@@ -47,7 +47,7 @@
 }
 
 :root {
-  --card-height: 15rem;
+  --card-height: 10rem;
 }
 
 svg.icon {
@@ -69,7 +69,7 @@ svg.icon {
   align-items: center;
   justify-content: space-between;
   font-size: calc(var(--card-height)*.125);
-  color: var(--pico-color);
+  color: var(--pico-primary-color);
 
   .rank {
     font-weight: 700;
@@ -155,6 +155,28 @@ svg.icon {
   li [role=button] { padding: .3rem .9rem; }
 }
 
+.trick {
+  grid-area: trick; display: grid; place-items: center; column-gap: .5rem; padding-block: .75rem;
+  grid-template-areas: "left top right" "left . right" "left bottom right";
+  grid-template-columns: auto calc(var(--card-height) * 0.8) auto;
+  grid-template-rows: var(--card-height) 2rem var(--card-height);
+
+  .top { grid-area: top; }
+  .left { grid-area: left; margin-left: auto; }
+  .right { grid-area: right; margin-right: auto; }
+  .bottom { grid-area: bottom; }
+}
+
+.hand {
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+
+  .card:disabled { opacity: 0.75; }
+}
+
 #toasts {
   position: fixed;
   inset-inline: 0;
@@ -201,6 +223,4 @@ svg.icon {
 @keyframes toast-in { from { opacity: 0; transform: translateY(.75rem); } }
 @keyframes toast-out { to { opacity: 0; transform: translateY(.75rem); } }
 @media (prefers-reduced-motion: reduce) { .toast, .toast.leaving { animation: none; } }
-
-
 

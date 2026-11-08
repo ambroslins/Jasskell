@@ -74,7 +74,7 @@ index gen mplayer = do
       p_ "More about rules and stuff"
       a_ [href_ "#play", role_ "button"] "Play"
 
-    div_ [id_ "hero-deck"] . VU.foldMap (card []) . VU.take 4 . fst $
+    div_ [id_ "hero-deck"] . VU.foldMap (cardDiv []) . VU.take 4 . fst $
       Dealer.shuffle CardSet.deck gen
 
   main_ [id_ "play", class_ "container grid"] $ do
@@ -151,7 +151,7 @@ gameConnect player gameId = do
   div_
     [ hxWsConnect_ $ "/games/" <> Id.encodeText gameId,
       hxTarget_ "#message",
-      hxSwap_ "innerHTML"
+      hxSwap_ "innerMorph"
     ]
     $ div_ [id_ "message"]
     $ p_ "connecting"
@@ -176,26 +176,46 @@ playerView view = do
           button_ [hxWsSend_, hxVals_ $ DeclareVariant @n $ Trump s] $ toHtml $ show s
       | otherwise -> "Waiting for leader to declare variant"
     Just v -> toHtml $ show v
-  Vec.iforM_ view.players $ \i player ->
-    article_ $ do
-      div_ . toHtml $ if i == 0 then "You" else player.nickname.toText
-      case Vec.index view.playedCards i of
+  div_ [class_ "trick"] $ do
+    div_ [class_ "top"] $ do
+      div_ . toHtml $ (Vec.index view.players 2).nickname.toText
+      case Vec.index view.playedCards 2 of
         Nothing -> div_ "-"
-        Just c -> div_ . toHtml $ Card.abbreviation c
-  Round.foldHand view.hand $ \c status ->
-    button_
-      [ hxWsSend_,
-        hxVals_ $ PlayCard @n c,
-        if status == Playable then mempty else disabled_ "true"
-      ]
-      $ toHtml
-      $ Card.abbreviation c
+        Just c -> cardDiv [] c
+    div_ [class_ "left"] $ do
+      div_ . toHtml $ (Vec.index view.players 1).nickname.toText
+      case Vec.index view.playedCards 1 of
+        Nothing -> div_ "-"
+        Just c -> cardDiv [] c
+    div_ [class_ "right"] $ do
+      div_ . toHtml $ (Vec.index view.players 3).nickname.toText
+      case Vec.index view.playedCards 3 of
+        Nothing -> div_ "-"
+        Just c -> cardDiv [] c
+    div_ [class_ "bottom"] $ do
+      case Vec.index view.playedCards 0 of
+        Nothing -> div_ "-"
+        Just c -> cardDiv [] c
+  div_ [class_ "hand"] $
+    Round.foldHand view.hand $ \c status ->
+      cardButton
+        [ hxWsSend_,
+          hxVals_ $ PlayCard @n c,
+          if status == Playable then mempty else disabled_ "true"
+        ]
+        c
 
 spectatorView :: (KnownNat n) => View.Spectating n -> Html ()
 spectatorView = toHtml . show
 
-card :: [Attributes] -> Card -> Html ()
-card as c = div_ (class_ "card" : as) $ do
+cardDiv :: [Attributes] -> Card -> Html ()
+cardDiv as = div_ (class_ "card" : as) . cardContent
+
+cardButton :: [Attributes] -> Card -> Html ()
+cardButton as = button_ (class_ "card" : as) . cardContent
+
+cardContent :: Card -> Html ()
+cardContent c = do
   span_ [class_ "rank top"] corner
   span_ [class_ "suit"] suit
   span_ [class_ "rank bottom"] corner
