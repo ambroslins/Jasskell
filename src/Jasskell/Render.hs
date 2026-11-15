@@ -14,6 +14,7 @@ where
 import Control.Monad (forM_, unless, when)
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
+import Data.Fin qualified as Fin
 import Data.Functor.Identity (runIdentity)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
@@ -158,7 +159,7 @@ gameConnect player gameId = do
 
 waitingView :: forall n. (KnownNat n) => View.Waiting n -> Html ()
 waitingView view = do
-  Vec.iforM_ view.seats $ \i m -> case m of
+  Vec.ifor_ view.seats $ \i m -> case m of
     Nothing -> div_ $ do
       "Empty"
       unless view.seated $ button_ [hxWsSend_, hxVals_ $ TakeSeat i] "Take"
@@ -169,63 +170,57 @@ waitingView view = do
 
 playerView :: forall n. (KnownNat n) => View.Playing n -> Html ()
 playerView view = do
-  div_ . toHtml $ show view
-  div_ $ case view.variant of
-    Nothing
-      | view.currentPlayer == 0 -> forM_ [minBound .. maxBound] $ \s ->
-          button_ [hxWsSend_, hxVals_ $ DeclareVariant @n $ Trump s] $ toHtml $ show s
-      | otherwise -> "Waiting for leader to declare variant"
-    Just v -> toHtml $ show v
-  div_ [class_ "trick"] $ do
-    div_ [class_ "top"] $ do
-      div_ . toHtml $ (Vec.index view.players 2).nickname.toText
-      case Vec.index view.playedCards 2 of
-        Nothing -> div_ "-"
-        Just c -> cardDiv [] c
-    div_ [class_ "left"] $ do
-      div_ . toHtml $ (Vec.index view.players 1).nickname.toText
-      case Vec.index view.playedCards 1 of
-        Nothing -> div_ "-"
-        Just c -> cardDiv [] c
-    div_ [class_ "right"] $ do
-      div_ . toHtml $ (Vec.index view.players 3).nickname.toText
-      case Vec.index view.playedCards 3 of
-        Nothing -> div_ "-"
-        Just c -> cardDiv [] c
-    div_ [class_ "bottom"] $ do
-      case Vec.index view.playedCards 0 of
-        Nothing -> div_ "-"
-        Just c -> cardDiv [] c
-  div_ [class_ "hand"] $
-    Round.foldHand view.hand $ \c status ->
-      cardButton
-        [ hxWsSend_,
-          hxVals_ $ PlayCard @n c,
-          if status == Playable then mempty else disabled_ "true"
-        ]
-        c
+  div_ [class_ "container"] $ do
+    div_ $ case view.variant of
+      Nothing
+        | view.currentPlayer == 0 -> forM_ [minBound .. maxBound] $ \s ->
+            button_ [hxWsSend_, hxVals_ $ DeclareVariant @n $ Trump s] $ toHtml $ show s
+        | otherwise -> "Waiting for leader to declare variant"
+      Just v -> toHtml $ show v
+    section_ [class_ "table"] $ do
+      Fin.for_ $ \i -> div_ [class_ "seat"] $ do
+        unless (i == 0) $ div_ [] $ do
+          playerName $ Vec.index view.players i
+          when (i == view.leader) $ div_ "Leader"
+        case Vec.index view.playedCards i of
+          Nothing -> cardPlaceholder []
+          Just c -> cardDiv [] c
+
+    div_ [class_ "hand"] $
+      Round.foldHand view.hand $ \c status ->
+        cardButton
+          [ hxWsSend_,
+            hxVals_ $ PlayCard @n c,
+            if status == Playable then mempty else disabled_ "true"
+          ]
+          c
+
+playerName :: Player -> Html ()
+playerName p = span_ [class_ "player-name"] $ do
+  strong_ . toHtml $ p.nickname.toText
+  small_ $ "#" <> toHtml (show $ Id.toInt p.id `mod` 10000)
 
 spectatorView :: (KnownNat n) => View.Spectating n -> Html ()
 spectatorView = toHtml . show
 
 cardDiv :: [Attributes] -> Card -> Html ()
-cardDiv as = div_ (class_ "card" : as) . cardContent
+cardDiv = makeCard div_
 
 cardButton :: [Attributes] -> Card -> Html ()
-cardButton as = button_ (class_ "card" : as) . cardContent
+cardButton = makeCard button_
 
-cardContent :: Card -> Html ()
-cardContent c = do
+makeCard :: ([Attributes] -> Html () -> Html ()) -> [Attributes] -> Card -> Html ()
+makeCard elem_ as c = elem_ (class_ cls : as) $ do
   span_ [class_ "rank top"] corner
   span_ [class_ "suit"] suit
   span_ [class_ "rank bottom"] corner
   where
     corner = rank <> suit
-    suit = case Card.suit c of
-      Bells -> bell []
-      Acorns -> acorn []
-      Leaves -> leaf []
-      Hearts -> heart []
+    (suit, cls) = case Card.suit c of
+      Bells -> (bell [], "card bells")
+      Acorns -> (acorn [], "card acorns")
+      Leaves -> (leaf [], "card leaves")
+      Hearts -> (heart [], "card hearts")
     rank = case Card.rank c of
       Six -> "6"
       Seven -> "7"
@@ -236,6 +231,9 @@ cardContent c = do
       Over -> "O"
       King -> "K"
       Ace -> "A"
+
+cardPlaceholder :: [Attributes] -> Html ()
+cardPlaceholder as = div_ (class_ "card placeholder" : as) mempty
 
 bell, acorn, heart, leaf :: [Attributes] -> Html ()
 bell = symbolIcon "#bell"

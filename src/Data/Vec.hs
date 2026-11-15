@@ -35,7 +35,8 @@ module Data.Vec
     generateA,
     mapM,
     sequence,
-    iforM_,
+    for_,
+    ifor_,
     Boxed (..),
     Elem (..),
   )
@@ -267,14 +268,23 @@ sequence :: (KnownNat n, Elem (f a), Elem a, Applicative f) => Vec n (f a) -> f 
 sequence = traversePull id . delay
 {-# INLINE sequence #-}
 
-iforM_ :: forall n a f. (KnownNat n, Elem a, Applicative f) => Vec n a -> (Fin n -> a -> f ()) -> f ()
-iforM_ (Vec s) f = go 0
+for_ :: forall n a f. (KnownNat n, Elem a, Applicative f) => Vec n a -> (a -> f ()) -> f ()
+for_ (Vec s) f = go 0
+  where
+    size = nat n
+    go i
+      | i >= size = pure ()
+      | otherwise = f (indexStore s i) *> go (i + 1)
+{-# INLINE for_ #-}
+
+ifor_ :: forall n a f. (KnownNat n, Elem a, Applicative f) => Vec n a -> (Fin n -> a -> f ()) -> f ()
+ifor_ (Vec s) f = go 0
   where
     size = nat n
     go i
       | i >= size = pure ()
       | otherwise = f (Fin.unsafe i) (indexStore s i) *> go (i + 1)
-{-# INLINE iforM_ #-}
+{-# INLINE ifor_ #-}
 
 newtype Primed a = Primed {unprim :: a}
   deriving newtype (Eq, Ord, Show)

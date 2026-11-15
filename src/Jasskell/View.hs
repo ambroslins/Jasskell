@@ -40,7 +40,8 @@ data Playing n = Playing
     hand :: Round.Hand,
     variant :: Maybe Variant,
     shoved :: Bool,
-    playedCards :: Vec n (Maybe Card)
+    playedCards :: Vec n (Maybe Card),
+    trickWinner :: Maybe (Fin n)
   }
   deriving (Show)
 
@@ -54,7 +55,8 @@ makePlaying players round seat =
       hand = Round.handOf seat round,
       variant = Round.variant round,
       shoved = Round.shoved round,
-      playedCards = Vec.rotate seat $ Round.playedCards round
+      playedCards = Vec.rotate seat $ Round.playedCards round,
+      trickWinner = Nothing
     }
 
 newtype Spectating n = Spectating

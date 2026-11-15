@@ -47,7 +47,8 @@
 }
 
 :root {
-  --card-height: 10rem;
+  --card-height: 7rem;
+  --card-width: calc(var(--card-height) * 2 / 3)
 }
 
 svg.icon {
@@ -59,10 +60,10 @@ svg.icon {
 
 .card {
   height: var(--card-height);
-  aspect-ratio: 2 / 3;
+  width: var(--card-width);
   border-radius: calc(var(--card-height)*.05);
   background: #fbfaf6;
-  border: 1px solid #ddd7ca;
+  border: 2px solid #ddd7ca;
   padding: calc(var(--card-height)*.025) calc(var(--card-height)*.03);
   display: flex;
   flex-direction: column;
@@ -91,6 +92,16 @@ svg.icon {
   .suit {
     font-size: 2em;
   }
+}
+
+.bells { color: #f5b811; }
+.acorns { color: #6e4f2a; }
+.leaves { color: #526b3e; }
+.hearts { color: #a33d2a; }
+
+.card.placeholder {
+  border: 2px dashed #ccc6b9;
+  background: none;
 }
 
 #hero {
@@ -155,16 +166,52 @@ svg.icon {
   li [role=button] { padding: .3rem .9rem; }
 }
 
-.trick {
-  grid-area: trick; display: grid; place-items: center; column-gap: .5rem; padding-block: .75rem;
-  grid-template-areas: "left top right" "left . right" "left bottom right";
-  grid-template-columns: auto calc(var(--card-height) * 0.8) auto;
-  grid-template-rows: var(--card-height) 2rem var(--card-height);
+.table {
+  margin: 0 0.5rem;
+  padding: 1rem;
+  display: grid;
+  row-gap: 0.5rem;
+  place-items: end center;
+  grid-template-areas: "left top right" "left . right" ". bottom .";
+  grid-template-columns: 1fr calc(var(--card-width) + 1rem) 1fr;
+  grid-template-rows: auto var(--card-height) var(--card-height);
+  background: #e8ede4;
+  border: var(--pico-border-width) solid var(--pico-form-element-border-color);
+  border-radius: calc(var(--pico-border-radius) * 3);
 
-  .top { grid-area: top; }
-  .left { grid-area: left; margin-left: auto; }
-  .right { grid-area: right; margin-right: auto; }
-  .bottom { grid-area: bottom; }
+  .seat {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 0.5rem;
+  }
+
+  .seat:nth-child(3) {
+    grid-area: top;
+    flex-direction: column;
+  }
+  .seat:nth-child(2) {
+    grid-area: left;
+    justify-self: end;
+    flex-direction: row;
+    justify-content: end;
+  }
+  .seat:nth-child(4) {
+    grid-area: right;
+    justify-self: start;
+    flex-direction: row-reverse;
+    justify-content: start;
+  }
+  .seat:nth-child(1) {
+    grid-area: bottom;
+    align-self: start;
+  }
+
+}
+
+
+.player {
+  margin-bottom: 0;
 }
 
 .hand {

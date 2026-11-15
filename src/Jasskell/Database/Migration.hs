@@ -104,8 +104,8 @@ migrations =
       create table played_cards (
         game_id int8 not null,
         round_number int2 not null,
-        seq int2 not null check (seq >= 0) ,
-        card int2 not null,
+        seq int2 not null check (seq >= 0 and seq < 36) ,
+        card int2 not null check (card >= 0 and seq < 36),
 
         played_at timestamptz not null default now(),
 
