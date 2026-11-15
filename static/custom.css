@@ -104,6 +104,10 @@ svg.icon {
   background: none;
 }
 
+.card.winning {
+  border: 2px solid #134701;
+}
+
 #hero {
   min-height: calc(100vh + 12px); /* So we don't reveal the play section */
   align-items: center;

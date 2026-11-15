@@ -9,6 +9,7 @@ module Jasskell.View
 where
 
 import Data.Fin (Fin)
+import Data.Functor ((<&>))
 import Data.Vec (Vec)
 import Data.Vec qualified as Vec
 import GHC.TypeLits (KnownNat)
@@ -41,7 +42,8 @@ data Playing n = Playing
     variant :: Maybe Variant,
     shoved :: Bool,
     playedCards :: Vec n (Maybe Card),
-    trickWinner :: Maybe (Fin n)
+    trickWinner :: Maybe (Fin n),
+    stoeck :: Maybe (Fin n)
   }
   deriving (Show)
 
@@ -56,7 +58,8 @@ makePlaying players round seat =
       variant = Round.variant round,
       shoved = Round.shoved round,
       playedCards = Vec.rotate seat $ Round.playedCards round,
-      trickWinner = Nothing
+      trickWinner = Round.trickWinner round <&> subtract seat,
+      stoeck = Round.stoeck round <&> subtract seat
     }
 
 newtype Spectating n = Spectating

@@ -9,6 +9,8 @@ module Jasskell.Round
     shoved,
     handOf,
     playedCards,
+    trickWinner,
+    stoeck,
     ShoveError (..),
     shove,
     ChooseError (..),
@@ -23,6 +25,7 @@ module Jasskell.Round
   )
 where
 
+import Control.Applicative ((<|>))
 import Control.Monad (guard, unless, when)
 import Data.Fin (Fin)
 import Data.Fin qualified as Fin
@@ -32,7 +35,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Vec (Vec)
 import Data.Vec qualified as Vec
 import GHC.TypeLits (KnownNat)
-import Jasskell.Card (Card, Rank (Under), Suit)
+import Jasskell.Card (Card, Rank (..), Suit)
 import Jasskell.Card qualified as Card
 import Jasskell.Card.Seq (CardSeq)
 import Jasskell.Card.Seq qualified as CardSeq
@@ -51,7 +54,8 @@ data Round n = Round
     played :: CardSeq,
     tricks :: [Trick n],
     points :: Vec n Int,
-    shoved :: Bool
+    shoved :: Bool,
+    stoeck :: Maybe (Fin n)
   }
   deriving (Show)
 
@@ -62,6 +66,10 @@ data Trick n = Trick
     points :: Int
   }
   deriving (Show)
+
+trickCardOf :: (KnownNat n) => Seat n -> Trick n -> Card
+trickCardOf seat trick =
+  CardSeq.unsafeIndex trick.cards $ Fin.toInt $ seat - trick.leader
 
 data Result n = Result
   { trickPoints :: Vec n Int,
@@ -77,7 +85,8 @@ start c hs =
       played = CardSeq.empty,
       tricks = [],
       points = Vec.replicate 0,
-      shoved = False
+      shoved = False,
+      stoeck = Nothing
     }
 
 chooser :: Round n -> Seat n
@@ -119,6 +128,17 @@ playedCards round = Vec.create Nothing $ \write -> do
     (leader round)
     round.played
 
+trickWinner :: (KnownNat n) => Round n -> Maybe (Fin n)
+trickWinner round = do
+  v <- round.variant
+  c <- CardSeq.index round.played 0
+  let !lead = Card.suit c
+      !highest = CardSeq.maxIndexBy (Card.compare lead v) round.played
+  pure $! Fin.unsafe highest + leader round
+
+stoeck :: Round n -> Maybe (Fin n)
+stoeck round = round.stoeck
+
 data ShoveError
   = CannotShoveNow
   | AlreadyShoved
@@ -157,7 +177,12 @@ playCard card round = do
     fromMaybe <*> closeTrick $
       round
         { played = CardSeq.push card round.played,
-          hands = Vec.set current (CardSet.delete card hand) round.hands
+          hands = Vec.set current (CardSet.delete card hand) round.hands,
+          stoeck =
+            round.stoeck <|> do
+              guard $ isStoeckCard v card
+              guard $ any (isStoeckCard v . trickCardOf current) round.tricks
+              pure current
         }
 
 closeTrick :: forall n. (KnownNat n) => Round n -> Maybe (Round n)
@@ -190,6 +215,11 @@ close round = do
       { trickPoints = round.points,
         stoeck = Nothing -- TODO
       }
+
+isStoeckCard :: Variant -> Card -> Bool
+isStoeckCard v c = case v of
+  Trump t -> Card.suit c == t && let r = Card.rank c in r == Over || r == King
+  _ -> False
 
 partner :: (KnownNat n) => Seat n -> Seat n
 partner = (+ 2)

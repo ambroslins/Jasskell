@@ -181,10 +181,10 @@ playerView view = do
       Fin.for_ $ \i -> div_ [class_ "seat"] $ do
         unless (i == 0) $ div_ [] $ do
           playerName $ Vec.index view.players i
-          when (i == view.leader) $ div_ "Leader"
+          when (Just i == view.stoeck) $ div_ "Stöck"
         case Vec.index view.playedCards i of
           Nothing -> cardPlaceholder []
-          Just c -> cardDiv [] c
+          Just c -> cardDiv [class_ "winning" | Just i == view.trickWinner] c
 
     div_ [class_ "hand"] $
       Round.foldHand view.hand $ \c status ->
