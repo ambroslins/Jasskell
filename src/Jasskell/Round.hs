@@ -22,6 +22,7 @@ module Jasskell.Round
     CardStatus (..),
     Violation (..),
     foldHand,
+    melds,
   )
 where
 
@@ -31,7 +32,9 @@ import Data.Fin (Fin)
 import Data.Fin qualified as Fin
 import Data.Foldable (for_)
 import Data.Functor (($>))
-import Data.Maybe (fromMaybe, isJust)
+import Data.List qualified as List
+import Data.List.NonEmpty (NonEmpty, nonEmpty)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Vec (Vec)
 import Data.Vec qualified as Vec
 import GHC.TypeLits (KnownNat)
@@ -70,6 +73,12 @@ data Trick n = Trick
 trickCardOf :: (KnownNat n) => Seat n -> Trick n -> Card
 trickCardOf seat trick =
   CardSeq.unsafeIndex trick.cards $ Fin.toInt $ seat - trick.leader
+
+data Meld
+  = -- | Highest card and length (at least 3)
+    Sequence Card Int
+  | Quartet Rank
+  deriving (Eq, Show)
 
 data Result n = Result
   { trickPoints :: Vec n Int,
@@ -301,3 +310,13 @@ restrictionsFor v trick cards = case trick of
       restrict !set !violation !rest
         | CardSet.null set = rest
         | otherwise = Restriction {set, violation} : rest
+
+melds :: CardSet -> [NonEmpty Meld]
+melds cs =
+  mapMaybe
+    nonEmpty
+    [ map Quartet qs ++ sequences
+    | qs <- List.subsequences $ CardSet.quartets cs,
+      let rest = foldl' (\c r -> c `CardSet.difference` CardSet.ofRank r) cs qs
+          sequences = map (\s -> Sequence s.highest s.length) $ CardSet.sequences rest
+    ]

@@ -12,6 +12,7 @@ module Jasskell.Card.Set
     union,
     intersection,
     difference,
+    isSubsetOf,
     foldr,
     foldl',
     foldM,
@@ -20,8 +21,14 @@ module Jasskell.Card.Set
     fromList,
     filter,
     filterSuit,
+    filterRank,
     toInt64,
     fromInt64,
+    ofSuit,
+    ofRank,
+    Sequence (..),
+    sequences,
+    quartets,
   )
 where
 
@@ -61,33 +68,13 @@ intersection (CardSet a) (CardSet b) = CardSet $ a .&. b
 difference :: CardSet -> CardSet -> CardSet
 difference (CardSet a) (CardSet b) = CardSet $ a .&. Bits.complement b
 
-foldr :: (Card -> a -> a) -> a -> CardSet -> a
-foldr f z (CardSet w) = go w
-  where
-    go !cs
-      | cs == 0 = z
-      | otherwise =
-          let !c = Card $ Bits.countTrailingZeros cs
-           in f c $ go (cs .&. (cs - 1))
-
-foldl' :: (a -> Card -> a) -> a -> CardSet -> a
-foldl' f z (CardSet w) = go z w
-  where
-    go !x !cs
-      | cs == 0 = x
-      | otherwise =
-          let !c = Card $ Bits.countTrailingZeros cs
-           in go (f x c) (cs .&. (cs - 1))
+isSubsetOf :: CardSet -> CardSet -> Bool
+isSubsetOf sub super = union sub super == super
 
 foldM :: (Monad m) => (a -> Card -> m a) -> a -> CardSet -> m a
-foldM f z (CardSet w) = go z w
+foldM f z cs = foldr go pure cs z
   where
-    go !x !cs
-      | cs == 0 = pure x
-      | otherwise = do
-          let !c = Card $ Bits.countTrailingZeros cs
-          y <- f x c
-          go y (cs .&. (cs - 1))
+    go c k x = f x c >>= k
 
 foldM_ :: (Monad m) => (a -> Card -> m a) -> a -> CardSet -> m ()
 foldM_ f z cs = void $ foldM f z cs
@@ -102,7 +89,10 @@ filter :: (Card -> Bool) -> CardSet -> CardSet
 filter p = foldl' (\cs c -> if p c then insert c cs else cs) empty
 
 filterSuit :: Suit -> CardSet -> CardSet
-filterSuit s (CardSet cs) = CardSet $ cs .&. suitMask s
+filterSuit s = intersection (ofSuit s)
+
+filterRank :: Rank -> CardSet -> CardSet
+filterRank r = intersection (ofRank r)
 
 toInt64 :: CardSet -> Int64
 toInt64 = coerce
