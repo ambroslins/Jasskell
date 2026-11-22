@@ -171,9 +171,9 @@ waitingView view = do
 playerView :: forall n. (KnownNat n) => View.Playing n -> Html ()
 playerView view = do
   div_ [class_ "container"] $ do
-    div_ $ case view.variant of
+    div_ $ case view.round.variant of
       Nothing
-        | view.currentPlayer == 0 -> forM_ [minBound .. maxBound] $ \s ->
+        | view.round.currentPlayer == 0 -> forM_ [minBound .. maxBound] $ \s ->
             button_ [hxWsSend_, hxVals_ $ DeclareVariant @n $ Trump s] $ toHtml $ show s
         | otherwise -> "Waiting for leader to declare variant"
       Just v -> toHtml $ show v
@@ -181,13 +181,13 @@ playerView view = do
       Fin.for_ $ \i -> div_ [class_ "seat"] $ do
         unless (i == 0) $ div_ [] $ do
           playerName $ Vec.index view.players i
-          when (Just i == view.stoeck) $ div_ "Stöck"
-        case Vec.index view.playedCards i of
+          when (Just i == view.round.stoeck) $ div_ "Stöck"
+        case Vec.index view.round.playedCards i of
           Nothing -> cardPlaceholder []
-          Just c -> cardDiv [class_ "winning" | Just i == view.trickWinner] c
+          Just c -> cardDiv [class_ "winning" | Just i == view.round.trickWinner] c
 
     div_ [class_ "hand"] $
-      Round.foldHand view.hand $ \c status ->
+      Round.foldHand view.round.hand $ \c status ->
         cardButton
           [ hxWsSend_,
             hxVals_ $ PlayCard @n c,

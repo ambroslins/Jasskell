@@ -9,15 +9,12 @@ module Jasskell.View
 where
 
 import Data.Fin (Fin)
-import Data.Functor ((<&>))
 import Data.Vec (Vec)
 import Data.Vec qualified as Vec
 import GHC.TypeLits (KnownNat)
-import Jasskell.Card (Card)
 import Jasskell.Player (Player (..), PlayerId)
-import Jasskell.Round (Round, Seat)
+import Jasskell.Round (Round)
 import Jasskell.Round qualified as Round
-import Jasskell.Variant (Variant)
 import Prelude hiding (round)
 
 data Waiting n = Waiting
@@ -35,15 +32,7 @@ makeWaiting seats playerId = case Vec.findIndex hasSeat seats of
 
 data Playing n = Playing
   { players :: Vec n Player,
-    chooser :: Seat n,
-    leader :: Seat n,
-    currentPlayer :: Seat n,
-    hand :: Round.Hand,
-    variant :: Maybe Variant,
-    shoved :: Bool,
-    playedCards :: Vec n (Maybe Card),
-    trickWinner :: Maybe (Fin n),
-    stoeck :: Maybe (Fin n)
+    round :: Round.PlayerView n
   }
   deriving (Show)
 
@@ -51,15 +40,7 @@ makePlaying :: (KnownNat n) => Vec n Player -> Round n -> Fin n -> Playing n
 makePlaying players round seat =
   Playing
     { players = Vec.rotate seat players,
-      chooser = Round.chooser round - seat,
-      leader = Round.leader round - seat,
-      currentPlayer = Round.currentPlayer round - seat,
-      hand = Round.handOf seat round,
-      variant = Round.variant round,
-      shoved = Round.shoved round,
-      playedCards = Vec.rotate seat $ Round.playedCards round,
-      trickWinner = Round.trickWinner round <&> subtract seat,
-      stoeck = Round.stoeck round <&> subtract seat
+      round = Round.playerView round seat
     }
 
 newtype Spectating n = Spectating

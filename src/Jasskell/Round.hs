@@ -2,15 +2,7 @@ module Jasskell.Round
   ( Round,
     Seat,
     start,
-    chooser,
-    leader,
     currentPlayer,
-    variant,
-    shoved,
-    handOf,
-    playedCards,
-    trickWinner,
-    stoeck,
     ShoveError (..),
     shove,
     ChooseError (..),
@@ -22,6 +14,8 @@ module Jasskell.Round
     CardStatus (..),
     Violation (..),
     foldHand,
+    PlayerView (..),
+    playerView,
   )
 where
 
@@ -30,7 +24,7 @@ import Control.Monad (guard, unless, when)
 import Data.Fin (Fin)
 import Data.Fin qualified as Fin
 import Data.Foldable (for_)
-import Data.Functor (($>))
+import Data.Functor (($>), (<&>))
 import Data.Maybe (fromMaybe, isJust)
 import Data.Vec (Vec)
 import Data.Vec qualified as Vec
@@ -89,9 +83,6 @@ start c hs =
       stoeck = Nothing
     }
 
-chooser :: Round n -> Seat n
-chooser round = round.chooser
-
 leader :: Round n -> Seat n
 leader round = case round.tricks of
   [] -> round.chooser
@@ -103,12 +94,6 @@ currentPlayer round = case round.variant of
     | round.shoved -> partner round.chooser
     | otherwise -> round.chooser
   Just _ -> leader round + Fin.unsafe (CardSeq.length round.played)
-
-variant :: Round n -> Maybe Variant
-variant round = round.variant
-
-shoved :: Round n -> Bool
-shoved round = round.shoved
 
 handOf :: (KnownNat n) => Seat n -> Round n -> Hand
 handOf seat round = Hand {cards, state}
@@ -136,9 +121,6 @@ trickWinner round = do
       !highest = CardSeq.maxIndexBy (Card.compare lead v) round.played
   pure $! Fin.unsafe highest + leader round
 
-stoeck :: Round n -> Maybe (Fin n)
-stoeck round = round.stoeck
-
 data ShoveError
   = CannotShoveNow
   | AlreadyShoved
@@ -148,7 +130,7 @@ shove :: Round n -> Either ShoveError (Round n)
 shove round
   | isJust round.variant = Left CannotShoveNow
   | round.shoved = Left AlreadyShoved
-  | otherwise = Right round {shoved = True}
+  | otherwise = Right round {shoved = True, hands = round.hands}
 
 data ChooseError = CannotChooseNow
   deriving (Eq, Show)
@@ -156,7 +138,7 @@ data ChooseError = CannotChooseNow
 choose :: Variant -> Round n -> Either ChooseError (Round n)
 choose v round
   | isJust round.variant = Left CannotChooseNow
-  | otherwise = Right round {variant = Just v}
+  | otherwise = Right round {variant = Just v, hands = round.hands}
 
 data PlayError
   = CannotPlayNow
@@ -301,3 +283,30 @@ restrictionsFor v trick cards = case trick of
       restrict !set !violation !rest
         | CardSet.null set = rest
         | otherwise = Restriction {set, violation} : rest
+
+data PlayerView n = PlayerView
+  { chooser :: Seat n,
+    leader :: Seat n,
+    currentPlayer :: Seat n,
+    hand :: Hand,
+    variant :: Maybe Variant,
+    shoved :: Bool,
+    playedCards :: Vec n (Maybe Card),
+    trickWinner :: Maybe (Fin n),
+    stoeck :: Maybe (Fin n)
+  }
+  deriving (Show)
+
+playerView :: (KnownNat n) => Round n -> Fin n -> PlayerView n
+playerView round seat =
+  PlayerView
+    { chooser = round.chooser - seat,
+      leader = leader round - seat,
+      currentPlayer = currentPlayer round - seat,
+      hand = handOf seat round,
+      variant = round.variant,
+      shoved = round.shoved,
+      playedCards = Vec.rotate seat $ playedCards round,
+      trickWinner = trickWinner round <&> subtract seat,
+      stoeck = round.stoeck <&> subtract seat
+    }
