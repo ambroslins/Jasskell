@@ -162,9 +162,10 @@ test-suite jasskell-test
   -- Modules included in this executable, other than Main.
   other-modules:
     Test.Card
-    Test.CardSet
-    Test.GameState
     Test.CardSeq
+    Test.CardSet
+    Test.Dealer
+    Test.GameState
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
   -- The interface type and version of the test suite.
