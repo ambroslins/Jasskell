@@ -10,6 +10,7 @@ module Jasskell.Game
     join,
     Connection (..),
     Message (..),
+    Rejection (..),
     Action (..),
   )
 where
@@ -157,19 +158,21 @@ data GameState n = GameState
   }
   deriving (Show)
 
-create :: DB.Pool -> PlayerId -> IO GameId
-create db createdBy = do
+-- | Create a new game. Private games are not listed on the landing page and
+-- can only be joined through their link.
+create :: DB.Pool -> PlayerId -> Bool -> IO GameId
+create db createdBy private = do
   gameId <- Id.new
-  DB.use db $ Hasql.statement (gameId, createdBy) insertGame
+  DB.use db $ Hasql.statement (gameId, createdBy, private) insertGame
   pure gameId
 
-insertGame :: Hasql.Statement (GameId, PlayerId) ()
+insertGame :: Hasql.Statement (GameId, PlayerId, Bool) ()
 insertGame =
   lmap
-    (bimap Id.toInt64 Id.toInt64)
+    (\(gameId, playerId, private) -> (Id.toInt64 gameId, Id.toInt64 playerId, private))
     [resultlessStatement|
-      insert into games (game_id, created_by)
-      values ($1::int8, $2::int8)
+      insert into games (game_id, created_by, private)
+      values ($1::int8, $2::int8, $3::bool)
     |]
 
 data PublicGame = PublicGame
@@ -182,7 +185,6 @@ data PublicGame = PublicGame
 getPublicGames :: DB.Pool -> IO (Vector PublicGame)
 getPublicGames db = DB.use db $ Hasql.statement () selectPublicGames
 
--- TODO: ignore active games
 selectPublicGames :: Hasql.Statement () (Vector PublicGame)
 selectPublicGames =
   fmap
@@ -201,6 +203,8 @@ selectPublicGames =
       from games as g
       join players as p on p.player_id = g.created_by
       left join seats as s on s.game_id = g.game_id
+      where not g.private
+        and not exists (select 1 from rounds as r where r.game_id = g.game_id)
       group by g.game_id
       order by seats_taken desc, g.game_id asc
     |]

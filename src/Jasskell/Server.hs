@@ -5,15 +5,16 @@ module Jasskell.Server (application) where
 import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.STM qualified as STM
 import Control.Monad ((<=<))
-import Data.Aeson (eitherDecode)
+import Data.Aeson (eitherDecode, (.=))
+import Data.Aeson qualified as Aeson
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.ByteString.Builder qualified as Builder
 import Data.ByteString.Char8 qualified as BS
 import Data.ByteString.Lazy (LazyByteString)
 import Data.Functor ((<&>))
+import Data.Maybe (isJust)
 import Data.Text (Text)
-import Data.Text qualified as Text
 import Jasskell.Database qualified as DB
 import Jasskell.Form qualified as Form
 import Jasskell.Game (GameId, Manager, Message (..))
@@ -71,9 +72,17 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
               msg <- STM.atomically gameConn.receive
               logger.debug "got game message" ["message" =: show msg]
               case msg of
-                GameClosed -> WS.sendTextData @Text wsConn "closed"
-                Superseded -> WS.sendTextData @Text wsConn "superseded"
-                Rejected rejection -> WS.sendTextData @Text wsConn $ Text.show rejection
+                GameClosed -> closeWith wsConn Render.closedView "closed"
+                Superseded -> closeWith wsConn Render.supersededView "superseded"
+                Rejected rejection -> do
+                  -- JSON without a "content" field is not swapped by hx-ws;
+                  -- toast.js picks it up instead.
+                  WS.sendTextData wsConn . Aeson.encode $
+                    Aeson.object
+                      [ "toast" .= Render.rejectionMessage rejection,
+                        "type" .= ("error" :: Text)
+                      ]
+                  receiveLoop
                 UpdateWaiting view -> do
                   sendBuilder wsConn $ Render.fragment $ Render.waitingView view
                   receiveLoop
@@ -96,6 +105,12 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
       cookies <- lookup HTTP.hCookie headers
       lookup Player.sessionCookieName $ parseCookies cookies
     sendBuilder c = WS.sendTextData c . Builder.toLazyByteString
+    -- Render a final message and send a normal close frame (code 1000).
+    -- Without it the client sees an abnormal close (1006) and hx-ws
+    -- reconnects, which would e.g. let two tabs supersede each other forever.
+    closeWith c view reason = do
+      sendBuilder c $ Render.fragment view
+      WS.sendClose c (reason :: Text)
 
 routes :: Logger -> DB.Pool -> Wai.Application
 routes logger db request respond =
@@ -139,15 +154,19 @@ postGames logger db request = do
   handling (pure . responseSessionError) $ \sessionError -> do
     msession <- getPlayerSession logger db sessionError request
     handling (pure . responseFormErrors) $ \formErrors -> do
-      let parser = case msession of
+      let sessionParser = case msession of
             Nothing ->
               Form.field "nickname" (Player.parseNickname <=< Form.text)
                 <&> \nickname -> do
                   (player, setCookie) <- Player.newSession db nickname
                   pure (player.id, [setCookieHeader setCookie])
             Just player -> pure $ pure (player.id, [])
-      (playerId, headers) <- either (throw formErrors) id $ Form.parseByteString parser requestBody
-      gameId <- Game.create db playerId
+          -- An unchecked checkbox is not submitted at all.
+          privateParser = isJust <$> Form.optional "private" (const $ Right ())
+          parser = (,) <$> sessionParser <*> privateParser
+      (makeSession, private) <- either (throw formErrors) pure $ Form.parseByteString parser requestBody
+      (playerId, headers) <- makeSession
+      gameId <- Game.create db playerId private
       let location = "/games/" <> Id.encodeByteString gameId
       pure $
         Wai.responseBuilder
@@ -162,7 +181,7 @@ getGame :: Logger -> DB.Pool -> GameId -> Wai.Request -> IO Wai.Response
 getGame logger db gameId request = do
   mplayer <- handling (const $ pure Nothing) $
     \sessionError -> getPlayerSession logger db sessionError request
-  pure . responseHtml [] . Render.page "Jaskell" $ case mplayer of
+  pure . responseHtml [] . Render.page "Jasskell" $ case mplayer of
     Nothing -> Render.gameLogin gameId
     Just player -> Render.gameConnect player gameId
 

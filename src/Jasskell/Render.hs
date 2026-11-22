@@ -8,6 +8,9 @@ module Jasskell.Render
     waitingView,
     playerView,
     spectatorView,
+    closedView,
+    supersededView,
+    rejectionMessage,
   )
 where
 
@@ -30,13 +33,14 @@ import Jasskell.Game
   ( Action (..),
     GameId,
     PublicGame (..),
+    Rejection (..),
   )
 import Jasskell.Id qualified as Id
 import Jasskell.Player (Nickname (..), Player (..))
-import Jasskell.Round (CardStatus (Playable))
+import Jasskell.Round (CardStatus (Playable), PlayError (..), Violation (..))
 import Jasskell.Round qualified as Round
 import Jasskell.Static qualified as Static
-import Jasskell.Variant (Variant (..))
+import Jasskell.Variant (Direction (..), Variant (..))
 import Jasskell.View qualified as View
 import Lucid
 import Lucid.Base (makeAttributes, makeElement)
@@ -71,8 +75,8 @@ index gen mplayer = do
     div_ $ do
       hgroup_ $ do
         h1_ "Jass"
-        p_ "Something useful"
-      p_ "More about rules and stuff"
+        p_ "Schieber for four, right in your browser."
+      p_ "Create a game, share the link with three friends and play. No account, no download: just pick a nickname."
       a_ [href_ "#play", role_ "button"] "Play"
 
     div_ [id_ "hero-deck"] . VU.foldMap (cardDiv []) . VU.take 4 . fst $
@@ -94,18 +98,7 @@ index gen mplayer = do
     section_ $ do
       h2_ "New game"
       form_ [method_ "post", action_ "/games"] $ do
-        when (isNothing mplayer) $ label_ $ do
-          "Nickname"
-          input_
-            [ type_ "text",
-              name_ "nickname",
-              required_ "",
-              minlength_ "2",
-              maxlength_ "20",
-              autocomplete_ "nickname",
-              makeAttributes "aria-describedby" "nickname-help"
-            ]
-          small_ [id_ "nickname-help"] "Shown to other players. No account needed."
+        when (isNothing mplayer) nicknameField
         label_ $ do
           "Private"
           input_ [type_ "checkbox", name_ "private"]
@@ -141,21 +134,101 @@ gameLogin gameId =
       hxSwap_ "outerHTML"
     ]
     $ do
-      label_ [] $ do
-        "Nickname"
-        input_ [name_ "nickname"]
-      button_ [type_ "submit"] "Submit"
+      nicknameField
+      button_ [type_ "submit"] "Join game"
+
+-- | Matches the rules of 'Jasskell.Player.parseNickname' where HTML allows it.
+nicknameField :: Html ()
+nicknameField = label_ $ do
+  "Nickname"
+  input_
+    [ type_ "text",
+      name_ "nickname",
+      required_ "",
+      minlength_ "2",
+      maxlength_ "20",
+      pattern_ "[\\p{L}\\p{N}]+([\\-_][\\p{L}\\p{N}]+)*",
+      autocomplete_ "nickname",
+      makeAttributes "aria-describedby" "nickname-help"
+    ]
+  small_ [id_ "nickname-help"] "Letters, digits, - and _. Shown to other players. No account needed."
 
 gameConnect :: Player -> GameId -> Html ()
 gameConnect player gameId = do
-  h2_ $ toHtml $ "Hello: " <> player.nickname.toText
+  nav_ [class_ "container"] $ do
+    ul_ $ li_ $ a_ [href_ "/"] $ strong_ "Jass"
+    ul_ $ li_ $ playerName player
   div_
     [ hxWsConnect_ $ "/games/" <> Id.encodeText gameId,
       hxTarget_ "#message",
       hxSwap_ "innerMorph"
     ]
     $ div_ [id_ "message"]
-    $ p_ "connecting"
+    $ p_ [class_ "container", makeAttributes "aria-busy" "true"] "Connecting…"
+
+closedView :: Html ()
+closedView =
+  notice
+    "The game was closed"
+    "Something went wrong on the server. Reload to rejoin where you left off."
+    "Reload"
+
+supersededView :: Html ()
+supersededView =
+  notice
+    "Opened somewhere else"
+    "You opened this game in another tab or on another device."
+    "Play here"
+
+-- | A full-width message with a button that reloads the page (and with it the
+-- websocket connection).
+notice :: Html () -> Html () -> Html () -> Html ()
+notice title body action =
+  article_ [class_ "container notice"] $ do
+    h3_ title
+    p_ body
+    a_ [href_ "", role_ "button"] action
+
+rejectionMessage :: Rejection n -> Text
+rejectionMessage = \case
+  SeatTaken -> "That seat is already taken."
+  AlreadySeated -> "You already have a seat."
+  NotAPlayer -> "Only seated players can do that."
+  VariantAlreadyDeclared -> "The variant has already been declared."
+  GameAlreadyStarted -> "The game has already started."
+  GameNotStarted -> "The game hasn't started yet."
+  NotYourTurn -> "It's not your turn."
+  PlayError e -> case e of
+    CannotPlayNow -> "You can't play a card right now."
+    CardNotInHand -> "That card is not in your hand."
+    ForbiddenCard v -> violationMessage v
+
+violationMessage :: Violation -> Text
+violationMessage = \case
+  DoesNotFollow s -> "You must follow suit (" <> suitName s <> ")."
+  WouldUndertrump c -> "You may not undertrump the " <> cardName c <> "."
+
+suitName :: Suit -> Text
+suitName = \case
+  Bells -> "Bells"
+  Acorns -> "Acorns"
+  Leaves -> "Leaves"
+  Hearts -> "Hearts"
+
+rankName :: Rank -> Text
+rankName = \case
+  Six -> "6"
+  Seven -> "7"
+  Eight -> "8"
+  Nine -> "9"
+  Ten -> "10"
+  Under -> "Under"
+  Over -> "Over"
+  King -> "King"
+  Ace -> "Ace"
+
+cardName :: Card -> Text
+cardName c = rankName (Card.rank c) <> " of " <> suitName (Card.suit c)
 
 waitingView :: forall n. (KnownNat n) => View.Waiting n -> Html ()
 waitingView view = do
@@ -171,12 +244,9 @@ waitingView view = do
 playerView :: forall n. (KnownNat n) => View.Playing n -> Html ()
 playerView view = do
   div_ [class_ "container"] $ do
-    div_ $ case view.round.variant of
-      Nothing
-        | view.round.currentPlayer == 0 -> forM_ [minBound .. maxBound] $ \s ->
-            button_ [hxWsSend_, hxVals_ $ DeclareVariant @n $ Trump s] $ toHtml $ show s
-        | otherwise -> "Waiting for leader to declare variant"
-      Just v -> toHtml $ show v
+    case view.round.variant of
+      Nothing -> variantChoice view
+      Just v -> p_ [class_ "variant-status"] $ variantBadge v
     section_ [class_ "table"] $ do
       Fin.for_ $ \i -> div_ [class_ "seat"] $ do
         unless (i == 0) $ div_ [] $ do
@@ -194,6 +264,86 @@ playerView view = do
             if status == Playable then mempty else disabled_ "true"
           ]
           c
+
+-- | Shown while no variant is declared. The current player picks one, everyone
+-- else sees who they are waiting for. The hand stays visible below, so the
+-- chooser can decide based on their cards.
+variantChoice :: forall n. (KnownNat n) => View.Playing n -> Html ()
+variantChoice view
+  | view.round.currentPlayer == 0 =
+      article_ [class_ "variant-choice"] $ do
+        header_ $ do
+          strong_ "Choose the variant"
+          when view.round.shoved $
+            small_ "Your partner passed the choice to you (geschoben)."
+        variantGroup "Trump" $ map Trump [minBound .. maxBound]
+        variantGroup "No trump" $
+          [Direction TopDown, Direction BottomUp, Slalom TopDown, Slalom BottomUp]
+  | otherwise =
+      p_ [class_ "variant-status", makeAttributes "aria-busy" "true"] $ do
+        playerName $ Vec.index view.players view.round.currentPlayer
+        " is choosing the variant…"
+  where
+    variantGroup :: Html () -> [Variant] -> Html ()
+    variantGroup title vs = div_ [class_ "variant-group", role_ "group", makeAttributes "aria-label" "variants"] $ do
+      small_ title
+      div_ [class_ "variant-options"] $ forM_ vs variantButton
+    variantButton v =
+      button_ [hxWsSend_, hxVals_ $ DeclareVariant @n v, class_ "outline secondary"] $ do
+        span_ [class_ "variant-icon"] $ variantIcon v
+        span_ [class_ "variant-name"] $ toHtml $ variantName v
+        small_ $ toHtml $ variantHint v
+
+-- | The active variant. For Slalom it shows the direction of the current trick,
+-- which alternates (see 'Jasskell.Variant.next').
+variantBadge :: Variant -> Html ()
+variantBadge v = span_ [class_ "variant-badge"] $ do
+  span_ [class_ "variant-icon"] $ variantIcon v
+  toHtml $ case v of
+    Trump s -> suitName s <> " trump"
+    Direction d -> directionName d
+    Slalom d -> "Slalom · " <> directionName d
+
+variantIcon :: Variant -> Html ()
+variantIcon = \case
+  Trump s -> suitIcon s
+  Direction d -> arrow d
+  Slalom d -> arrow d <> arrow (flipDirection d)
+  where
+    arrow :: Direction -> Html ()
+    arrow d = span_ [makeAttributes "aria-hidden" "true"] $ case d of
+      TopDown -> "↓"
+      BottomUp -> "↑"
+    flipDirection = \case
+      TopDown -> BottomUp
+      BottomUp -> TopDown
+
+variantName :: Variant -> Text
+variantName = \case
+  Trump s -> suitName s
+  Direction d -> directionName d
+  Slalom _ -> "Slalom"
+
+variantHint :: Variant -> Text
+variantHint = \case
+  Trump _ -> "trump"
+  Direction TopDown -> "high cards win"
+  Direction BottomUp -> "low cards win"
+  Slalom d -> "starts " <> directionName d
+
+directionName :: Direction -> Text
+directionName = \case
+  TopDown -> "Obenabe"
+  BottomUp -> "Undenufe"
+
+suitIcon :: Suit -> Html ()
+suitIcon s = span_ [class_ cls] $ icon [makeAttributes "aria-hidden" "true"]
+  where
+    (icon, cls) = case s of
+      Bells -> (bell, "bells")
+      Acorns -> (acorn, "acorns")
+      Leaves -> (leaf, "leaves")
+      Hearts -> (heart, "hearts")
 
 playerName :: Player -> Html ()
 playerName p = span_ [class_ "player-name"] $ do

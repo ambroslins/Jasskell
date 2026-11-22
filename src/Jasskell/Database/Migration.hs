@@ -68,6 +68,7 @@ migrations =
       create table games (
         game_id int8 primary key,
         created_by int8 references players(player_id) on delete set null,
+        private bool not null default false,
         created_at timestamptz not null default now()
       )
       """,

@@ -140,7 +140,7 @@ svg.icon {
   }
 }
 
-#table-list {
+#game-list {
   --max-height: 20rem;
   list-style: none;
   padding: 0;
@@ -226,6 +226,76 @@ svg.icon {
   overflow-x: auto;
 
   .card:disabled { opacity: 0.75; }
+}
+
+.variant-choice {
+  margin-inline: auto;
+  max-width: 40rem;
+
+  header {
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+  }
+
+  header small { color: var(--pico-muted-color); }
+
+  .variant-group {
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    margin-bottom: 1rem;
+  }
+
+  .variant-group > small {
+    color: var(--pico-muted-color);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+
+  .variant-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+    gap: .5rem;
+  }
+
+  button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .125rem;
+    margin: 0;
+    padding: .5rem;
+    background: var(--pico-card-background-color);
+    color: var(--pico-color);
+  }
+
+  button small {
+    color: var(--pico-muted-color);
+    font-size: .75em;
+  }
+
+  .variant-icon { font-size: 1.75rem; line-height: 1; }
+}
+
+.variant-status {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: .25rem;
+}
+
+.variant-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .25rem .75rem;
+  border: var(--pico-border-width) solid var(--pico-form-element-border-color);
+  border-radius: 999px;
+  background: var(--pico-card-background-color);
+  font-weight: 600;
+
+  .variant-icon { font-size: 1.25rem; line-height: 1; }
 }
 
 #toasts {
