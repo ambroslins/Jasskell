@@ -38,7 +38,7 @@ import Jasskell.Game
   )
 import Jasskell.Id qualified as Id
 import Jasskell.Player (Nickname (..), Player (..))
-import Jasskell.Round (CardStatus (Playable), PlayError (..), Violation (..))
+import Jasskell.Round (CardStatus (Playable), PlayError (..), ShoveError (..), Violation (..))
 import Jasskell.Round qualified as Round
 import Jasskell.Static qualified as Static
 import Jasskell.Variant (Direction (..), Variant (..))
@@ -225,6 +225,9 @@ rejectionMessage = \case
   GameAlreadyStarted -> "The game has already started."
   GameNotStarted -> "The game hasn't started yet."
   NotYourTurn -> "It's not your turn."
+  ShoveError e -> case e of
+    CannotShoveNow -> "You can only pass the choice before a variant is declared."
+    AlreadyShoved -> "The choice has already been passed to your partner."
   PlayError e -> case e of
     CannotPlayNow -> "You can't play a card right now."
     CardNotInHand -> "That card is not in your hand."
@@ -348,10 +351,17 @@ variantChoice view
         variantGroup "Trump" $ map Trump [minBound .. maxBound]
         variantGroup "No trump" $
           [Direction TopDown, Direction BottomUp, Slalom TopDown, Slalom BottomUp]
+        -- Only the original chooser may shove, and only once.
+        unless view.round.shoved $
+          footer_ [class_ "variant-shove"] $ do
+            button_ [hxWsSend_, hxVals_ $ Shove @n, class_ "secondary"] "Schieben"
+            small_ "Let your partner choose instead."
   | otherwise =
       p_ [class_ "variant-status", makeAttributes "aria-busy" "true"] $ do
         playerName $ Vec.index view.players view.round.currentPlayer
-        " is choosing the variant…"
+        if view.round.shoved
+          then " is choosing the variant (geschoben)…"
+          else " is choosing the variant…"
   where
     variantGroup :: Html () -> [Variant] -> Html ()
     variantGroup title vs = div_ [class_ "variant-group", role_ "group", makeAttributes "aria-label" "variants"] $ do

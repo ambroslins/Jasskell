@@ -120,6 +120,8 @@ data Event n
 data Action n
   = TakeSeat (Fin n)
   | StartGame
+  | -- | Schieben: the chooser passes the choice of variant to their partner.
+    Shove
   | DeclareVariant Variant
   | PlayCard Card
   deriving (Eq, Show, Generic)
@@ -141,6 +143,7 @@ data Rejection n
   | GameAlreadyStarted
   | GameNotStarted
   | NotYourTurn
+  | ShoveError Round.ShoveError
   | PlayError Round.PlayError
   deriving (Show)
 
@@ -333,6 +336,7 @@ data StoredGame n = StoredGame
 data StoredRound n = StoredRound
   { roundNumber :: RoundNumber,
     chooser :: Fin n,
+    shoved :: Bool,
     variant :: Maybe Variant,
     hands :: Vec n CardSet,
     cards :: VU.Vector Card
@@ -356,7 +360,8 @@ restore sg = case sg.round of
 
 replay :: (KnownNat n) => StoredRound n -> Either Text (Round n)
 replay sr = do
-  let r1 = Round.start sr.chooser sr.hands
+  let r0 = Round.start sr.chooser sr.hands
+  r1 <- if sr.shoved then first Text.show $ Round.shove r0 else pure r0
   r2 <- maybe (pure r1) (\v -> first Text.show $ Round.choose v r1) sr.variant
   VU.foldM' (\r c -> first Text.show $ Round.playCard c r) r2 sr.cards
 
@@ -374,6 +379,7 @@ selectStoredGame =
 
         r.round_number::int2?,
         r.chooser::int2?,
+        r.shoved::bool?,
         r.variant::int2?,
         r.initial_hands::int8[]?,
 
@@ -413,20 +419,20 @@ selectStoredGame =
       Just y -> pure y
     makePlayer p n = Player {id = Id.fromInt64 p, nickname = Nickname n}
     decode ::
-      (Int64, V.Vector (Maybe Int64), V.Vector (Maybe Text), Maybe Int16, Maybe Int16, Maybe Int16, Maybe (VU.Vector Int64), VU.Vector Int16) ->
+      (Int64, V.Vector (Maybe Int64), V.Vector (Maybe Text), Maybe Int16, Maybe Int16, Maybe Bool, Maybe Int16, Maybe (VU.Vector Int64), VU.Vector Int16) ->
       Either Text (StoredGame 4)
-    decode (gameId, playerIds, nicknames, mrn, mc, mv, mhs, cs) = do
+    decode (gameId, playerIds, nicknames, mrn, mc, ms, mv, mhs, cs) = do
       seats <-
         note "invalid seat count" . Vec.fromVector $
           V.zipWith (liftA2 makePlayer) playerIds nicknames
-      round <- case (mrn, mc, mhs) of
-        (Nothing, Nothing, Nothing) -> pure Nothing
-        (Just rn, Just c, Just hs) -> do
+      round <- case (mrn, mc, ms, mhs) of
+        (Nothing, Nothing, Nothing, Nothing) -> pure Nothing
+        (Just rn, Just c, Just shoved, Just hs) -> do
           chooser <- decodeWith "invalid chooser: " (Fin.make . fromIntegral) c
           variant <- traverse (decodeWith "invalid variant: " Variant.fromInt16) mv
           hands <- Vec.map CardSet.fromInt64 <$> decodeWith "invalid hands: " Vec.fromVector hs
           cards <- VU.mapM (decodeWith "invalid card: " Card.fromInt16) cs
-          pure $ Just StoredRound {roundNumber = RoundNumber rn, chooser, variant, hands, cards}
+          pure $ Just StoredRound {roundNumber = RoundNumber rn, chooser, shoved, variant, hands, cards}
         _ -> Left "incomplete round row"
       pure StoredGame {gameId = Id.fromInt64 gameId, seats, round}
 
@@ -500,6 +506,15 @@ applyAction db game phase player action = trying $ \reject -> case action of
                     }
             DB.statement db insertRound (game.id, gameState.roundNumber, chooser, hands)
             pure $ Playing gameState
+  Shove -> case phase of
+    Waiting {} -> throw reject GameNotStarted
+    Playing gs -> do
+      checkCurrentPlayer reject gs.round
+      case Round.shove gs.round of
+        Left shoveError -> throw reject $ ShoveError shoveError
+        Right round -> do
+          DB.statement db setRoundShoved (game.id, gs.roundNumber)
+          pure $ Playing $ gs {round = round, players = gs.players} -- Ambiguous record update
   DeclareVariant variant -> case phase of
     Waiting {} -> throw reject GameNotStarted
     Playing gs -> do
@@ -559,6 +574,15 @@ insertRound =
         fromIntegral (Fin.toInt chooser),
         Vec.toVector (Vec.map CardSet.toInt64 hands) :: VU.Vector Int64
       )
+
+setRoundShoved :: Hasql.Statement (GameId, RoundNumber) ()
+setRoundShoved =
+  lmap
+    (\(gameId, roundNumber) -> (Id.toInt64 gameId, roundNumber.toInt16))
+    [resultlessStatement|
+      update rounds set shoved = true
+      where game_id = $1::int8 and round_number = $2::int2
+    |]
 
 setRoundVariant :: Hasql.Statement (GameId, RoundNumber, Variant) ()
 setRoundVariant =

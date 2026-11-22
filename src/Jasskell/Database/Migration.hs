@@ -91,6 +91,7 @@ migrations =
         game_id int8 not null references games(game_id) on delete cascade,
         round_number int2 not null check (round_number >= 1),
         chooser int2 not null check (chooser >= 0),
+        shoved bool not null default false, -- chooser passed the choice to their partner
         variant int2,
         initial_hands int8[] not null,
 
