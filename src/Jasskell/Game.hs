@@ -7,6 +7,8 @@ module Jasskell.Game
     PublicGame (..),
     create,
     getPublicGames,
+    GameInfo (..),
+    getGameInfo,
     join,
     Connection (..),
     Message (..),
@@ -207,6 +209,41 @@ selectPublicGames =
         and not exists (select 1 from rounds as r where r.game_id = g.game_id)
       group by g.game_id
       order by seats_taken desc, g.game_id asc
+    |]
+
+-- | Summary of a single game (public or private), shown before joining it.
+data GameInfo = GameInfo
+  { creatorName :: Maybe Nickname,
+    seatsTaken :: Int,
+    started :: Bool
+  }
+  deriving (Show)
+
+getGameInfo :: DB.Pool -> GameId -> IO (Maybe GameInfo)
+getGameInfo db gameId = DB.use db $ Hasql.statement gameId selectGameInfo
+
+selectGameInfo :: Hasql.Statement GameId (Maybe GameInfo)
+selectGameInfo =
+  dimap
+    Id.toInt64
+    ( fmap $ \(nickname, seatsTaken, started) ->
+        GameInfo
+          { creatorName = Nickname <$> nickname,
+            seatsTaken = fromIntegral seatsTaken,
+            started
+          }
+    )
+    [maybeStatement|
+      select
+        p.nickname::text?,
+        (
+          select count(*) from seats as s
+          where s.game_id = g.game_id and s.player_id is not null
+        )::int8,
+        exists (select 1 from rounds as r where r.game_id = g.game_id)::bool
+      from games as g
+      left join players as p on p.player_id = g.created_by
+      where g.game_id = $1::int8
     |]
 
 join ::

@@ -181,9 +181,11 @@ getGame :: Logger -> DB.Pool -> GameId -> Wai.Request -> IO Wai.Response
 getGame logger db gameId request = do
   mplayer <- handling (const $ pure Nothing) $
     \sessionError -> getPlayerSession logger db sessionError request
-  pure . responseHtml [] . Render.page "Jasskell" $ case mplayer of
-    Nothing -> Render.gameLogin gameId
-    Just player -> Render.gameConnect player gameId
+  Game.getGameInfo db gameId >>= \case
+    Nothing -> pure notFound
+    Just info -> pure . responseHtml [] . Render.page "Jasskell" $ case mplayer of
+      Nothing -> Render.gameLogin gameId info
+      Just player -> Render.gameConnect player gameId
 
 postGameJoin :: DB.Pool -> GameId -> Wai.Request -> IO Wai.Response
 postGameJoin db gameId request = do

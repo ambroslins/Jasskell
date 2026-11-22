@@ -228,6 +228,110 @@ svg.icon {
   .card:disabled { opacity: 0.75; }
 }
 
+.join {
+  max-width: 28rem;
+  margin: 8vh auto 0;
+
+  hgroup { margin-bottom: .75rem; }
+}
+
+.seat-dots {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+
+  .dot {
+    display: inline-block;
+    width: .75rem;
+    height: .75rem;
+    margin-right: .25rem;
+    border-radius: 50%;
+    border: 2px solid var(--pico-primary-border);
+  }
+
+  .dot.taken { background: var(--pico-primary-background); }
+  small { color: var(--pico-muted-color); }
+}
+
+.lobby-header { text-align: center; }
+
+.lobby {
+  display: grid;
+  grid-template-areas: ". top ." "left center right" ". bottom .";
+  grid-template-columns: 1fr minmax(7rem, 1.2fr) 1fr;
+  gap: .75rem;
+  padding: 1rem;
+  max-width: 40rem;
+  margin: 0 auto 1rem;
+  background: #e8ede4;
+  border: var(--pico-border-width) solid var(--pico-form-element-border-color);
+  border-radius: calc(var(--pico-border-radius) * 3);
+
+  .lobby-seat:nth-child(1) { grid-area: bottom; }
+  .lobby-seat:nth-child(2) { grid-area: left; }
+  .lobby-seat:nth-child(3) { grid-area: top; }
+  .lobby-seat:nth-child(4) { grid-area: right; }
+
+  .lobby-seat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .25rem;
+    min-height: 6rem;
+    padding: .75rem .5rem;
+    text-align: center;
+    overflow-wrap: anywhere;
+    background: var(--pico-card-background-color);
+    border: var(--pico-border-width) solid var(--pico-form-element-border-color);
+    border-radius: var(--pico-border-radius);
+  }
+
+  .lobby-seat small {
+    color: var(--pico-muted-color);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    font-size: .7rem;
+  }
+
+  .lobby-seat.empty {
+    background: none;
+    border-style: dashed;
+    color: var(--pico-muted-color);
+  }
+
+  .lobby-seat.you {
+    border-color: var(--pico-primary-border);
+    box-shadow: 0 0 0 1px var(--pico-primary-border);
+  }
+
+  .lobby-seat button {
+    width: auto;
+    margin: 0;
+    padding: .3rem .9rem;
+  }
+
+  .player-name small { text-transform: none; letter-spacing: normal; }
+
+  .lobby-center {
+    grid-area: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+
+    p { margin: 0; color: var(--pico-muted-color); }
+    button { margin: 0; }
+  }
+}
+
+.lobby-invite {
+  display: flex;
+  justify-content: center;
+
+  button { width: auto; }
+}
+
 .variant-choice {
   margin-inline: auto;
   max-width: 40rem;
@@ -340,6 +444,7 @@ svg.icon {
   button.close.hover { color: var(--pico-color); }
 }
 
+.toast.info { border-color: var(--pico-primary-border); }
 .toast.leaving { animation: toast-out .2s ease-in forwards; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(.75rem); } }
 @keyframes toast-out { to { opacity: 0; transform: translateY(.75rem); } }

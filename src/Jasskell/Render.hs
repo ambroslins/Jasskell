@@ -19,7 +19,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.Fin qualified as Fin
 import Data.Functor.Identity (runIdentity)
-import Data.Maybe (isJust, isNothing)
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Vec qualified as Vec
 import Data.Vector (Vector)
@@ -32,6 +32,7 @@ import Jasskell.Dealer qualified as Dealer
 import Jasskell.Game
   ( Action (..),
     GameId,
+    GameInfo (..),
     PublicGame (..),
     Rejection (..),
   )
@@ -98,7 +99,7 @@ index gen mplayer = do
     section_ $ do
       h2_ "New game"
       form_ [method_ "post", action_ "/games"] $ do
-        when (isNothing mplayer) nicknameField
+        when (isNothing mplayer) $ nicknameField []
         label_ $ do
           "Private"
           input_ [type_ "checkbox", name_ "private"]
@@ -126,31 +127,57 @@ gameList games =
               ]
               "Join"
 
-gameLogin :: GameId -> Html ()
-gameLogin gameId =
-  form_
-    [ hxPost_ $ "/games/" <> Id.encodeText gameId <> "/join",
-      hxTarget_ "this",
-      hxSwap_ "outerHTML"
-    ]
-    $ do
-      nicknameField
-      button_ [type_ "submit"] "Join game"
+-- | Shown to visitors without a session who open a game link. On submit the
+-- whole @#join@ section is replaced by 'gameConnect'.
+gameLogin :: GameId -> GameInfo -> Html ()
+gameLogin gameId info = div_ [id_ "join"] $ do
+  nav_ [class_ "container"] $
+    ul_ $ li_ $ a_ [href_ "/"] $ strong_ "Jass"
+  main_ [class_ "container"] $
+    article_ [class_ "join"] $ do
+      header_ $ do
+        hgroup_ $ do
+          h2_ . toHtml $ case info.creatorName of
+            Just name -> name.toText <> "’s game"
+            Nothing -> "Jass game"
+          p_ $
+            if info.started
+              then "This game has already started. You can watch as a spectator."
+              else "You're invited to a game of Schieber."
+        unless info.started $ seatDots info.seatsTaken
+      form_
+        [ hxPost_ $ "/games/" <> Id.encodeText gameId <> "/join",
+          hxTarget_ "#join",
+          hxSwap_ "outerHTML"
+        ]
+        $ do
+          nicknameField [autofocus_]
+          button_ [type_ "submit"] $ if info.started then "Watch game" else "Join game"
+
+-- | Four dots, filled for every taken seat.
+seatDots :: Int -> Html ()
+seatDots taken =
+  div_ [class_ "seat-dots"] $ do
+    span_ [makeAttributes "aria-hidden" "true"] $
+      forM_ [1 .. 4 :: Int] $ \i ->
+        span_ [class_ $ if i <= taken then "dot taken" else "dot"] mempty
+    small_ . toHtml $ show taken <> " of 4 seats taken"
 
 -- | Matches the rules of 'Jasskell.Player.parseNickname' where HTML allows it.
-nicknameField :: Html ()
-nicknameField = label_ $ do
+nicknameField :: [Attributes] -> Html ()
+nicknameField as = label_ $ do
   "Nickname"
-  input_
-    [ type_ "text",
-      name_ "nickname",
-      required_ "",
-      minlength_ "2",
-      maxlength_ "20",
-      pattern_ "[\\p{L}\\p{N}]+([\\-_][\\p{L}\\p{N}]+)*",
-      autocomplete_ "nickname",
-      makeAttributes "aria-describedby" "nickname-help"
-    ]
+  input_ $
+    as
+      <> [ type_ "text",
+           name_ "nickname",
+           required_ "",
+           minlength_ "2",
+           maxlength_ "20",
+           pattern_ "[\\p{L}\\p{N}]+([\\-_][\\p{L}\\p{N}]+)*",
+           autocomplete_ "nickname",
+           makeAttributes "aria-describedby" "nickname-help"
+         ]
   small_ [id_ "nickname-help"] "Letters, digits, - and _. Shown to other players. No account needed."
 
 gameConnect :: Player -> GameId -> Html ()
@@ -231,15 +258,57 @@ cardName :: Card -> Text
 cardName c = rankName (Card.rank c) <> " of " <> suitName (Card.suit c)
 
 waitingView :: forall n. (KnownNat n) => View.Waiting n -> Html ()
-waitingView view = do
-  Vec.ifor_ view.seats $ \i m -> case m of
-    Nothing -> div_ $ do
-      "Empty"
-      unless view.seated $ button_ [hxWsSend_, hxVals_ $ TakeSeat i] "Take"
-    Just player
-      | i == 0 -> div_ "You"
-      | otherwise -> div_ $ toHtml player.nickname.toText
-  when (Vec.all isJust view.seats) $ button_ [hxWsSend_, hxVals_ $ StartGame @n] "Start"
+-- | The lobby before the game starts. Seats are laid out like the table during
+-- play. Once seated, the view is rotated so you sit at the bottom and your
+-- partner opposite you; before that, seats are shown with their team.
+waitingView view = div_ [class_ "container"] $ do
+  hgroup_ [class_ "lobby-header"] $ do
+    h2_ "Waiting for players"
+    p_ $
+      if view.seated
+        then "The player opposite you is your partner."
+        else "Pick a seat. The player opposite you will be your partner."
+  section_ [class_ "lobby"] $ do
+    Vec.ifor_ view.seats seat
+    div_ [class_ "lobby-center"] $
+      if
+        | emptySeats > 0 ->
+            p_ [makeAttributes "aria-busy" "true"] . toHtml $
+              "Waiting for " <> show emptySeats <> (if emptySeats == 1 then " more player…" else " more players…")
+        | view.seated -> button_ [hxWsSend_, hxVals_ $ StartGame @n] "Start game"
+        | otherwise -> p_ [makeAttributes "aria-busy" "true"] "Waiting for the game to start…"
+  div_ [class_ "lobby-invite"] $
+    button_
+      [ type_ "button",
+        class_ "outline secondary",
+        hxOn_
+          "click"
+          """
+          Promise.resolve()
+            .then(() => navigator.clipboard.writeText(location.href))
+            .then(
+              () => toast('Invite link copied.', 'info'),
+              () => toast('Could not copy the link. Copy it from the address bar instead.'),
+            )
+          """
+      ]
+      "Copy invite link"
+  where
+    emptySeats = length . filter isNothing $ Vec.toList view.seats
+    seat i = \case
+      Nothing -> div_ [class_ "lobby-seat empty"] $ do
+        small_ $ seatLabel i
+        if view.seated
+          then span_ "Open seat"
+          else button_ [hxWsSend_, hxVals_ $ TakeSeat i] "Sit here"
+      Just player -> div_ [class_ $ "lobby-seat" <> (if view.seated && i == 0 then " you" else "")] $ do
+        small_ $ seatLabel i
+        playerName player
+    seatLabel i
+      | not view.seated = if even (Fin.toInt i) then "Team 1" else "Team 2"
+      | i == 0 = "You"
+      | even (Fin.toInt i) = "Partner"
+      | otherwise = "Opponent"
 
 playerView :: forall n. (KnownNat n) => View.Playing n -> Html ()
 playerView view = do
