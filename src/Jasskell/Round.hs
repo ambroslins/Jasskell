@@ -3,6 +3,8 @@ module Jasskell.Round
     Seat,
     start,
     currentPlayer,
+    SkipMeldError (..),
+    skipMeld,
     ShoveError (..),
     shove,
     ChooseError (..),
@@ -24,8 +26,8 @@ import Control.Monad (guard, unless, when)
 import Data.Fin (Fin)
 import Data.Fin qualified as Fin
 import Data.Foldable (for_)
-import Data.Functor (($>), (<&>))
-import Data.Maybe (fromMaybe, isJust)
+import Data.Functor ((<&>))
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe)
 import Data.Vec (Vec)
 import Data.Vec qualified as Vec
 import GHC.TypeLits (KnownNat)
@@ -35,6 +37,8 @@ import Jasskell.Card.Seq (CardSeq)
 import Jasskell.Card.Seq qualified as CardSeq
 import Jasskell.Card.Set (CardSet)
 import Jasskell.Card.Set qualified as CardSet
+import Jasskell.Meld (Meld)
+import Jasskell.Meld qualified as Meld
 import Jasskell.Variant (Variant (..))
 import Jasskell.Variant qualified as Variant
 import Prelude hiding (round)
@@ -49,7 +53,8 @@ data Round n = Round
     tricks :: [Trick n],
     points :: Vec n Int,
     shoved :: Bool,
-    stoeck :: Maybe (Fin n)
+    stoeck :: Maybe (Fin n),
+    melds :: Vec n [Meld]
   }
   deriving (Show)
 
@@ -67,8 +72,10 @@ trickCardOf seat trick =
 
 data Result n = Result
   { trickPoints :: Vec n Int,
-    stoeck :: Maybe (Seat n)
+    stoeck :: Maybe (Seat n),
+    melds :: Vec n Int
   }
+  deriving (Show)
 
 start :: (KnownNat n) => Seat n -> Vec n CardSet -> Round n
 start c hs =
@@ -80,7 +87,8 @@ start c hs =
       tricks = [],
       points = Vec.replicate 0,
       shoved = False,
-      stoeck = Nothing
+      stoeck = Nothing,
+      melds = Vec.replicate []
     }
 
 leader :: Round n -> Seat n
@@ -107,11 +115,11 @@ handOf seat round = Hand {cards, state}
         | otherwise -> Passive
 
 playedCards :: (KnownNat n) => Round n -> Vec n (Maybe Card)
-playedCards round = Vec.create Nothing $ \write -> do
-  CardSeq.foldM_
-    (\i c -> write i (Just c) $> i + 1)
-    (leader round)
-    round.played
+playedCards round =
+  Vec.generate $
+    \i -> CardSeq.index round.played (Fin.toInt $ i + l)
+  where
+    !l = leader round
 
 trickWinner :: (KnownNat n) => Round n -> Maybe (Fin n)
 trickWinner round = do
@@ -130,15 +138,30 @@ shove :: Round n -> Either ShoveError (Round n)
 shove round
   | isJust round.variant = Left CannotShoveNow
   | round.shoved = Left AlreadyShoved
-  | otherwise = Right round {shoved = True, hands = round.hands}
+  | otherwise = Right $! round {shoved = True, hands = round.hands}
 
 data ChooseError = CannotChooseNow
   deriving (Eq, Show)
 
-choose :: Variant -> Round n -> Either ChooseError (Round n)
+choose :: (KnownNat n) => Variant -> Round n -> Either ChooseError (Round n)
 choose v round
   | isJust round.variant = Left CannotChooseNow
-  | otherwise = Right round {variant = Just v, hands = round.hands}
+  | otherwise =
+      Right $!
+        round
+          { variant = Just v,
+            melds = Vec.map (Meld.melds v) round.hands,
+            hands = round.hands
+          }
+
+data SkipMeldError = AlreadyAnnounced
+
+skipMeld :: (KnownNat n) => Seat n -> Round n -> Either SkipMeldError (Round n)
+skipMeld seat round
+  | null round.tricks,
+    isNothing (Vec.index (playedCards round) seat) =
+      Right $! round {melds = Vec.set seat [] round.melds, hands = round.hands}
+  | otherwise = Left AlreadyAnnounced
 
 data PlayError
   = CannotPlayNow
@@ -181,12 +204,23 @@ closeTrick round = do
             winner = l + Fin.unsafe (CardSeq.maxIndexBy (Card.compare lead v) cards),
             points = CardSeq.foldl' (\p c -> p + Card.points v c) 0 cards
           }
+      melds =
+        Vec.ifoldr (\i ms rest -> case ms of m : _ -> (i + l, m) : rest; _ -> rest) [] $
+          Vec.rotate l round.melds
+      meldWinner
+        | null round.tricks = case melds of
+            [] -> Nothing
+            m : ms -> Just . fst $ foldl' (Meld.betterOn snd v) m ms
+        | otherwise = Nothing
   pure $!
     round
       { played = CardSeq.empty,
         tricks = trick : round.tricks,
         variant = Just $ Variant.next v,
-        points = Vec.modify trick.winner (+ trick.points) round.points
+        points = Vec.modify trick.winner (+ trick.points) round.points,
+        melds = case meldWinner of
+          Nothing -> round.melds
+          Just w -> Vec.imap (\i ms -> if i == w || i == partner w then ms else []) round.melds
       }
 
 close :: (KnownNat n) => Round n -> Maybe (Result n)
@@ -195,7 +229,9 @@ close round = do
   pure
     Result
       { trickPoints = round.points,
-        stoeck = Nothing -- TODO
+        stoeck = round.stoeck,
+        -- TODO: only count melds if the team won at least one trick
+        melds = Vec.map (sum . map Meld.points) round.melds
       }
 
 isStoeckCard :: Variant -> Card -> Bool
@@ -203,6 +239,7 @@ isStoeckCard v c = case v of
   Trump t -> Card.suit c == t && let r = Card.rank c in r == Over || r == King
   _ -> False
 
+-- TODO: make it work for non schieber games.
 partner :: (KnownNat n) => Seat n -> Seat n
 partner = (+ 2)
 
@@ -293,7 +330,9 @@ data PlayerView n = PlayerView
     shoved :: Bool,
     playedCards :: Vec n (Maybe Card),
     trickWinner :: Maybe (Fin n),
-    stoeck :: Maybe (Fin n)
+    stoeck :: Maybe (Fin n),
+    melds :: Vec n [Meld],
+    announcments :: Vec n (Maybe Meld)
   }
   deriving (Show)
 
@@ -308,5 +347,13 @@ playerView round seat =
       shoved = round.shoved,
       playedCards = Vec.rotate seat $ playedCards round,
       trickWinner = trickWinner round <&> subtract seat,
-      stoeck = round.stoeck <&> subtract seat
+      stoeck = round.stoeck <&> subtract seat,
+      melds =
+        if null round.tricks
+          then Vec.set 0 (Vec.index round.melds seat) (Vec.replicate [])
+          else Vec.rotate seat round.melds,
+      announcments =
+        if null round.tricks
+          then Vec.rotate seat $ Vec.zipWith (liftA2 const . listToMaybe) round.melds (playedCards round)
+          else Vec.replicate Nothing
     }

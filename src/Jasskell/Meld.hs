@@ -4,6 +4,7 @@ module Jasskell.Meld
     cards,
     points,
     compare,
+    betterOn,
   )
 where
 
@@ -25,7 +26,7 @@ melds :: Variant -> CardSet -> [Meld]
 melds v cs = case candidates of
   [] -> []
   m : ms ->
-    let !best = foldl' (\a b -> if compare v a b == LT then b else a) m ms
+    let !best = foldl' (betterOn id v) m ms
      in best : melds v (cs `CardSet.difference` cards best)
   where
     candidates =
@@ -80,3 +81,9 @@ compare variant =
         Sequence high _ -> Card.suit high == t
         Quartet _ -> False
       _ -> const False
+
+betterOn :: (a -> Meld) -> Variant -> a -> a -> a
+betterOn f v a b
+  | compare v (f a) (f b) == LT = b
+  | otherwise = a
+{-# INLINE betterOn #-}

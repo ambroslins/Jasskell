@@ -11,7 +11,6 @@
 
 module Data.Vec
   ( Vec,
-    create,
     generate,
     replicate,
     update,
@@ -21,12 +20,14 @@ module Data.Vec
     findIndex,
     coerce,
     map,
+    imap,
     rotate,
     foldl',
     ifoldl',
     foldr,
     ifoldr,
     all,
+    zipWith,
     toList,
     toVector,
     fromList,
@@ -86,6 +87,7 @@ import Prelude hiding
     mapM,
     replicate,
     sequence,
+    zipWith,
   )
 
 class Elem a where
@@ -122,21 +124,8 @@ createStore size f = runST $ do
   unsafeFreezeStore @a ms
 {-# INLINE createStore #-}
 
-create :: forall n a. (KnownNat n, Elem a) => a -> (forall s. (Fin n -> a -> ST s ()) -> ST s ()) -> Vec n a
-create x f = Vec $ createStore @a size $ \ms -> do
-  fillStore ms 0 size x
-  f $ \i y -> writeStore ms (Fin.toInt i) y
-  where
-    size = nat n
-
 generate :: forall n a. (KnownNat n, Elem a) => (Fin n -> a) -> Vec n a
-generate f = Vec $ createStore @a size $ \ms ->
-  let go i
-        | i < size = writeStore ms i (f $! Fin.unsafe i) >> go (i + 1)
-        | otherwise = pure ()
-   in go 0
-  where
-    size = nat n
+generate g = force (Pull g)
 {-# INLINE generate #-}
 
 update :: forall n a. (KnownNat n, Elem a) => Vec n a -> (forall s. (Fin n -> a -> ST s ()) -> ST s ()) -> Vec n a
@@ -148,14 +137,11 @@ update (Vec src) f = Vec $ createStore @a size $ \ms -> do
 {-# INLINE update #-}
 
 replicate :: forall n a. (KnownNat n, Elem a) => a -> Vec n a
-replicate x = Vec $ createStore @a size $ \ms ->
-  fillStore ms 0 size x
-  where
-    size = nat n
+replicate x = generate (const x)
 {-# INLINE replicate #-}
 
 index :: (Elem a) => Vec n a -> Fin n -> a
-index (Vec s) i = indexStore s (Fin.toInt i)
+index = indexPull . delay
 {-# INLINE index #-}
 
 set :: forall n a. (KnownNat n, Elem a) => Fin n -> a -> Vec n a -> Vec n a
@@ -176,6 +162,10 @@ coerce (Vec s) = Vec s
 map :: forall n a b. (KnownNat n, Elem a, Elem b) => (a -> b) -> Vec n a -> Vec n b
 map f = force . fmap f . delay
 {-# INLINE map #-}
+
+imap :: forall n a b. (KnownNat n, Elem a, Elem b) => (Fin n -> a -> b) -> Vec n a -> Vec n b
+imap f = force . imapPull f . delay
+{-# INLINE imap #-}
 
 rotate :: forall n a. (KnownNat n, Elem a) => Fin n -> Vec n a -> Vec n a
 rotate fin v@(Vec s)
@@ -207,6 +197,10 @@ ifoldr f z = ifoldrPull f z . delay
 all :: forall n a. (KnownNat n, Elem a) => (a -> Bool) -> Vec n a -> Bool
 all p = foldr (\x r -> p x && r) True
 {-# INLINE all #-}
+
+zipWith :: forall n a b c. (KnownNat n, Elem a, Elem b, Elem c) => (a -> b -> c) -> Vec n a -> Vec n b -> Vec n c
+zipWith f va vb = force $ liftA2 f (delay va) (delay vb)
+{-# INLINE zipWith #-}
 
 toList :: forall n a. (KnownNat n, Elem a) => Vec n a -> [a]
 toList v = List.build (\cons nil -> foldrPull cons nil (delay v))
@@ -243,6 +237,7 @@ withVector ::
 withVector v f = case someNatVal (fromIntegral $ Vector.length v) of
   Just (SomeNat (Proxy :: Proxy n)) -> f (force $ unsafeVectorToPull @n v)
   Nothing -> error "Data.Vec.withVector: impossible: Vector has negative length"
+{-# INLINE withVector #-}
 
 newtype Fill a = Fill (forall s. MutableStore s a -> ST s ())
 
@@ -375,16 +370,27 @@ instance Applicative (Pull n) where
   {-# INLINE (<*>) #-}
 
 delay :: (Elem a) => Vec n a -> Pull n a
-delay v = Pull (index v)
+delay (Vec s) = Pull (indexStore s . Fin.toInt)
 {-# INLINE [1] delay #-}
 
-force :: (KnownNat n, Elem a) => Pull n a -> Vec n a
-force (Pull f) = generate f
+force :: forall n a. (KnownNat n, Elem a) => Pull n a -> Vec n a
+force (Pull f) = Vec $ createStore @a size $ \ms -> Fin.for_ $
+  \i -> writeStore ms (Fin.toInt i) (f i)
+  where
+    size = nat n
 {-# INLINE [1] force #-}
 
 {-# RULES "delay/force" forall p. delay (force p) = p #-}
 
 {-# RULES "force/delay" forall v. force (delay v) = v #-}
+
+indexPull :: Pull n a -> Fin n -> a
+indexPull (Pull g) = g
+{-# INLINE indexPull #-}
+
+imapPull :: (Fin n -> a -> b) -> Pull n a -> Pull n b
+imapPull f (Pull g) = Pull $ \i -> f i (g i)
+{-# INLINE imapPull #-}
 
 foldl'Pull :: forall n a b. (KnownNat n) => (b -> a -> b) -> b -> Pull n a -> b
 foldl'Pull f z (Pull g) = Fin.foldl' (\acc i -> f acc (g i)) z
@@ -409,6 +415,8 @@ rotatePull k (Pull g) = Pull $ \i -> g (i + k)
 {-# RULES "rotate/force" forall k p. rotate k (force p) = force (rotatePull k p) #-}
 
 {-# RULES "delay/rotate" forall k v. delay (rotate k v) = rotatePull k (delay v) #-}
+
+{-# RULES "rotate/rotate" forall k l v. rotate k (rotate l v) = rotate (k + l) v #-}
 
 traversePull :: (KnownNat n, Elem b, Applicative f) => (a -> f b) -> Pull n a -> f (Vec n b)
 traversePull f (Pull g) = generateA (f . g)
