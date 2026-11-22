@@ -182,7 +182,7 @@ nicknameField as = label_ $ do
 
 gameConnect :: Player -> GameId -> Html ()
 gameConnect player gameId = do
-  nav_ [class_ "container"] $ do
+  nav_ [class_ "container game-nav"] $ do
     ul_ $ li_ $ a_ [href_ "/"] $ strong_ "Jass"
     ul_ $ li_ $ playerName player
   div_
@@ -314,19 +314,34 @@ waitingView view = div_ [class_ "container"] $ do
       | otherwise = "Opponent"
 
 playerView :: forall n. (KnownNat n) => View.Playing n -> Html ()
-playerView view = do
-  div_ [class_ "container"] $ do
-    case view.round.variant of
-      Nothing -> variantChoice view
-      Just v -> p_ [class_ "variant-status"] $ variantBadge v
-    section_ [class_ "table"] $ do
-      Fin.for_ $ \i -> div_ [class_ "seat"] $ do
-        unless (i == 0) $ div_ [] $ do
-          playerName $ Vec.index view.players i
-          when (Just i == view.round.stoeck) $ div_ "Stöck"
-        case Vec.index view.round.playedCards i of
-          Nothing -> cardPlaceholder []
-          Just c -> cardDiv [class_ "winning" | Just i == view.round.trickWinner] c
+playerView view = div_ [class_ "container game"] $ do
+  -- Exactly one viewport tall (minus the nav), with the hand at the bottom.
+  -- Anything added after this section scrolls into view below the hand.
+  section_ [class_ "game-main"] $ do
+    -- Always rendered with a fixed height, so the table doesn't jump when
+    -- the variant gets declared.
+    p_ [class_ "variant-status"] $ case view.round.variant of
+      Just v -> variantBadge v
+      Nothing
+        | choosing -> mempty
+        | otherwise -> span_ [makeAttributes "aria-busy" "true"] $ do
+            playerName $ Vec.index view.players view.round.currentPlayer
+            if view.round.shoved
+              then " is choosing the variant (geschoben)…"
+              else " is choosing the variant…"
+    -- The variant panel is stacked on top of the table in the same grid cell.
+    -- It can make the cell taller, but never pushes the hand down as long as
+    -- everything fits into the viewport.
+    div_ [class_ $ if choosing then "table-area choosing" else "table-area"] $ do
+      section_ [class_ "table"] $ do
+        Fin.for_ $ \i -> div_ [class_ "seat"] $ do
+          unless (i == 0) $ div_ [] $ do
+            playerName $ Vec.index view.players i
+            when (Just i == view.round.stoeck) $ div_ "Stöck"
+          case Vec.index view.round.playedCards i of
+            Nothing -> cardPlaceholder []
+            Just c -> cardDiv [class_ "winning" | Just i == view.round.trickWinner] c
+      when choosing $ variantChoice view
 
     div_ [class_ "hand"] $
       Round.foldHand view.round.hand $ \c status ->
@@ -336,36 +351,35 @@ playerView view = do
             if status == Playable then mempty else disabled_ "true"
           ]
           c
-
--- | Shown while no variant is declared. The current player picks one, everyone
--- else sees who they are waiting for. The hand stays visible below, so the
--- chooser can decide based on their cards.
-variantChoice :: forall n. (KnownNat n) => View.Playing n -> Html ()
-variantChoice view
-  | view.round.currentPlayer == 0 =
-      article_ [class_ "variant-choice"] $ do
-        header_ $ do
-          strong_ "Choose the variant"
-          when view.round.shoved $
-            small_ "Your partner passed the choice to you (geschoben)."
-        variantGroup "Trump" $ map Trump [minBound .. maxBound]
-        variantGroup "No trump" $
-          [Direction TopDown, Direction BottomUp, Slalom TopDown, Slalom BottomUp]
-        -- Only the original chooser may shove, and only once.
-        unless view.round.shoved $
-          footer_ [class_ "variant-shove"] $ do
-            button_ [hxWsSend_, hxVals_ $ Shove @n, class_ "secondary"] "Schieben"
-            small_ "Let your partner choose instead."
-  | otherwise =
-      p_ [class_ "variant-status", makeAttributes "aria-busy" "true"] $ do
-        playerName $ Vec.index view.players view.round.currentPlayer
-        if view.round.shoved
-          then " is choosing the variant (geschoben)…"
-          else " is choosing the variant…"
   where
-    variantGroup :: Html () -> [Variant] -> Html ()
-    variantGroup title vs = div_ [class_ "variant-group", role_ "group", makeAttributes "aria-label" "variants"] $ do
-      small_ title
+    choosing = isNothing view.round.variant && view.round.currentPlayer == 0
+
+-- | Dialog-like panel over the table for the player who declares the variant.
+-- Not a modal @<dialog>@: the hand below must stay visible to decide.
+variantChoice :: forall n. (KnownNat n) => View.Playing n -> Html ()
+variantChoice view =
+  article_
+    [ class_ "variant-choice",
+      role_ "dialog",
+      makeAttributes "aria-labelledby" "variant-choice-title"
+    ]
+    $ do
+      header_ $ do
+        strong_ [id_ "variant-choice-title"] "Choose the variant"
+        when view.round.shoved $
+          small_ "Your partner passed the choice to you (geschoben)."
+      variantGroup "Trump" $ map Trump [minBound .. maxBound]
+      variantGroup "No trump" $
+        [Direction TopDown, Direction BottomUp, Slalom TopDown, Slalom BottomUp]
+      -- Only the original chooser may shove, and only once.
+      unless view.round.shoved $
+        footer_ [class_ "variant-shove"] $ do
+          button_ [hxWsSend_, hxVals_ $ Shove @n, class_ "secondary"] "Schieben"
+          small_ "Let your partner choose instead."
+  where
+    variantGroup :: Text -> [Variant] -> Html ()
+    variantGroup title vs = div_ [class_ "variant-group", role_ "group", makeAttributes "aria-label" title] $ do
+      small_ $ toHtml title
       div_ [class_ "variant-options"] $ forM_ vs variantButton
     variantButton v =
       button_ [hxWsSend_, hxVals_ $ DeclareVariant @n v, class_ "outline secondary"] $ do
