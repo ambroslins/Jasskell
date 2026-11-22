@@ -178,13 +178,15 @@ map f = force . fmap f . delay
 {-# INLINE map #-}
 
 rotate :: forall n a. (KnownNat n, Elem a) => Fin n -> Vec n a -> Vec n a
-rotate fin (Vec s) = Vec $ createStore @a size $ \ms -> do
-  copyStore @a ms 0 s i (size - i)
-  copyStore @a ms (size - i) s 0 i
+rotate fin v@(Vec s)
+  | fin == 0 = v -- nothing to do, share it
+  | otherwise = Vec $ createStore @a size $ \ms -> do
+      copyStore @a ms 0 s i (size - i)
+      copyStore @a ms (size - i) s 0 i
   where
     size = nat n
     i = Fin.toInt fin
-{-# INLINE rotate #-}
+{-# INLINE [1] rotate #-}
 
 foldl' :: forall n a b. (KnownNat n, Elem a) => (b -> a -> b) -> b -> Vec n a -> b
 foldl' f z = foldl'Pull f z . delay
@@ -228,14 +230,9 @@ fromList xs = runST $ do
 
 fromVector :: forall n a v. (KnownNat n, Elem a, Vector.Vector v a) => v a -> Maybe (Vec n a)
 fromVector v
-  | Vector.length v == nat n = Just $! Vec $ vectorToStore v
+  | Vector.length v == nat n = Just $! force (unsafeVectorToPull @n v)
   | otherwise = Nothing
 {-# INLINE fromVector #-}
-
-vectorToStore :: forall a v. (Elem a, Vector.Vector v a) => v a -> Store a
-vectorToStore v = createStore @a (Vector.length v) $ \ms ->
-  Vector.iforM_ v $ \i x -> writeStore ms i x
-{-# INLINE vectorToStore #-}
 
 withVector ::
   forall a r v.
@@ -244,7 +241,7 @@ withVector ::
   (forall n. (KnownNat n) => Vec n a -> r) ->
   r
 withVector v f = case someNatVal (fromIntegral $ Vector.length v) of
-  Just (SomeNat (Proxy :: Proxy n)) -> f (Vec $ vectorToStore v :: Vec n a)
+  Just (SomeNat (Proxy :: Proxy n)) -> f (force $ unsafeVectorToPull @n v)
   Nothing -> error "Data.Vec.withVector: impossible: Vector has negative length"
 
 newtype Fill a = Fill (forall s. MutableStore s a -> ST s ())
@@ -405,6 +402,14 @@ ifoldrPull :: forall n a b. (KnownNat n) => (Fin n -> a -> b -> b) -> b -> Pull 
 ifoldrPull f z (Pull g) = Fin.foldr (\i r -> f i (g i) r) z
 {-# INLINE ifoldrPull #-}
 
+rotatePull :: forall n a. (KnownNat n) => Fin n -> Pull n a -> Pull n a
+rotatePull k (Pull g) = Pull $ \i -> g (i + k)
+{-# INLINE rotatePull #-}
+
+{-# RULES "rotate/force" forall k p. rotate k (force p) = force (rotatePull k p) #-}
+
+{-# RULES "delay/rotate" forall k v. delay (rotate k v) = rotatePull k (delay v) #-}
+
 traversePull :: (KnownNat n, Elem b, Applicative f) => (a -> f b) -> Pull n a -> f (Vec n b)
 traversePull f (Pull g) = generateA (f . g)
 {-# INLINE traversePull #-}
@@ -412,3 +417,7 @@ traversePull f (Pull g) = generateA (f . g)
 pullToVector :: forall n a v. (KnownNat n, Elem a, Vector.Vector v a) => Pull n a -> v a
 pullToVector (Pull g) = Vector.generate (nat n) (g . Fin.unsafe)
 {-# INLINE pullToVector #-}
+
+unsafeVectorToPull :: forall n a v. (KnownNat n, Elem a, Vector.Vector v a) => v a -> Pull n a
+unsafeVectorToPull v = Pull $ \i -> Vector.unsafeIndex v (Fin.toInt i)
+{-# INLINE unsafeVectorToPull #-}

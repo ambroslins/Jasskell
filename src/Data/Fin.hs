@@ -30,29 +30,42 @@ newtype Fin (n :: Nat) = Fin Int
   deriving newtype (Eq, Ord, Show, ToJSON, Prim)
 
 instance (KnownNat n) => Num (Fin n) where
-  Fin a + Fin b = Fin $ (a + b) `rem` nat n
-  Fin a - Fin b = Fin $ (a - b) `mod` nat n
+  Fin a + Fin b = let c = a + b in Fin $ if c >= nat n then c - nat n else c
+  {-# INLINE (+) #-}
+  Fin a - Fin b = let c = a - b in Fin $ if c < 0 then c + nat n else c
+  {-# INLINE (-) #-}
   Fin a * Fin b = Fin $ (a * b) `rem` nat n
-  negate (Fin i) = Fin $ negate i `mod` nat n
+  {-# INLINE (*) #-}
+  negate (Fin i) = Fin $ if i == 0 then 0 else nat n - i
+  {-# INLINE negate #-}
   abs = id
-  signum (Fin i) = if i == 0 then Fin 0 else Fin 1
+  {-# INLINE abs #-}
+  signum (Fin i) = Fin $ if i == 0 then 0 else 1
+  {-# INLINE signum #-}
   fromInteger i = Fin $ fromIntegral i `mod` nat n
+  {-# INLINE fromInteger #-}
 
 instance (KnownNat n, 1 <= n) => Bounded (Fin n) where
   minBound = Fin 0
+  {-# INLINE minBound #-}
   maxBound = Fin $ nat n - 1
+  {-# INLINE maxBound #-}
 
 instance (KnownNat n) => Enum (Fin n) where
   fromEnum (Fin i) = i
+  {-# INLINE fromEnum #-}
   toEnum i
     | 0 <= i && i < nat n = Fin i
     | otherwise = error $ "Fin.toEnum: " <> show i <> " out of range for Fin " <> show (nat n)
+  {-# INLINE toEnum #-}
   succ (Fin i)
     | let j = i + 1, j < nat n = Fin j
     | otherwise = error "Fin.succ: maxBound"
+  {-# INLINE succ #-}
   pred (Fin i)
     | i > 0 = Fin i
     | otherwise = error "Fin.pred: minBound"
+  {-# INLINE pred #-}
   enumFrom (Fin i) = coerce [i .. nat n - 1]
   enumFromTo (Fin i) (Fin j) = coerce [i .. j]
   enumFromThen (Fin i) (Fin j) =
