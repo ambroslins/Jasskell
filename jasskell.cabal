@@ -75,6 +75,7 @@ library
     Jasskell.Id
     Jasskell.Logger
     Jasskell.Main
+    Jasskell.Meld
     Jasskell.Player
     Jasskell.Render
     Jasskell.Round

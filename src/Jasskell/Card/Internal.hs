@@ -106,7 +106,7 @@ foldl' f z (CardSet w) = go z w
           let !c = Card $ Bits.countTrailingZeros cs
            in go (f x c) (cs .&. (cs - 1))
 
-data Sequence = Sequence {highest :: Card, length :: Int}
+data Sequence = Sequence {high :: Card, length :: Int}
   deriving (Eq, Show)
 
 sequences :: CardSet -> [Sequence]
@@ -115,7 +115,7 @@ sequences (CardSet cs) = List.build $
   where
     toSequence c =
       let len = sequenceLength 0 c
-       in assert (len >= 3) $ Sequence {highest = c, length = len}
+       in assert (len >= 3) $ Sequence {high = c, length = len}
     ends =
       cs
         .&. cs `Bits.unsafeShiftL` 4
