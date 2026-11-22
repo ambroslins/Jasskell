@@ -60,6 +60,7 @@ library
   import: warnings, extensions
   -- Modules exported by the library.
   exposed-modules:
+    Data.BitSet
     Data.Fin
     Data.IntMap.Coercible
     Data.Vec
