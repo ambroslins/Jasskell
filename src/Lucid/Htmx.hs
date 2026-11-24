@@ -51,5 +51,14 @@ hxWsConnect_ = makeAttributes "hx-ws:connect"
 hxVals_ :: (Aeson.ToJSON a) => a -> Attributes
 hxVals_ = makeAttributes "hx-vals" . Text.decodeUtf8Lenient . BS.toStrict . Aeson.encode
 
+-- | Inherited by descendants, so one container can include an input in the
+-- requests (and websocket messages) of all its buttons.
+hxIncludeInherited_ :: Text -> Attributes
+hxIncludeInherited_ = makeAttributes "hx-include:inherited"
+
+-- | Keeps the element (it needs a stable @id@) unchanged across swaps.
+hxPreserve_ :: Attributes
+hxPreserve_ = makeAttributes "hx-preserve" ""
+
 hxWsSend_ :: Attributes
 hxWsSend_ = makeAttributes "hx-ws:send" ""

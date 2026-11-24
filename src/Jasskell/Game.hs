@@ -22,9 +22,13 @@ import Control.Concurrent.MVar (MVar, modifyMVarMasked, modifyMVar_, newMVar, re
 import Control.Concurrent.STM (STM)
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (SomeException (..), bracket, evaluate, try)
-import Control.Monad (forM_, unless)
-import Data.Aeson (FromJSON, ToJSON (..))
+import Control.Monad (foldM, forM_, unless, when)
+import Data.BitSet (BitSet)
+import Data.BitSet qualified as BitSet
+import Data.Bits qualified as Bits
+import Data.Aeson (FromJSON (..), ToJSON (..), (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
+import Data.Aeson.Types qualified as Aeson.Types
 import Data.Bifunctor (bimap, first)
 import Data.Data (Proxy (..))
 import Data.Fin (Fin)
@@ -124,7 +128,8 @@ data Action n
   | -- | Schieben: the chooser passes the choice of variant to their partner.
     Shove
   | DeclareVariant Variant
-  | PlayCard Card
+  | -- | The flag skips the player's Weis; only allowed with their first card.
+    PlayCard Card Bool
   | -- | Deal the next round once the current one is finished.
     NextRound
   deriving (Eq, Show, Generic)
@@ -149,6 +154,7 @@ data Rejection n
   | ShoveError Round.ShoveError
   | PlayError Round.PlayError
   | RoundNotFinished
+  | MeldAlreadyAnnounced
   deriving (Show)
 
 newtype RoundNumber = RoundNumber {toInt16 :: Int16}
@@ -347,6 +353,8 @@ data StoredRound n = StoredRound
     chooser :: Fin n,
     shoved :: Bool,
     variant :: Maybe Variant,
+    -- | Seats that skipped their Weis; 'replay' sets their melds to @[]@.
+    skippedMelds :: BitSet n,
     hands :: Vec n CardSet,
     cards :: VU.Vector Card
   }
@@ -373,7 +381,14 @@ replay sr = do
   let r0 = Round.start sr.chooser sr.hands
   r1 <- if sr.shoved then first Text.show $ Round.shove r0 else pure r0
   r2 <- maybe (pure r1) (\v -> first Text.show $ Round.choose v r1) sr.variant
-  VU.foldM' (\r c -> first Text.show $ Round.playCard c r) r2 sr.cards
+  -- Skipping right after the declaration gives the same Weis as skipping with
+  -- the first card: the best Weis is only decided when the first trick closes.
+  r3 <- foldM skip r2 Fin.fins
+  VU.foldM' (\r c -> first Text.show $ Round.playCard c r) r3 sr.cards
+  where
+    skip r seat
+      | BitSet.index sr.skippedMelds seat = first Text.show $ Round.skipMeld seat r
+      | otherwise = pure r
 
 -- | Seats, the latest round with its played cards, and the total points per
 -- team of the finished rounds before it (@sc@).
@@ -392,6 +407,7 @@ selectStoredGame =
         r.round_number::int2?,
         r.chooser::int2?,
         r.shoved::bool?,
+        r.skipped_melds::int2?,
         r.variant::int2?,
         r.initial_hands::int8[]?,
 
@@ -443,22 +459,23 @@ selectStoredGame =
       Just y -> pure y
     makePlayer p n = Player {id = Id.fromInt64 p, nickname = Nickname n}
     decode ::
-      (Int64, V.Vector (Maybe Int64), V.Vector (Maybe Text), Maybe Int16, Maybe Int16, Maybe Bool, Maybe Int16, Maybe (VU.Vector Int64), VU.Vector Int16, Int64, Int64) ->
+      (Int64, V.Vector (Maybe Int64), V.Vector (Maybe Text), Maybe Int16, Maybe Int16, Maybe Bool, Maybe Int16, Maybe Int16, Maybe (VU.Vector Int64), VU.Vector Int16, Int64, Int64) ->
       Either Text (StoredGame 4)
-    decode (gameId, playerIds, nicknames, mrn, mc, ms, mv, mhs, cs, team0, team1) = do
+    decode (gameId, playerIds, nicknames, mrn, mc, ms, msk, mv, mhs, cs, team0, team1) = do
       let score = Vec.generate $ \team ->
             fromIntegral $ if team == 0 then team0 else team1
       seats <-
         note "invalid seat count" . Vec.fromVector $
           V.zipWith (liftA2 makePlayer) playerIds nicknames
-      round <- case (mrn, mc, ms, mhs) of
-        (Nothing, Nothing, Nothing, Nothing) -> pure Nothing
-        (Just rn, Just c, Just shoved, Just hs) -> do
+      round <- case (mrn, mc, ms, msk, mhs) of
+        (Nothing, Nothing, Nothing, Nothing, Nothing) -> pure Nothing
+        (Just rn, Just c, Just shoved, Just sk, Just hs) -> do
           chooser <- decodeWith "invalid chooser: " (Fin.make . fromIntegral) c
+          skippedMelds <- decodeWith "invalid skipped melds: " (BitSet.fromWord64 . fromIntegral) sk
           variant <- traverse (decodeWith "invalid variant: " Variant.fromInt16) mv
           hands <- Vec.map CardSet.fromInt64 <$> decodeWith "invalid hands: " Vec.fromVector hs
           cards <- VU.mapM (decodeWith "invalid card: " Card.fromInt16) cs
-          pure $ Just StoredRound {roundNumber = RoundNumber rn, chooser, shoved, variant, hands, cards}
+          pure $ Just StoredRound {roundNumber = RoundNumber rn, chooser, shoved, variant, skippedMelds, hands, cards}
         _ -> Left "incomplete round row"
       pure StoredGame {gameId = Id.fromInt64 gameId, seats, score, round}
 
@@ -551,21 +568,36 @@ applyAction db game phase player action = trying $ \reject -> case action of
         Right round -> do
           DB.statement db setRoundVariant (game.id, gs.roundNumber, variant)
           pure $ Playing $ gs {round = round, players = gs.players} -- Ambiguous record update
-  PlayCard card -> case phase of
+  PlayCard card skip -> case phase of
     Waiting _ -> throw reject GameNotStarted
     Playing gs -> do
       checkCurrentPlayer reject gs.round
-      case Round.playCard card gs.round of
+      let seat = Round.currentPlayer gs.round
+      -- Both steps are pure: a rejected card leaves the Weis untouched.
+      skipped <-
+        if skip
+          then case Round.skipMeld seat gs.round of
+            Left Round.AlreadyAnnounced -> throw reject MeldAlreadyAnnounced
+            Right r -> pure r
+          else pure gs.round
+      case Round.playCard card skipped of
         Left playError -> throw reject $ PlayError playError
         Right round -> do
           let cardParams = (game.id, gs.roundNumber, gs.cardSeqNumber, card)
-          case Round.close round of
-            Nothing -> DB.statement db insertPlayedCard cardParams
-            -- The last card: store it together with the round's points, so a
-            -- finished round always has its result.
-            Just result -> DB.transaction db $ do
-              Transaction.statement cardParams insertPlayedCard
-              Transaction.statement (game.id, gs.roundNumber, Round.total result) setRoundPoints
+              result = Round.close round
+          if
+            -- The common case: just the card.
+            | not skip && isNothing result ->
+                DB.statement db insertPlayedCard cardParams
+            -- The card also skips the player's Weis (only possible with their
+            -- first card) or ends the round: store everything together, so a
+            -- restored round is consistent.
+            | otherwise -> DB.transaction db $ do
+                Transaction.statement cardParams insertPlayedCard
+                when skip $
+                  Transaction.statement (game.id, gs.roundNumber, seat) insertSkippedMeld
+                forM_ result $ \r ->
+                  Transaction.statement (game.id, gs.roundNumber, Round.total r) setRoundPoints
           pure $ Playing $ gs {round = round, cardSeqNumber = gs.cardSeqNumber + 1}
   NextRound -> case phase of
     Waiting _ -> throw reject GameNotStarted
@@ -678,11 +710,48 @@ insertPlayedCard =
     encode (gameId, roundNumber, s, card) =
       (Id.toInt64 gameId, roundNumber.toInt16, s, Card.toInt16 card)
 
+-- | Adds the seat to @rounds.skipped_melds@ (a 'BitSet').
+insertSkippedMeld :: Hasql.Statement (GameId, RoundNumber, Fin n) ()
+insertSkippedMeld =
+  lmap
+    encode
+    [resultlessStatement|
+      update rounds set skipped_melds = skipped_melds | $3::int2
+      where game_id = $1::int8 and round_number = $2::int2
+    |]
+  where
+    encode (gameId, roundNumber, seat) =
+      (Id.toInt64 gameId, roundNumber.toInt16, Bits.bit (Fin.toInt seat))
+
+-- | Generic, except for 'PlayCard': @{"tag": "PlayCard", "card": …}@ with an
+-- optional @"skipMeld"@. It is left out when false, so the value of an
+-- included checkbox (@"on"@ when checked, missing otherwise) isn't
+-- overwritten by a button's @hx-vals@.
 instance (KnownNat n) => ToJSON (Action n) where
-  toJSON = Aeson.genericToJSON Aeson.defaultOptions
+  toJSON = \case
+    PlayCard card skip ->
+      Aeson.object $
+        ["tag" .= ("PlayCard" :: Text), "card" .= card]
+          <> ["skipMeld" .= True | skip]
+    action -> Aeson.genericToJSON Aeson.defaultOptions action
 
 instance (KnownNat n) => FromJSON (Action n) where
-  parseJSON = Aeson.genericParseJSON Aeson.defaultOptions
+  parseJSON v = case v of
+    Aeson.Object o ->
+      o .: "tag" >>= \case
+        ("PlayCard" :: Text) -> do
+          card <- o .: "card"
+          skip <-
+            o .:? "skipMeld" >>= \case
+              Nothing -> pure False
+              Just (Aeson.Bool b) -> pure b
+              Just (Aeson.String "on") -> pure True
+              Just other -> Aeson.Types.typeMismatch "skipMeld" other
+          pure $ PlayCard card skip
+        _ -> generic
+    _ -> generic
+    where
+      generic = Aeson.genericParseJSON Aeson.defaultOptions v
 
 note :: Text -> Maybe a -> Either Text a
 note msg = maybe (Left msg) pure

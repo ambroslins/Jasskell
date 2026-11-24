@@ -21,6 +21,7 @@ import Data.Fin qualified as Fin
 import Data.Functor.Identity (runIdentity)
 import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Data.Vec qualified as Vec
 import Data.Vector (Vector)
 import Data.Vector.Unboxed qualified as VU
@@ -29,6 +30,8 @@ import Jasskell.Card (Card, Rank (..), Suit (..))
 import Jasskell.Card qualified as Card
 import Jasskell.Card.Set qualified as CardSet
 import Jasskell.Dealer qualified as Dealer
+import Jasskell.Meld (Meld (..))
+import Jasskell.Meld qualified as Meld
 import Jasskell.Game
   ( Action (..),
     GameId,
@@ -233,6 +236,7 @@ rejectionMessage = \case
     CardNotInHand -> "That card is not in your hand."
     ForbiddenCard v -> violationMessage v
   RoundNotFinished -> "The round isn't finished yet."
+  MeldAlreadyAnnounced -> "You already announced your Weis."
 
 violationMessage :: Violation -> Text
 violationMessage = \case
@@ -344,22 +348,64 @@ playerView view = div_ [class_ "container game"] $ do
             playerName $ Vec.index view.players i
             when (Just i == view.round.stoeck) $ div_ "Stöck"
           case Vec.index view.round.playedCards i of
-            Nothing -> cardPlaceholder []
+            -- While the Weis can be skipped, the own card isn't played yet:
+            -- show them on top of the empty slot.
+            Nothing
+              | i == 0 && canSkipMeld -> div_ [class_ "own-slot"] $ do
+                  cardPlaceholder []
+                  meldPanel ownMelds
+              | otherwise -> cardPlaceholder []
             Just c -> cardDiv [class_ "winning" | Just i == view.round.trickWinner] c
       when choosing $ variantChoice view
       forM_ view.result $ roundSummary view
 
-    div_ [class_ "hand"] $
+    -- The skip switch is included in every card's message. 'PlayCard' with
+    -- 'False' leaves the field out of hx-vals, so it can't override it.
+    div_ [class_ "hand", hxIncludeInherited_ "#skip-meld"] $
       Round.foldHand view.round.hand $ \c status ->
         cardButton
-          [ hxWsSend_,
-            hxVals_ $ PlayCard @n c,
-            if status == Playable then mempty else disabled_ "true"
-          ]
+          ( [ hxWsSend_,
+              hxVals_ $ PlayCard @n c False,
+              if status == Playable then mempty else disabled_ "true"
+            ]
+              <> [class_ "meld" | canSkipMeld, c `CardSet.member` meldCards]
+          )
           c
   where
     choosing = isNothing view.round.variant && view.round.currentPlayer == 0
     overlay = choosing || isJust view.result
+    -- Same condition as 'Round.skipMeld': first trick, own card not played.
+    ownMelds = Vec.index view.round.melds 0
+    canSkipMeld =
+      not (null ownMelds)
+        && isNothing view.round.lastTrick
+        && isNothing (Vec.index view.round.playedCards 0)
+    meldCards = foldl' (\s m -> CardSet.union s (Meld.cards m)) CardSet.empty ownMelds
+
+-- | The viewer's Weis, shown on top of their empty card slot, and a toggle to
+-- not announce them. The toggle is preserved across re-renders, since its
+-- state only reaches the server with the player's first card.
+meldPanel :: [Meld] -> Html ()
+meldPanel melds = div_ [class_ "meld-panel"] $ do
+  small_ [class_ "muted"] "Your Weis"
+  ul_ $ forM_ melds $ \m -> li_ $ do
+    meldLabel m
+    span_ [class_ "points"] . toHtml . show $ Meld.points m
+  label_ [class_ "meld-skip"] $ do
+    input_
+      [ type_ "checkbox",
+        name_ "skipMeld",
+        id_ "skip-meld",
+        hxPreserve_
+      ]
+    "Skip"
+
+meldLabel :: Meld -> Html ()
+meldLabel = \case
+  Sequence high len -> do
+    suitIcon (Card.suit high)
+    toHtml $ Text.show len <> " to " <> rankName (Card.rank high)
+  Quartet rank -> toHtml $ "Four " <> rankName rank <> "s"
 
 -- | Game score of the previous rounds plus the card points of this round.
 -- Team 0 is the viewer's team.

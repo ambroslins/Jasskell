@@ -206,6 +206,7 @@ choose v round
           }
 
 data SkipMeldError = AlreadyAnnounced
+  deriving (Eq, Show)
 
 skipMeld :: (KnownNat n) => Seat n -> Round n -> Either SkipMeldError (Round n)
 skipMeld seat round
@@ -396,6 +397,9 @@ data PlayerView n = PlayerView
     variant :: Maybe Variant,
     shoved :: Bool,
     playedCards :: Vec n (Maybe Card),
+    -- | The cards of the previous trick by seat, 'Nothing' during the first
+    -- trick (when Weis can still be skipped).
+    lastTrick :: Maybe (Vec n Card),
     -- | Card points per team so far; index 0 is the viewer's team.
     points :: Vec 2 Int,
     trickWinner :: Maybe (Fin n),
@@ -415,6 +419,9 @@ playerView round seat =
       variant = round.variant,
       shoved = round.shoved,
       playedCards = Vec.rotate seat $ playedCards round,
+      lastTrick = case round.tricks of
+        [] -> Nothing
+        t : _ -> Just $ Vec.generate $ \i -> trickCardOf (i + seat) t,
       points = forTeam seat $ perTeam id round.points,
       trickWinner = trickWinner round <&> subtract seat,
       stoeck = round.stoeck <&> subtract seat,

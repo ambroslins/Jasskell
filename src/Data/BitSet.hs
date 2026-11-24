@@ -5,6 +5,8 @@ module Data.BitSet
     set,
     clear,
     insert,
+    toWord64,
+    fromWord64,
   )
 where
 
@@ -16,7 +18,7 @@ import GHC.TypeLits (Nat, type (<=))
 import GHC.TypeNats (KnownNat)
 
 newtype BitSet (n :: Nat) = BitSet Word64
-  deriving (Eq)
+  deriving (Eq, Show)
 
 type Size n = (KnownNat n, n <= 64)
 
@@ -34,3 +36,12 @@ clear i (BitSet s) = BitSet $ s `Bits.clearBit` Fin.toInt i
 
 insert :: forall n. Fin n -> Bool -> BitSet n -> BitSet n
 insert i b = if b then set i else clear i
+
+toWord64 :: BitSet n -> Word64
+toWord64 (BitSet s) = s
+
+-- | 'Nothing' if a bit at index @n@ or higher is set.
+fromWord64 :: forall n. (Size n) => Word64 -> Maybe (BitSet n)
+fromWord64 s
+  | s `Bits.shiftR` Fin.nat n == 0 = Just $ BitSet s
+  | otherwise = Nothing
