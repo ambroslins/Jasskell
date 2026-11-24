@@ -50,6 +50,7 @@
   --card-height: 7rem;
   --card-width: calc(var(--card-height) * 2 / 3);
   --game-nav-height: 3.5rem;
+  --status-badge-height: 2.25rem;
 }
 
 svg.icon {
@@ -190,17 +191,59 @@ svg.icon {
   /* The table area's auto margins absorb the free space, which keeps the
      variant status at the top and pushes the hand to the bottom. */
   .table-area { margin-block: auto; }
-  .variant-status { margin-block: 0; }
 }
 
-/* Table and variant panel share one grid cell, the panel on top. */
+/* A row of status badges: variant on the left, score on the right; wraps on
+   narrow screens. */
+.game-status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: .5rem;
+  min-height: var(--status-badge-height); /* reserved even when empty */
+}
+
+/* Shared look of everything in .game-status. */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  height: var(--status-badge-height);
+  padding: 0 .9rem;
+  border: var(--pico-border-width) solid var(--pico-form-element-border-color);
+  border-radius: 999px;
+  background: var(--pico-card-background-color);
+  font-size: .9rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+
+  .variant-icon { font-size: 1.1rem; line-height: 1; }
+  .muted { color: var(--pico-muted-color); font-weight: 400; }
+  .player-name small { font-weight: 400; }
+}
+
+.status-badge.score {
+  margin-left: auto; /* stays right, also while the variant slot is empty */
+
+  .team {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+  }
+}
+
+/* Table and panels (variant choice, round summary) share one grid cell, the
+   panel on top. */
 .table-area {
   display: grid;
   align-items: center;
 
   > * { grid-area: 1 / 1; }
 
-  .variant-choice {
+  .variant-choice, .round-summary {
     z-index: 1;
     justify-self: center;
     width: calc(100% - 2rem);
@@ -209,9 +252,28 @@ svg.icon {
   }
 }
 
-.table-area.choosing .table {
+.table-area.overlay .table {
   opacity: .4;
   pointer-events: none;
+}
+
+.round-summary {
+  max-width: 24rem;
+
+  header {
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+  }
+
+  header small { color: var(--pico-primary); font-weight: 600; }
+
+  table { margin-bottom: 1rem; }
+  th, td { padding: .35rem .5rem; }
+  thead th, td { text-align: right; font-variant-numeric: tabular-nums; }
+  tfoot th, tfoot td { font-weight: 700; }
+
+  button { width: 100%; margin: 0; }
 }
 
 .table {
@@ -441,27 +503,6 @@ svg.icon {
 
     small { color: var(--pico-muted-color); }
   }
-}
-
-.variant-status {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: .25rem;
-  min-height: 2.5rem; /* reserved even when empty, so nothing shifts */
-}
-
-.variant-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: .5rem;
-  padding: .25rem .75rem;
-  border: var(--pico-border-width) solid var(--pico-form-element-border-color);
-  border-radius: 999px;
-  background: var(--pico-card-background-color);
-  font-weight: 600;
-
-  .variant-icon { font-size: 1.25rem; line-height: 1; }
 }
 
 #toasts {

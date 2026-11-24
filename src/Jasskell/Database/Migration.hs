@@ -94,10 +94,14 @@ migrations =
         shoved bool not null default false, -- chooser passed the choice to their partner
         variant int2,
         initial_hands int8[] not null,
+        points int4[], -- total per team (cards, Weis, Stoeck) once finished
 
         started_at timestamptz not null default now(),
+        finished_at timestamptz,
 
-        primary key(game_id, round_number)
+        primary key(game_id, round_number),
+        check ((points is null) = (finished_at is null)),
+        check (points is null or cardinality(points) = 2)
       )
       """,
     Migration

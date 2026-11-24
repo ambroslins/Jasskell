@@ -4,6 +4,7 @@ module Jasskell.Database
     withPool,
     use,
     statement,
+    transaction,
   )
 where
 
@@ -15,6 +16,8 @@ import Hasql.Pool qualified
 import Hasql.Pool.Config qualified
 import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
+import Hasql.Transaction qualified as Transaction
+import Hasql.Transaction.Sessions qualified as Transaction
 import Pqi.Ffi qualified
 
 data Config = Config
@@ -53,3 +56,9 @@ use (Pool pool) session =
 
 statement :: Pool -> Hasql.Statement params result -> params -> IO result
 statement pool statement params = use pool $ Hasql.statement params statement
+
+-- | Run a read-committed write transaction. It is retried on serialization
+-- failures, so it must not have side effects outside the database.
+transaction :: Pool -> Transaction.Transaction a -> IO a
+transaction pool =
+  use pool . Transaction.transaction Transaction.ReadCommitted Transaction.Write

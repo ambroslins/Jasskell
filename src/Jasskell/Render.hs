@@ -19,7 +19,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.Fin qualified as Fin
 import Data.Functor.Identity (runIdentity)
-import Data.Maybe (isNothing)
+import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Vec qualified as Vec
 import Data.Vector (Vector)
@@ -232,6 +232,7 @@ rejectionMessage = \case
     CannotPlayNow -> "You can't play a card right now."
     CardNotInHand -> "That card is not in your hand."
     ForbiddenCard v -> violationMessage v
+  RoundNotFinished -> "The round isn't finished yet."
 
 violationMessage :: Violation -> Text
 violationMessage = \case
@@ -320,19 +321,23 @@ playerView view = div_ [class_ "container game"] $ do
   section_ [class_ "game-main"] $ do
     -- Always rendered with a fixed height, so the table doesn't jump when
     -- the variant gets declared.
-    p_ [class_ "variant-status"] $ case view.round.variant of
-      Just v -> variantBadge v
-      Nothing
-        | choosing -> mempty
-        | otherwise -> span_ [makeAttributes "aria-busy" "true"] $ do
-            playerName $ Vec.index view.players view.round.currentPlayer
-            if view.round.shoved
-              then " is choosing the variant (geschoben)…"
-              else " is choosing the variant…"
-    -- The variant panel is stacked on top of the table in the same grid cell.
-    -- It can make the cell taller, but never pushes the hand down as long as
-    -- everything fits into the viewport.
-    div_ [class_ $ if choosing then "table-area choosing" else "table-area"] $ do
+    -- One row of uniformly styled badges: variant left, score right.
+    div_ [class_ "game-status"] $ do
+      case view.round.variant of
+        Just v -> variantBadge v
+        Nothing
+          | choosing -> mempty
+          | otherwise ->
+              span_ [class_ "status-badge", makeAttributes "aria-busy" "true"] $ do
+                playerName $ Vec.index view.players view.round.currentPlayer
+                if view.round.shoved
+                  then " is choosing (geschoben)…"
+                  else " is choosing…"
+      scoreBadge view
+    -- Panels (variant choice, round summary) are stacked on top of the table
+    -- in the same grid cell. They can make the cell taller, but never push
+    -- the hand down as long as everything fits into the viewport.
+    div_ [class_ $ if overlay then "table-area overlay" else "table-area"] $ do
       section_ [class_ "table"] $ do
         Fin.for_ $ \i -> div_ [class_ "seat"] $ do
           unless (i == 0) $ div_ [] $ do
@@ -342,6 +347,7 @@ playerView view = div_ [class_ "container game"] $ do
             Nothing -> cardPlaceholder []
             Just c -> cardDiv [class_ "winning" | Just i == view.round.trickWinner] c
       when choosing $ variantChoice view
+      forM_ view.result $ roundSummary view
 
     div_ [class_ "hand"] $
       Round.foldHand view.round.hand $ \c status ->
@@ -353,6 +359,64 @@ playerView view = div_ [class_ "container game"] $ do
           c
   where
     choosing = isNothing view.round.variant && view.round.currentPlayer == 0
+    overlay = choosing || isJust view.result
+
+-- | Game score of the previous rounds plus the card points of this round.
+-- Team 0 is the viewer's team.
+scoreBadge :: View.Playing n -> Html ()
+scoreBadge view =
+  span_ [class_ "status-badge score"] $ do
+    team "Us" 0
+    span_ [class_ "muted", makeAttributes "aria-hidden" "true"] "·"
+    team "Them" 1
+  where
+    team :: Text -> Round.Team -> Html ()
+    team name i = span_ [class_ "team"] $ do
+      span_ [class_ "muted"] $ toHtml name
+      toHtml . show $ Vec.index view.score i
+      -- Running card points; the summary shows the round's full result.
+      when (isNothing view.result) $
+        span_ [class_ "muted", title_ "Card points this round"] $
+          toHtml $ "+" <> show (Vec.index view.round.points i)
+
+-- | Panel over the table once all cards are played. Any seated player can
+-- deal the next round.
+roundSummary :: forall n. (KnownNat n) => View.Playing n -> Round.Result -> Html ()
+roundSummary view result =
+  article_
+    [ class_ "round-summary",
+      role_ "dialog",
+      makeAttributes "aria-labelledby" "round-summary-title"
+    ]
+    $ do
+      header_ $ do
+        strong_ [id_ "round-summary-title"] "Round finished"
+        case result.match of
+          Just 0 -> small_ "Match! Your team won every trick."
+          Just _ -> small_ "Match for the opponents."
+          Nothing -> mempty
+      table_ $ do
+        thead_ $ tr_ $ do
+          td_ mempty
+          th_ [scope_ "col"] "Us"
+          th_ [scope_ "col"] "Them"
+        tbody_ $ do
+          row "Cards" $ Vec.index result.cardPoints
+          forM_ result.match $ \winner ->
+            row "Match" $ \team -> if team == winner then Round.matchBonus else 0
+          row "Weis" $ Vec.index result.meldPoints
+          row "Stöck" $ Vec.index result.stoeckPoints
+        tfoot_ $ do
+          row "Round" $ Vec.index roundTotal
+          row "Game" $ \team -> Vec.index view.score team + Vec.index roundTotal team
+      button_ [hxWsSend_, hxVals_ $ NextRound @n] "Next round"
+  where
+    roundTotal = Round.total result
+    row :: Text -> (Round.Team -> Int) -> Html ()
+    row label points = tr_ $ do
+      th_ [scope_ "row"] $ toHtml label
+      td_ . toHtml . show $ points 0
+      td_ . toHtml . show $ points 1
 
 -- | Dialog-like panel over the table for the player who declares the variant.
 -- Not a modal @<dialog>@: the hand below must stay visible to decide.
@@ -390,7 +454,7 @@ variantChoice view =
 -- | The active variant. For Slalom it shows the direction of the current trick,
 -- which alternates (see 'Jasskell.Variant.next').
 variantBadge :: Variant -> Html ()
-variantBadge v = span_ [class_ "variant-badge"] $ do
+variantBadge v = span_ [class_ "status-badge"] $ do
   span_ [class_ "variant-icon"] $ variantIcon v
   toHtml $ case v of
     Trump s -> suitName s <> " trump"

@@ -29,7 +29,7 @@ import Data.Bifunctor (bimap, first)
 import Data.Data (Proxy (..))
 import Data.Fin (Fin)
 import Data.Fin qualified as Fin
-import Data.Int (Int16, Int64)
+import Data.Int (Int16, Int32, Int64)
 import Data.IntMap.Coercible (IntMap)
 import Data.IntMap.Coercible qualified as IntMap
 import Data.Maybe (isJust, isNothing)
@@ -47,6 +47,7 @@ import GHC.Generics (Generic)
 import GHC.TypeLits (KnownNat, sameNat)
 import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
+import Hasql.Transaction qualified as Transaction
 import Hasql.TH
   ( maybeStatement,
     resultlessStatement,
@@ -124,6 +125,8 @@ data Action n
     Shove
   | DeclareVariant Variant
   | PlayCard Card
+  | -- | Deal the next round once the current one is finished.
+    NextRound
   deriving (Eq, Show, Generic)
 
 data Message n
@@ -145,6 +148,7 @@ data Rejection n
   | NotYourTurn
   | ShoveError Round.ShoveError
   | PlayError Round.PlayError
+  | RoundNotFinished
   deriving (Show)
 
 newtype RoundNumber = RoundNumber {toInt16 :: Int16}
@@ -157,6 +161,9 @@ data Phase n
 
 data GameState n = GameState
   { players :: Vec n Player,
+    -- | Total points per team of the finished rounds before the current one.
+    -- The current round's result is computed from 'round'.
+    score :: Vec 2 Int,
     roundNumber :: RoundNumber,
     cardSeqNumber :: Int16,
     round :: Round n
@@ -329,6 +336,8 @@ spawnGame l db gameId phase manager = do
 data StoredGame n = StoredGame
   { gameId :: GameId,
     seats :: Vec n (Maybe Player),
+    -- | Like 'GameState.score'.
+    score :: Vec 2 Int,
     round :: Maybe (StoredRound n)
   }
   deriving (Show)
@@ -353,6 +362,7 @@ restore sg = case sg.round of
       Playing
         GameState
           { players,
+            score = sg.score,
             roundNumber = sr.roundNumber,
             cardSeqNumber = fromIntegral $ VU.length sr.cards,
             round
@@ -365,6 +375,8 @@ replay sr = do
   r2 <- maybe (pure r1) (\v -> first Text.show $ Round.choose v r1) sr.variant
   VU.foldM' (\r c -> first Text.show $ Round.playCard c r) r2 sr.cards
 
+-- | Seats, the latest round with its played cards, and the total points per
+-- team of the finished rounds before it (@sc@).
 selectStoredGame :: Hasql.Statement GameId (Maybe (Some StoredGame))
 selectStoredGame =
   lmap Id.toInt64 $
@@ -383,7 +395,10 @@ selectStoredGame =
         r.variant::int2?,
         r.initial_hands::int8[]?,
 
-        pc.cards::int2[]
+        pc.cards::int2[],
+
+        sc.team0::int8,
+        sc.team1::int8
       from games g
 
       cross join lateral (
@@ -411,6 +426,15 @@ selectStoredGame =
           and pc.round_number = r.round_number
       ) pc on true
 
+      left join lateral (
+        select
+          coalesce(sum(f.points[1]), 0) as team0,
+          coalesce(sum(f.points[2]), 0) as team1
+        from rounds f
+        where f.game_id = g.game_id
+          and f.round_number < r.round_number
+      ) sc on true
+
       where g.game_id = $1::int8
     |]
   where
@@ -419,9 +443,11 @@ selectStoredGame =
       Just y -> pure y
     makePlayer p n = Player {id = Id.fromInt64 p, nickname = Nickname n}
     decode ::
-      (Int64, V.Vector (Maybe Int64), V.Vector (Maybe Text), Maybe Int16, Maybe Int16, Maybe Bool, Maybe Int16, Maybe (VU.Vector Int64), VU.Vector Int16) ->
+      (Int64, V.Vector (Maybe Int64), V.Vector (Maybe Text), Maybe Int16, Maybe Int16, Maybe Bool, Maybe Int16, Maybe (VU.Vector Int64), VU.Vector Int16, Int64, Int64) ->
       Either Text (StoredGame 4)
-    decode (gameId, playerIds, nicknames, mrn, mc, ms, mv, mhs, cs) = do
+    decode (gameId, playerIds, nicknames, mrn, mc, ms, mv, mhs, cs, team0, team1) = do
+      let score = Vec.generate $ \team ->
+            fromIntegral $ if team == 0 then team0 else team1
       seats <-
         note "invalid seat count" . Vec.fromVector $
           V.zipWith (liftA2 makePlayer) playerIds nicknames
@@ -434,7 +460,7 @@ selectStoredGame =
           cards <- VU.mapM (decodeWith "invalid card: " Card.fromInt16) cs
           pure $ Just StoredRound {roundNumber = RoundNumber rn, chooser, shoved, variant, hands, cards}
         _ -> Left "incomplete round row"
-      pure StoredGame {gameId = Id.fromInt64 gameId, seats, round}
+      pure StoredGame {gameId = Id.fromInt64 gameId, seats, score, round}
 
 gameLoop :: (KnownNat n) => Logger -> DB.Pool -> Game n -> Phase n -> IO ()
 gameLoop logger db game = go
@@ -472,7 +498,7 @@ gameLoop logger db game = go
       Playing state -> \playerId ->
         case Vec.findIndex (\p -> p.id == playerId) state.players of
           Nothing -> UpdateSpectator $ View.makeSpectating state.players
-          Just i -> UpdatePlayer $ View.makePlaying state.players state.round i
+          Just i -> UpdatePlayer $ View.makePlaying state.players state.score state.round i
 
 applyAction :: (KnownNat n) => DB.Pool -> Game n -> Phase n -> Player -> Action n -> IO (Either (Rejection n) (Phase n))
 applyAction db game phase player action = trying $ \reject -> case action of
@@ -500,6 +526,7 @@ applyAction db game phase player action = trying $ \reject -> case action of
                 gameState =
                   GameState
                     { players,
+                      score = Vec.replicate 0,
                       roundNumber = RoundNumber 1,
                       cardSeqNumber = 0,
                       round
@@ -531,8 +558,36 @@ applyAction db game phase player action = trying $ \reject -> case action of
       case Round.playCard card gs.round of
         Left playError -> throw reject $ PlayError playError
         Right round -> do
-          DB.statement db insertPlayedCard (game.id, gs.roundNumber, gs.cardSeqNumber, card)
+          let cardParams = (game.id, gs.roundNumber, gs.cardSeqNumber, card)
+          case Round.close round of
+            Nothing -> DB.statement db insertPlayedCard cardParams
+            -- The last card: store it together with the round's points, so a
+            -- finished round always has its result.
+            Just result -> DB.transaction db $ do
+              Transaction.statement cardParams insertPlayedCard
+              Transaction.statement (game.id, gs.roundNumber, Round.total result) setRoundPoints
           pure $ Playing $ gs {round = round, cardSeqNumber = gs.cardSeqNumber + 1}
+  NextRound -> case phase of
+    Waiting _ -> throw reject GameNotStarted
+    Playing gs
+      | isNothing playerSeat -> throw reject NotAPlayer
+      | otherwise -> case Round.close gs.round of
+          Nothing -> throw reject RoundNotFinished
+          Just result -> do
+            hands <- case sameNat game (Proxy @4) of
+              Nothing -> error "only implemented for 4 players"
+              Just Refl -> Random.applyIOGen Dealer.four game.ioGen
+            let chooser = Round.chooser gs.round + 1
+                roundNumber = RoundNumber $ gs.roundNumber.toInt16 + 1
+            DB.statement db insertRound (game.id, roundNumber, chooser, hands)
+            pure . Playing $
+              GameState
+                { players = gs.players,
+                  score = Vec.zipWith (+) gs.score (Round.total result),
+                  roundNumber,
+                  cardSeqNumber = 0,
+                  round = Round.start chooser hands
+                }
   where
     playerSeat = case phase of
       Waiting seats -> Vec.findIndex (maybe False $ \p -> p.id == player.id) seats
@@ -573,6 +628,21 @@ insertRound =
         roundNumber.toInt16,
         fromIntegral (Fin.toInt chooser),
         Vec.toVector (Vec.map CardSet.toInt64 hands) :: VU.Vector Int64
+      )
+
+setRoundPoints :: Hasql.Statement (GameId, RoundNumber, Vec 2 Int) ()
+setRoundPoints =
+  lmap
+    encode
+    [resultlessStatement|
+      update rounds set points = $3::int4[], finished_at = now()
+      where game_id = $1::int8 and round_number = $2::int2
+    |]
+  where
+    encode (gameId, roundNumber, points) =
+      ( Id.toInt64 gameId,
+        roundNumber.toInt16,
+        Vec.toVector (Vec.map fromIntegral points) :: VU.Vector Int32
       )
 
 setRoundShoved :: Hasql.Statement (GameId, RoundNumber) ()

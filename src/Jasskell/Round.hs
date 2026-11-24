@@ -2,6 +2,7 @@ module Jasskell.Round
   ( Round,
     Seat,
     start,
+    chooser,
     currentPlayer,
     SkipMeldError (..),
     skipMeld,
@@ -11,7 +12,14 @@ module Jasskell.Round
     choose,
     PlayError (..),
     playCard,
+    Team,
+    teamOf,
+    forTeam,
+    Result (..),
     close,
+    total,
+    matchBonus,
+    resultFor,
     Hand (cards),
     CardStatus (..),
     Violation (..),
@@ -70,12 +78,51 @@ trickCardOf :: (KnownNat n) => Seat n -> Trick n -> Card
 trickCardOf seat trick =
   CardSeq.unsafeIndex trick.cards $ Fin.toInt $ seat - trick.leader
 
-data Result n = Result
-  { trickPoints :: Vec n Int,
-    stoeck :: Maybe (Seat n),
-    melds :: Vec n Int
+-- | Schieber: seats 0 and 2 play against seats 1 and 3 (see 'partner').
+type Team = Fin 2
+
+teamOf :: Seat n -> Team
+teamOf = Fin.parity
+
+-- | Rotate per-team values so that index 0 is the team of the given seat.
+forTeam :: (Vec.Elem a) => Seat n -> Vec 2 a -> Vec 2 a
+forTeam seat = Vec.rotate (teamOf seat)
+
+-- | Sum per-seat values into per-team values. Allocates only the result:
+-- every team folds over the seats into a plain 'Int'.
+perTeam :: (KnownNat n, Vec.Elem a) => (a -> Int) -> Vec n a -> Vec 2 Int
+perTeam f v = Vec.generate $ \team ->
+  Vec.ifoldl' (\seat acc x -> if teamOf seat == team then acc + f x else acc) 0 v
+{-# INLINE perTeam #-}
+
+-- | Points of a finished round per team.
+data Result = Result
+  { -- | Including the last trick bonus; 157 in total.
+    cardPoints :: Vec 2 Int,
+    -- | The team that won every trick, if any. It gets 'matchBonus'.
+    match :: Maybe Team,
+    meldPoints :: Vec 2 Int,
+    stoeckPoints :: Vec 2 Int
   }
-  deriving (Show)
+  deriving (Eq, Show)
+
+-- | Points per team, including the match bonus.
+total :: Result -> Vec 2 Int
+total r = Vec.generate $ \team ->
+  Vec.index r.cardPoints team
+    + Vec.index r.meldPoints team
+    + Vec.index r.stoeckPoints team
+    + if r.match == Just team then matchBonus else 0
+
+-- | Rotate a result so that index 0 is the team of the given seat.
+resultFor :: Seat n -> Result -> Result
+resultFor seat r =
+  Result
+    { cardPoints = forTeam seat r.cardPoints,
+      match = subtract (teamOf seat) <$> r.match,
+      meldPoints = forTeam seat r.meldPoints,
+      stoeckPoints = forTeam seat r.stoeckPoints
+    }
 
 start :: (KnownNat n) => Seat n -> Vec n CardSet -> Round n
 start c hs =
@@ -90,6 +137,10 @@ start c hs =
       stoeck = Nothing,
       melds = Vec.replicate []
     }
+
+-- | The seat that declares the variant (or shoves) in this round.
+chooser :: Round n -> Seat n
+chooser round = round.chooser
 
 leader :: Round n -> Seat n
 leader round = case round.tricks of
@@ -202,8 +253,12 @@ closeTrick round = do
           { leader = l,
             cards,
             winner = l + Fin.unsafe (CardSeq.maxIndexBy (Card.compare lead v) cards),
-            points = CardSeq.foldl' (\p c -> p + Card.points v c) 0 cards
+            points =
+              CardSeq.foldl' (\p c -> p + Card.points v c) 0 cards
+                + if lastTrick then lastTrickBonus else 0
           }
+      -- 'playCard' removes the card from the hand before closing the trick.
+      lastTrick = Vec.all CardSet.null round.hands
       melds =
         Vec.ifoldr (\i ms rest -> case ms of m : _ -> (i + l, m) : rest; _ -> rest) [] $
           Vec.rotate l round.melds
@@ -223,15 +278,27 @@ closeTrick round = do
           Just w -> Vec.imap (\i ms -> if i == w || i == partner w then ms else []) round.melds
       }
 
-close :: (KnownNat n) => Round n -> Maybe (Result n)
+lastTrickBonus, matchBonus, stoeckBonus :: Int
+lastTrickBonus = 5
+matchBonus = 100
+stoeckBonus = 20
+
+-- | The result of the round, once all cards are played.
+close :: (KnownNat n) => Round n -> Maybe Result
 close round = do
   guard $ Vec.all CardSet.null round.hands
   pure
     Result
-      { trickPoints = round.points,
-        stoeck = round.stoeck,
+      { cardPoints = perTeam id round.points,
+        match = case round.tricks of
+          t : ts
+            | all (\t' -> teamOf t'.winner == teamOf t.winner) ts ->
+                Just $ teamOf t.winner
+          _ -> Nothing,
         -- TODO: only count melds if the team won at least one trick
-        melds = Vec.map (sum . map Meld.points) round.melds
+        meldPoints = perTeam (sum . map Meld.points) round.melds,
+        stoeckPoints = Vec.generate $ \team ->
+          if fmap teamOf round.stoeck == Just team then stoeckBonus else 0
       }
 
 isStoeckCard :: Variant -> Card -> Bool
@@ -329,6 +396,8 @@ data PlayerView n = PlayerView
     variant :: Maybe Variant,
     shoved :: Bool,
     playedCards :: Vec n (Maybe Card),
+    -- | Card points per team so far; index 0 is the viewer's team.
+    points :: Vec 2 Int,
     trickWinner :: Maybe (Fin n),
     stoeck :: Maybe (Fin n),
     melds :: Vec n [Meld],
@@ -346,6 +415,7 @@ playerView round seat =
       variant = round.variant,
       shoved = round.shoved,
       playedCards = Vec.rotate seat $ playedCards round,
+      points = forTeam seat $ perTeam id round.points,
       trickWinner = trickWinner round <&> subtract seat,
       stoeck = round.stoeck <&> subtract seat,
       melds =
