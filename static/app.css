@@ -286,11 +286,11 @@ svg.icon {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    column-gap: .5rem;
+    gap: .25rem .5rem;
     overflow-wrap: anywhere;
   }
 
-  .seat:nth-child(1) { align-self: start; }
+  .seat:nth-child(1) { align-self: start; position: relative; }
   .seat:nth-child(2) { justify-self: end; justify-content: end; }
   .seat:nth-child(3) { flex-direction: column; }
   .seat:nth-child(4) {
@@ -300,6 +300,44 @@ svg.icon {
   }
 }
 
+/* What a player has shown: announced and revealed Weis, Stöck. Small pills
+   under the player's name. */
+.seat-tags {
+  display: grid;
+  justify-items: start;
+  gap: .25rem;
+  margin-top: .125rem;
+  font-size: .75rem;
+  font-weight: 600;
+  line-height: 1.2;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .125rem .5rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    white-space: nowrap;
+  }
+
+  .muted { font-weight: 400; }
+}
+
+/* The viewer has no name on the table: their tags float beside their card,
+   which stays centered. */
+.seat:nth-child(1) > .seat-tags {
+  position: absolute;
+  left: calc(100% + .5rem);
+  top: 50%;
+  translate: 0 -50%;
+  margin: 0;
+}
+
+/* Centered above the top card. */
+.seat:nth-child(3) .seat-tags { justify-items: center; }
+
 .hand {
   display: flex;
   justify-content: center;
@@ -307,7 +345,10 @@ svg.icon {
   /* A small gap if there is room; otherwise neighbours overlap just as far as
      it takes to fit a full hand of nine. */
   .card + .card { margin-left: min(.25rem, (100% - 9 * var(--card-width)) / 8); }
-  .card:disabled { opacity: .75; }
+  /* Only the print is faded: the card itself stays opaque, so overlapping
+     cards don't show through. */
+  .card:disabled { opacity: 1; }
+  .card:disabled > * { opacity: .45; }
 }
 
 /* ---- Weis (melds) ------------------------------------------------------ */

@@ -19,7 +19,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.Fin qualified as Fin
 import Data.Functor.Identity (runIdentity)
-import Data.Maybe (isNothing)
+import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Vec qualified as Vec
@@ -341,9 +341,12 @@ playerView view = div_ [class_ "container"] $ do
     div_ [class_ "table-area"] $ do
       section_ [class_ "table"] $ do
         Fin.for_ $ \i -> div_ [class_ "seat"] $ do
-          unless (i == 0) $ div_ [] $ do
-            playerName $ Vec.index view.players i
-            when (Just i == view.round.stoeck) $ div_ "Stöck"
+          -- The own tags sit beside the card, so they are not wrapped.
+          if i == 0
+            then seatTags view i
+            else div_ $ do
+              playerName $ Vec.index view.players i
+              seatTags view i
           case Vec.index view.round.playedCards i of
             -- While the Weis can be skipped, the own card isn't played yet:
             -- show them on top of the empty slot.
@@ -377,6 +380,34 @@ playerView view = div_ [class_ "container"] $ do
         && isNothing view.round.lastTrick
         && isNothing (Vec.index view.round.playedCards 0)
     meldCards = foldl' (\s m -> CardSet.union s (Meld.cards m)) CardSet.empty ownMelds
+
+-- | What a player has shown at the table: during the first trick the kind of
+-- Weis they announced with their card, afterwards the Weis of the team that
+-- won them, and Stöck.
+seatTags :: View.Playing n -> Fin.Fin n -> Html ()
+seatTags view i =
+  unless (isNothing announcement && null revealed && not stoeck) $
+    ul_ [class_ "seat-tags"] $ do
+      forM_ announcement $ li_ . toHtml . announcementLabel
+      forM_ revealed $ \m -> li_ $ do
+        meldLabel m
+        span_ [class_ "muted"] . toHtml . show $ Meld.points m
+      when stoeck $ li_ "Stöck"
+  where
+    announcement = Vec.index view.round.announcments i
+    -- During the first trick the view only has the viewer's own Weis, which
+    -- are not announced yet.
+    revealed
+      | isJust view.round.lastTrick = Vec.index view.round.melds i
+      | otherwise = []
+    stoeck = Just i == view.round.stoeck
+
+-- | Only the kind of a Weis: neither its cards nor its points, which would
+-- give away the rank of a quartet.
+announcementLabel :: Meld -> Text
+announcementLabel = \case
+  Sequence _ len -> "Sequence of " <> Text.show len
+  Quartet _ -> "Quartet"
 
 -- | The viewer's Weis, shown on top of their empty card slot, and a toggle to
 -- not announce them. The toggle is preserved across re-renders, since its
