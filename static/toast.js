@@ -9,7 +9,7 @@
 
   function toast(message, type = 'error') {
     const el = document.createElement('div');
-    el.className = `toast ${type}`;
+    el.className = `toast panel ${type}`;
     el.setAttribute('role', type === 'error' ? 'alert' : 'status');
 
     const text = document.createElement('p');

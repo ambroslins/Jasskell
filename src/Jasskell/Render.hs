@@ -19,7 +19,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.Fin qualified as Fin
 import Data.Functor.Identity (runIdentity)
-import Data.Maybe (isJust, isNothing)
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Vec qualified as Vec
@@ -56,7 +56,7 @@ fragment = runIdentity . execHtmlT
 
 page :: Text -> Html () -> Builder
 page titel body = runIdentity . execHtmlT $ do
-  html_ [lang_ "en", makeAttributes "data-theme" "light"] $ do
+  html_ [lang_ "en"] $ do
     head_ $ do
       meta_ [charset_ "utf-8"]
       meta_ [name_ "htmx-config", content_ "ws.pauseOnBackground:false"]
@@ -76,30 +76,30 @@ page titel body = runIdentity . execHtmlT $ do
 index :: Random.StdGen -> Maybe Player -> Html ()
 index gen mplayer = do
   header_ [id_ "hero", class_ "container grid"] $ do
-    div_ $ do
+    div_ [class_ "stack"] $ do
       hgroup_ $ do
         h1_ "Jass"
         p_ "Schieber for four, right in your browser."
       p_ "Create a game, share the link with three friends and play. No account, no download: just pick a nickname."
-      a_ [href_ "#play", role_ "button"] "Play"
+      a_ [href_ "#play", class_ "button"] "Play"
 
     div_ [id_ "hero-deck"] . VU.foldMap (cardDiv []) . VU.take 4 . fst $
       Dealer.shuffle CardSet.deck gen
 
   main_ [id_ "play", class_ "container grid"] $ do
-    section_ $ do
+    section_ [class_ "stack"] $ do
       h2_ "Open games"
       div_
         [ id_ "game-list",
+          class_ "panel",
           hxGet_ "/games",
           hxTrigger_ "revealed once",
           hxSwap_ "outerHTML",
-          makeAttributes "aria-busy" "true",
-          style_ "height: var(--max-height);"
+          makeAttributes "aria-busy" "true"
         ]
         mempty
 
-    section_ $ do
+    section_ [class_ "stack"] $ do
       h2_ "New game"
       form_ [method_ "post", action_ "/games"] $ do
         when (isNothing mplayer) $ nicknameField []
@@ -111,8 +111,8 @@ index gen mplayer = do
 gameList :: Vector PublicGame -> Html ()
 gameList games =
   ul_
-    [ id_
-        "game-list",
+    [ id_ "game-list",
+      class_ "panel",
       hxGet_ "/games",
       hxTrigger_ "every 5s [document.visibilityState === 'visible']",
       hxSwap_ "outerMorph"
@@ -125,8 +125,7 @@ gameList games =
             small_ $ toHtml $ show game.seatsTaken <> "/4 players"
             a_
               [ href_ $ "/games/" <> gameId,
-                role_ "button",
-                class_ $ if game.seatsTaken < 4 then "primary" else "secondary"
+                class_ $ if game.seatsTaken < 4 then "button small" else "button small secondary"
               ]
               "Join"
 
@@ -135,19 +134,18 @@ gameList games =
 gameLogin :: GameId -> GameInfo -> Html ()
 gameLogin gameId info = div_ [id_ "join"] $ do
   nav_ [class_ "container"] $
-    ul_ $ li_ $ a_ [href_ "/"] $ strong_ "Jass"
+    a_ [href_ "/"] "Jass"
   main_ [class_ "container"] $
-    article_ [class_ "join"] $ do
-      header_ $ do
-        hgroup_ $ do
-          h2_ . toHtml $ case info.creatorName of
-            Just name -> name.toText <> "’s game"
-            Nothing -> "Jass game"
-          p_ $
-            if info.started
-              then "This game has already started. You can watch as a spectator."
-              else "You're invited to a game of Schieber."
-        unless info.started $ seatDots info.seatsTaken
+    article_ [class_ "join panel stack"] $ do
+      hgroup_ $ do
+        h2_ . toHtml $ case info.creatorName of
+          Just name -> name.toText <> "’s game"
+          Nothing -> "Jass game"
+        p_ $
+          if info.started
+            then "This game has already started. You can watch as a spectator."
+            else "You're invited to a game of Schieber."
+      unless info.started $ seatDots info.seatsTaken
       form_
         [ hxPost_ $ "/games/" <> Id.encodeText gameId <> "/join",
           hxTarget_ "#join",
@@ -185,9 +183,9 @@ nicknameField as = label_ $ do
 
 gameConnect :: Player -> GameId -> Html ()
 gameConnect player gameId = do
-  nav_ [class_ "container game-nav"] $ do
-    ul_ $ li_ $ a_ [href_ "/"] $ strong_ "Jass"
-    ul_ $ li_ $ playerName player
+  nav_ [class_ "container"] $ do
+    a_ [href_ "/"] "Jass"
+    playerName player
   div_
     [ hxWsConnect_ $ "/games/" <> Id.encodeText gameId,
       hxTarget_ "#message",
@@ -214,10 +212,10 @@ supersededView =
 -- websocket connection).
 notice :: Html () -> Html () -> Html () -> Html ()
 notice title body action =
-  article_ [class_ "container notice"] $ do
+  article_ [class_ "container notice panel stack"] $ do
     h3_ title
     p_ body
-    a_ [href_ "", role_ "button"] action
+    a_ [href_ "", class_ "button"] action
 
 rejectionMessage :: Rejection n -> Text
 rejectionMessage = \case
@@ -269,8 +267,8 @@ waitingView :: forall n. (KnownNat n) => View.Waiting n -> Html ()
 -- | The lobby before the game starts. Seats are laid out like the table during
 -- play. Once seated, the view is rotated so you sit at the bottom and your
 -- partner opposite you; before that, seats are shown with their team.
-waitingView view = div_ [class_ "container"] $ do
-  hgroup_ [class_ "lobby-header"] $ do
+waitingView view = div_ [class_ "container stack waiting"] $ do
+  hgroup_ $ do
     h2_ "Waiting for players"
     p_ $
       if view.seated
@@ -285,31 +283,30 @@ waitingView view = div_ [class_ "container"] $ do
               "Waiting for " <> show emptySeats <> (if emptySeats == 1 then " more player…" else " more players…")
         | view.seated -> button_ [hxWsSend_, hxVals_ $ StartGame @n] "Start game"
         | otherwise -> p_ [makeAttributes "aria-busy" "true"] "Waiting for the game to start…"
-  div_ [class_ "lobby-invite"] $
-    button_
-      [ type_ "button",
-        class_ "outline secondary",
-        hxOn_
-          "click"
-          """
-          Promise.resolve()
-            .then(() => navigator.clipboard.writeText(location.href))
-            .then(
-              () => toast('Invite link copied.', 'info'),
-              () => toast('Could not copy the link. Copy it from the address bar instead.'),
-            )
-          """
-      ]
-      "Copy invite link"
+  button_
+    [ type_ "button",
+      class_ "outline",
+      hxOn_
+        "click"
+        """
+        Promise.resolve()
+          .then(() => navigator.clipboard.writeText(location.href))
+          .then(
+            () => toast('Invite link copied.', 'info'),
+            () => toast('Could not copy the link. Copy it from the address bar instead.'),
+          )
+        """
+    ]
+    "Copy invite link"
   where
     emptySeats = length . filter isNothing $ Vec.toList view.seats
     seat i = \case
-      Nothing -> div_ [class_ "lobby-seat empty"] $ do
+      Nothing -> div_ [class_ "lobby-seat panel empty"] $ do
         small_ $ seatLabel i
         if view.seated
           then span_ "Open seat"
-          else button_ [hxWsSend_, hxVals_ $ TakeSeat i] "Sit here"
-      Just player -> div_ [class_ $ "lobby-seat" <> (if view.seated && i == 0 then " you" else "")] $ do
+          else button_ [hxWsSend_, hxVals_ $ TakeSeat i, class_ "small"] "Sit here"
+      Just player -> div_ [class_ $ "lobby-seat panel" <> (if view.seated && i == 0 then " you" else "")] $ do
         small_ $ seatLabel i
         playerName player
     seatLabel i
@@ -319,7 +316,7 @@ waitingView view = div_ [class_ "container"] $ do
       | otherwise = "Opponent"
 
 playerView :: forall n. (KnownNat n) => View.Playing n -> Html ()
-playerView view = div_ [class_ "container game"] $ do
+playerView view = div_ [class_ "container"] $ do
   -- Exactly one viewport tall (minus the nav), with the hand at the bottom.
   -- Anything added after this section scrolls into view below the hand.
   section_ [class_ "game-main"] $ do
@@ -332,7 +329,7 @@ playerView view = div_ [class_ "container game"] $ do
         Nothing
           | choosing -> mempty
           | otherwise ->
-              span_ [class_ "status-badge", makeAttributes "aria-busy" "true"] $ do
+              span_ [class_ "status-badge panel", makeAttributes "aria-busy" "true"] $ do
                 playerName $ Vec.index view.players view.round.currentPlayer
                 if view.round.shoved
                   then " is choosing (geschoben)…"
@@ -341,7 +338,7 @@ playerView view = div_ [class_ "container game"] $ do
     -- Panels (variant choice, round summary) are stacked on top of the table
     -- in the same grid cell. They can make the cell taller, but never push
     -- the hand down as long as everything fits into the viewport.
-    div_ [class_ $ if overlay then "table-area overlay" else "table-area"] $ do
+    div_ [class_ "table-area"] $ do
       section_ [class_ "table"] $ do
         Fin.for_ $ \i -> div_ [class_ "seat"] $ do
           unless (i == 0) $ div_ [] $ do
@@ -373,7 +370,6 @@ playerView view = div_ [class_ "container game"] $ do
           c
   where
     choosing = isNothing view.round.variant && view.round.currentPlayer == 0
-    overlay = choosing || isJust view.result
     -- Same condition as 'Round.skipMeld': first trick, own card not played.
     ownMelds = Vec.index view.round.melds 0
     canSkipMeld =
@@ -386,8 +382,8 @@ playerView view = div_ [class_ "container game"] $ do
 -- not announce them. The toggle is preserved across re-renders, since its
 -- state only reaches the server with the player's first card.
 meldPanel :: [Meld] -> Html ()
-meldPanel melds = div_ [class_ "meld-panel"] $ do
-  small_ [class_ "muted"] "Your Weis"
+meldPanel melds = div_ [class_ "meld-panel panel"] $ do
+  small_ "Your Weis"
   ul_ $ forM_ melds $ \m -> li_ $ do
     meldLabel m
     span_ [class_ "points"] . toHtml . show $ Meld.points m
@@ -411,7 +407,7 @@ meldLabel = \case
 -- Team 0 is the viewer's team.
 scoreBadge :: View.Playing n -> Html ()
 scoreBadge view =
-  span_ [class_ "status-badge score"] $ do
+  span_ [class_ "status-badge panel score"] $ do
     team "Us" 0
     span_ [class_ "muted", makeAttributes "aria-hidden" "true"] "·"
     team "Them" 1
@@ -430,16 +426,16 @@ scoreBadge view =
 roundSummary :: forall n. (KnownNat n) => View.Playing n -> Round.Result -> Html ()
 roundSummary view result =
   article_
-    [ class_ "round-summary",
+    [ class_ "round-summary panel stack",
       role_ "dialog",
       makeAttributes "aria-labelledby" "round-summary-title"
     ]
     $ do
-      header_ $ do
-        strong_ [id_ "round-summary-title"] "Round finished"
+      hgroup_ $ do
+        h3_ [id_ "round-summary-title"] "Round finished"
         case result.match of
-          Just 0 -> small_ "Match! Your team won every trick."
-          Just _ -> small_ "Match for the opponents."
+          Just 0 -> p_ "Match! Your team won every trick."
+          Just _ -> p_ "Match for the opponents."
           Nothing -> mempty
       table_ $ do
         thead_ $ tr_ $ do
@@ -469,15 +465,15 @@ roundSummary view result =
 variantChoice :: forall n. (KnownNat n) => View.Playing n -> Html ()
 variantChoice view =
   article_
-    [ class_ "variant-choice",
+    [ class_ "variant-choice panel stack",
       role_ "dialog",
       makeAttributes "aria-labelledby" "variant-choice-title"
     ]
     $ do
-      header_ $ do
-        strong_ [id_ "variant-choice-title"] "Choose the variant"
+      hgroup_ $ do
+        h3_ [id_ "variant-choice-title"] "Choose the variant"
         when view.round.shoved $
-          small_ "Your partner passed the choice to you (geschoben)."
+          p_ "Your partner passed the choice to you (geschoben)."
       variantGroup "Trump" $ map Trump [minBound .. maxBound]
       variantGroup "No trump" $
         [Direction TopDown, Direction BottomUp, Slalom TopDown, Slalom BottomUp]
@@ -492,15 +488,15 @@ variantChoice view =
       small_ $ toHtml title
       div_ [class_ "variant-options"] $ forM_ vs variantButton
     variantButton v =
-      button_ [hxWsSend_, hxVals_ $ DeclareVariant @n v, class_ "outline secondary"] $ do
+      button_ [hxWsSend_, hxVals_ $ DeclareVariant @n v] $ do
         span_ [class_ "variant-icon"] $ variantIcon v
-        span_ [class_ "variant-name"] $ toHtml $ variantName v
+        span_ $ toHtml $ variantName v
         small_ $ toHtml $ variantHint v
 
 -- | The active variant. For Slalom it shows the direction of the current trick,
 -- which alternates (see 'Jasskell.Variant.next').
 variantBadge :: Variant -> Html ()
-variantBadge v = span_ [class_ "status-badge"] $ do
+variantBadge v = span_ [class_ "status-badge panel"] $ do
   span_ [class_ "variant-icon"] $ variantIcon v
   toHtml $ case v of
     Trump s -> suitName s <> " trump"

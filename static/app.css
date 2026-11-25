@@ -1,0 +1,494 @@
+/* Everything specific to the game. Builds on base.css (tokens, elements and
+   the .container / .grid / .stack / .panel helpers) and overrides it where
+   needed. */
+
+:root {
+  --felt: #e8ede4;
+  --card-face: #fbfaf6;
+  /* Shrinks on short viewports, so the table and the hand fit on one screen. */
+  --card-height: clamp(4rem, 15svh, 7rem);
+  --card-width: calc(var(--card-height) * 2 / 3);
+  --status-badge-height: 2.25rem;
+}
+
+/* ---- Cards ------------------------------------------------------------- */
+
+svg.icon {
+  width: 1em;
+  height: 1em;
+  color: inherit;
+  vertical-align: bottom;
+}
+
+/* A <div> on the table, a <button> in the hand. All inner sizes are in em and
+   scale with the card. */
+.card {
+  flex: none;
+  height: var(--card-height);
+  width: var(--card-width);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0;
+  padding: .2em .25em;
+  border: 2px solid var(--border);
+  border-radius: .4em;
+  background: var(--card-face);
+  font-size: calc(var(--card-height) / 8);
+
+  .rank {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .top { align-self: flex-start; }
+  .bottom { align-self: flex-end; rotate: 180deg; }
+  .suit { font-size: 2em; }
+
+  &.placeholder { border: 2px dashed #ccc6b9; background: none; }
+  &.winning { border-color: #134701; }
+}
+
+.bells { color: #f5b811; }
+.acorns { color: #6e4f2a; }
+.leaves { color: #526b3e; }
+.hearts { color: #a33d2a; }
+
+/* ---- Landing page ------------------------------------------------------ */
+
+#hero {
+  min-height: 100svh; /* the play section starts below the fold */
+  place-content: center;
+  align-items: center;
+}
+
+/* Four cards on top of each other, fanned out around their bottom edge. */
+#hero-deck {
+  display: grid;
+  place-items: center;
+  height: calc(var(--card-height) * 1.5);
+
+  .card { grid-area: 1 / 1; transform-origin: bottom; }
+  .card:nth-child(1) { rotate: -18deg; }
+  .card:nth-child(2) { rotate: -6deg; }
+  .card:nth-child(3) { rotate: 6deg; }
+  .card:nth-child(4) { rotate: 18deg; }
+}
+
+#play { padding-block: 2rem; }
+
+#game-list {
+  min-height: 10rem;
+  max-height: 20rem;
+  padding: 0;
+  overflow-y: auto;
+
+  /* The placeholder while loading: center the spinner. */
+  &[aria-busy=true] { display: grid; place-items: center; }
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: .5rem .75rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  li > :first-child { flex: 1; }
+}
+
+/* ---- Joining a game ---------------------------------------------------- */
+
+/* A single narrow panel in the upper part of the page. */
+.join, .notice {
+  max-width: 28rem;
+  margin: 8vh auto 0;
+}
+
+.seat-dots {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.dot {
+  display: inline-block;
+  width: .75rem;
+  height: .75rem;
+  margin-right: .25rem;
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+
+  &.taken { background: var(--primary); }
+}
+
+.player-name small { font-weight: 400; }
+
+/* ---- Table ------------------------------------------------------------- */
+
+/* The table, during play and in the lobby. Seats run counter-clockwise,
+   starting with the viewer at the bottom. */
+.table, .lobby {
+  display: grid;
+  padding: 1rem;
+  background: var(--felt);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 3);
+
+  > :nth-child(1) { grid-area: bottom; }
+  > :nth-child(2) { grid-area: left; }
+  > :nth-child(3) { grid-area: top; }
+  > :nth-child(4) { grid-area: right; }
+}
+
+/* ---- Lobby ------------------------------------------------------------- */
+
+.waiting { text-align: center; }
+
+.lobby {
+  grid-template-areas: ". top ." "left center right" ". bottom .";
+  grid-template-columns: 1fr minmax(6rem, 1.2fr) 1fr;
+  gap: .75rem;
+  max-width: 40rem;
+  margin-inline: auto;
+
+  .lobby-seat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .25rem;
+    min-height: 6rem;
+    padding: .75rem .25rem;
+    overflow-wrap: anywhere;
+  }
+
+  /* The role of the seat: you, partner, opponent. */
+  .lobby-seat > small {
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+
+  .lobby-seat.empty {
+    background: none;
+    border-style: dashed;
+    color: var(--muted);
+  }
+
+  .lobby-seat.you {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary);
+  }
+
+  .lobby-center {
+    grid-area: center;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+  }
+}
+
+/* ---- Game -------------------------------------------------------------- */
+
+/* Exactly one viewport tall (minus the nav), so the hand sits at the bottom. */
+.game-main {
+  /* svh: the viewport with mobile browser bars shown, i.e. at 0 scroll. */
+  min-height: calc(100svh - var(--nav-height));
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-bottom: 1rem;
+}
+
+/* A row of status badges: variant on the left, score on the right; wraps on
+   narrow screens. */
+.game-status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: .5rem;
+  min-height: var(--status-badge-height); /* reserved even when empty */
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  height: var(--status-badge-height);
+  padding: 0 .9rem;
+  border-radius: 999px;
+  font-size: .9rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+
+  .variant-icon { font-size: 1.1rem; }
+  .muted { font-weight: 400; }
+
+  &.score { margin-left: auto; } /* stays right, also while the variant slot is empty */
+
+  .team {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+  }
+}
+
+/* The table and the panels on top of it (variant choice, round summary) share
+   one grid cell. Its auto margins absorb the free space of .game-main, which
+   keeps the status at the top and the hand at the bottom. */
+.table-area {
+  display: grid;
+  align-items: center;
+  margin-block: auto;
+
+  > * { grid-area: 1 / 1; }
+
+  > .panel {
+    z-index: 1;
+    justify-self: center;
+    width: calc(100% - 2rem);
+    box-shadow: var(--shadow);
+  }
+
+  /* The table is dimmed while a panel covers it. */
+  &:has(> .panel) .table {
+    opacity: .4;
+    pointer-events: none;
+  }
+}
+
+.table {
+  row-gap: .5rem;
+  place-items: end center;
+  grid-template-areas: "left top right" "left . right" ". bottom .";
+  grid-template-columns: 1fr calc(var(--card-width) + 1rem) 1fr;
+  grid-template-rows: auto var(--card-height) var(--card-height);
+
+  /* A name next to the played card; the name wraps above the card when the
+     seat gets too narrow. */
+  .seat {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: .5rem;
+    overflow-wrap: anywhere;
+  }
+
+  .seat:nth-child(1) { align-self: start; }
+  .seat:nth-child(2) { justify-self: end; justify-content: end; }
+  .seat:nth-child(3) { flex-direction: column; }
+  .seat:nth-child(4) {
+    justify-self: start;
+    flex-direction: row-reverse;
+    justify-content: start;
+  }
+}
+
+.hand {
+  display: flex;
+  justify-content: center;
+
+  /* A small gap if there is room; otherwise neighbours overlap just as far as
+     it takes to fit a full hand of nine. */
+  .card + .card { margin-left: min(.25rem, (100% - 9 * var(--card-width)) / 8); }
+  .card:disabled { opacity: .75; }
+}
+
+/* ---- Weis (melds) ------------------------------------------------------ */
+
+/* The own empty card slot with the Weis panel on top of it. The panel may be
+   wider than the slot; the bottom row's side cells are empty. */
+.own-slot {
+  display: grid;
+  place-items: center;
+
+  > * { grid-area: 1 / 1; }
+}
+
+.meld-panel {
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .35rem;
+  width: max-content;
+  max-width: min(16rem, 90vw);
+  padding: .5rem .75rem;
+  box-shadow: var(--shadow);
+  font-size: .85rem;
+  line-height: 1.2;
+
+  ul {
+    display: grid;
+    gap: .25rem;
+    width: 100%;
+  }
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .points {
+    margin-left: auto;
+    padding-left: .75rem;
+    color: var(--muted);
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Skipped Weis are struck through. */
+  &:has(#skip-meld:checked) li {
+    color: var(--muted);
+    text-decoration: line-through;
+  }
+}
+
+/* The skip toggle: a pill with a dot that fills when checked. */
+.meld-skip {
+  padding: .25rem .75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  font-weight: 600;
+  cursor: pointer;
+
+  &:has(:checked) { border-color: var(--primary); color: var(--primary); }
+
+  input {
+    appearance: none;
+    width: .75rem;
+    height: .75rem;
+    border: 2px solid currentColor;
+    border-radius: 50%;
+  }
+
+  input:checked { background: currentColor; }
+}
+
+/* Cards that are part of a Weis are lifted and outlined, unless the player
+   chose not to announce them. */
+.game-main:not(:has(#skip-meld:checked)) .hand .card.meld {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent);
+  translate: 0 -.35rem;
+}
+
+/* ---- Panels over the table --------------------------------------------- */
+
+.round-summary {
+  max-width: 24rem;
+
+  thead th, td { text-align: end; }
+  button { width: 100%; }
+}
+
+.variant-choice {
+  max-width: 40rem;
+
+  .variant-group { display: grid; gap: .25rem; }
+
+  .variant-group > small {
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+
+  .variant-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+    gap: .5rem;
+  }
+
+  /* Icon, name and hint below each other. */
+  .variant-options button {
+    flex-direction: column;
+    gap: .125rem;
+    padding: .5rem;
+    border-color: var(--border);
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .variant-icon { font-size: 1.75rem; line-height: 1; }
+
+  .variant-shove {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem 1rem;
+  }
+}
+
+/* On phones the variant choice must not get taller than the table below it,
+   or it would push the hand out of view: all four options in one row. */
+@media (width < 30rem) {
+  .variant-choice {
+    .variant-options {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: .25rem;
+    }
+
+    .variant-options button {
+      padding: .375rem .125rem;
+      font-size: .8rem;
+      overflow-wrap: anywhere;
+    }
+
+    .variant-options small { display: none; }
+  }
+}
+
+/* ---- Toasts (see toast.js) --------------------------------------------- */
+
+#toasts {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 1rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  gap: .5rem;
+  padding-inline: 1rem;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  width: min(100%, 16rem);
+  padding: .75rem .5rem;
+  border-color: var(--danger);
+  box-shadow: var(--shadow);
+  animation: toast-in .2s ease-out;
+
+  p { flex: 1; }
+
+  .close {
+    padding: 0 .25rem;
+    background: none;
+    color: var(--muted);
+    font-size: 1.25rem;
+    line-height: 1;
+  }
+
+  .close:hover { color: var(--text); }
+
+  &.info { border-color: var(--primary); }
+  &.leaving { animation: toast-out .2s ease-in forwards; }
+}
+
+@keyframes toast-in { from { opacity: 0; transform: translateY(.75rem); } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(.75rem); } }

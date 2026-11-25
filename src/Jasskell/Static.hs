@@ -67,8 +67,8 @@ style =
   makeAsset
     "style"
     css
-    [ $(embedFileRelative "static/pico-2.1.1.green.min.css"),
-      $(embedFileRelative "static/custom.css")
+    [ $(embedFileRelative "static/base.css"),
+      $(embedFileRelative "static/app.css")
     ]
 script =
   makeAsset

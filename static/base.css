@@ -1,0 +1,179 @@
+/* Base styles: design tokens, a small reset, defaults for plain HTML elements
+   and a few layout helpers. Nothing in here knows about the game.
+
+   Everything sits in one cascade layer: rules outside of a layer (app.css)
+   always win over the ones in here, whatever their specificity. */
+@layer base {
+  :root {
+    color-scheme: light;
+
+    --bg: #f3f0e9;
+    --surface: #f8f6f1;
+    --text: #55534e;
+    --heading: #45433f;
+    --muted: #8c887f;
+    --border: #d9d3c6;
+    --primary: #6f8f7c;
+    --on-primary: #fbfaf6;
+    --danger: #b5483a;
+
+    --radius: .25rem;
+    --shadow: 0 .25rem 1rem rgb(0 0 0 / .12);
+    --nav-height: 3.5rem;
+  }
+
+  /* ---- Reset ---------------------------------------------------------- */
+
+  *, ::before, ::after { box-sizing: border-box; }
+  * { margin: 0; }
+  ul { padding: 0; list-style: none; }
+  button, input { font: inherit; color: inherit; }
+
+  /* ---- Elements ------------------------------------------------------- */
+
+  html {
+    /* 16px on phones, growing to 20px on wide screens. */
+    font-size: clamp(100%, 87.5% + .5vw, 125%);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, sans-serif;
+    line-height: 1.5;
+  }
+
+  h1, h2, h3 { color: var(--heading); line-height: 1.2; }
+  h1 { font-size: 2rem; }
+  h2 { font-size: 1.75rem; }
+  h3 { font-size: 1.125rem; }
+
+  /* A heading with a tagline. */
+  hgroup p { color: var(--muted); }
+
+  small { font-size: .875em; color: var(--muted); }
+
+  a { color: var(--primary); }
+
+  :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+  nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    height: var(--nav-height);
+
+    a { font-weight: 700; text-decoration: none; }
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+
+  th, td {
+    padding: .35rem .5rem;
+    border-bottom: 1px solid var(--border);
+    font-weight: inherit;
+    text-align: start;
+  }
+
+  thead, tfoot { font-weight: 600; }
+
+  /* ---- Buttons -------------------------------------------------------- */
+
+  /* Links that should look like a button get class="button". */
+  button, .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    padding: .75rem 1rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    background: var(--primary);
+    color: var(--on-primary);
+    text-decoration: none;
+    cursor: pointer;
+
+    &.secondary { background: var(--muted); }
+    &.outline { background: none; border-color: currentColor; color: var(--muted); }
+    &.small { padding: .3rem .9rem; }
+
+    &:hover:not(:disabled) { filter: brightness(.92); }
+    &:disabled { opacity: .5; cursor: not-allowed; }
+  }
+
+  /* ---- Forms ---------------------------------------------------------- */
+
+  /* Fields are stacked; a submit button stretches to the full width. */
+  form { display: grid; gap: 1rem; }
+
+  /* A label wraps its text, the input and an optional <small> hint. */
+  label { display: grid; gap: .25rem; }
+  label:has([type=checkbox]) { display: flex; align-items: center; gap: .5rem; }
+
+  input:not([type=checkbox]) {
+    width: 100%;
+    padding: .75rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+
+  input[type=checkbox] {
+    width: 1.125rem;
+    height: 1.125rem;
+    accent-color: var(--primary);
+  }
+
+  /* ---- Helpers -------------------------------------------------------- */
+
+  /* Centered page column with a gutter on small screens. */
+  .container { width: min(100% - 2rem, 64rem); margin-inline: auto; }
+
+  /* Equal columns side by side, as many as fit. */
+  .grid {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  }
+
+  /* Vertical rhythm: space between the children, none around them. */
+  .stack > * + * { margin-top: 1rem; }
+
+  /* A raised surface: cards, badges, list boxes. */
+  .panel {
+    padding: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+
+  .muted { color: var(--muted); }
+
+  /* ---- Loading -------------------------------------------------------- */
+
+  /* A spinner in front of anything marked aria-busy="true". */
+  [aria-busy=true]::before {
+    content: "";
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    margin-right: .5em;
+    vertical-align: -.125em;
+    border: .1875em solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin .75s linear infinite;
+  }
+
+  @keyframes spin { to { rotate: 1turn; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after { animation: none !important; transition: none !important; }
+  }
+}
