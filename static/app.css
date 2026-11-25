@@ -5,8 +5,9 @@
 :root {
   --felt: #e8ede4;
   --card-face: #fbfaf6;
-  /* Shrinks on short viewports, so the table and the hand fit on one screen. */
-  --card-height: clamp(4rem, 15svh, 7rem);
+  /* Limited by the viewport height, so the table and the hand fit on one
+     screen; the upper limit grows on wide screens. */
+  --card-height: clamp(4rem, 15svh, clamp(7rem, 12vw, 10rem));
   --card-width: calc(var(--card-height) * 2 / 3);
   --status-badge-height: 2.25rem;
 }
@@ -20,12 +21,12 @@ svg.icon {
   vertical-align: bottom;
 }
 
-/* A <div> on the table, a <button> in the hand. All inner sizes are in em and
-   scale with the card. */
+/* A <div> on the table, a <button> in the hand. Everything follows from
+   --card-height: the width by the aspect ratio, all inner sizes are in em. */
 .card {
   flex: none;
   height: var(--card-height);
-  width: var(--card-width);
+  aspect-ratio: 2 / 3;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -66,13 +67,20 @@ svg.icon {
   align-items: center;
 }
 
-/* Four cards on top of each other, fanned out around their bottom edge. */
+/* Four cards on top of each other, fanned out around their bottom edge. The
+   cards are sized by the width of the deck's column: the fan is about 1.25
+   card heights wide. */
 #hero-deck {
+  container-type: inline-size;
   display: grid;
   place-items: center;
-  height: calc(var(--card-height) * 1.5);
+  padding-block: 1rem; /* room for the tilted corners */
 
-  .card { grid-area: 1 / 1; transform-origin: bottom; }
+  .card {
+    --card-height: min(60cqi, 45svh);
+    grid-area: 1 / 1;
+    transform-origin: bottom;
+  }
   .card:nth-child(1) { rotate: -18deg; }
   .card:nth-child(2) { rotate: -6deg; }
   .card:nth-child(3) { rotate: 6deg; }

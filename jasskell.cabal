@@ -38,8 +38,11 @@ build-type: Simple
 -- Extra doc files to be distributed with the package, such as a CHANGELOG or a README.
 extra-doc-files: CHANGELOG.md
 
--- Extra source files to be distributed with the package, such as examples, or a tutorial module.
--- extra-source-files:
+-- Embedded by Jasskell.Static. Listed here so that cabal rebuilds when they change.
+extra-source-files:
+  static/*.css
+  static/*.js
+
 common warnings
   ghc-options: -Wall
 
