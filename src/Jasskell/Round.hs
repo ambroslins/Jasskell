@@ -168,7 +168,7 @@ handOf seat round = Hand {cards, state}
 playedCards :: (KnownNat n) => Round n -> Vec n (Maybe Card)
 playedCards round =
   Vec.generate $
-    \i -> CardSeq.index round.played (Fin.toInt $ i + l)
+    \i -> CardSeq.index round.played (Fin.toInt $ i - l)
   where
     !l = leader round
 
