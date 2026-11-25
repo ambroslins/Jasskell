@@ -41,7 +41,7 @@ import Jasskell.Game
   )
 import Jasskell.Id qualified as Id
 import Jasskell.Player (Nickname (..), Player (..))
-import Jasskell.Round (CardStatus (Playable), PlayError (..), ShoveError (..), Violation (..))
+import Jasskell.Round (CardStatus, PlayError (..), ShoveError (..), Violation (..))
 import Jasskell.Round qualified as Round
 import Jasskell.Static qualified as Static
 import Jasskell.Variant (Direction (..), Variant (..))
@@ -236,6 +236,14 @@ rejectionMessage = \case
   RoundNotFinished -> "The round isn't finished yet."
   MeldAlreadyAnnounced -> "You already announced your Weis."
 
+-- | Why a card in the hand can't be played; 'Nothing' if it can.
+statusMessage :: CardStatus -> Maybe Text
+statusMessage = \case
+  Round.Playable -> Nothing
+  Round.VariantNotChosen -> Just "The variant hasn't been chosen yet."
+  Round.NotYourTurn -> Just "It's not your turn."
+  Round.Forbidden v -> Just $ violationMessage v
+
 violationMessage :: Violation -> Text
 violationMessage = \case
   DoesNotFollow s -> "You must follow suit (" <> suitName s <> ")."
@@ -374,7 +382,10 @@ playerView view = div_ [class_ "container"] $ do
         cardButton
           ( [ hxWsSend_,
               hxVals_ $ PlayCard @n c False,
-              if status == Playable then mempty else disabled_ "true"
+              -- Unplayable cards say why on hover.
+              case statusMessage status of
+                Nothing -> mempty
+                Just reason -> disabled_ "true" <> makeAttributes "data-tooltip" reason
             ]
               <> [class_ "meld" | canSkipMeld, c `CardSet.member` meldCards]
           )
