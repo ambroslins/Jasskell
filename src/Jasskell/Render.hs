@@ -351,9 +351,16 @@ playerView view = div_ [class_ "container"] $ do
             -- While the Weis can be skipped, the own card isn't played yet:
             -- show them on top of the empty slot.
             Nothing
-              | i == 0 && canSkipMeld -> div_ [class_ "own-slot"] $ do
+              | i == 0 && canSkipMeld -> div_ [class_ "slot"] $ do
                   cardPlaceholder []
                   meldPanel ownMelds
+              -- The trick that was just collected stays on the table for a
+              -- moment, then fades out (CSS).
+              | Just cards <- shownTrick -> div_ [class_ "slot"] $ do
+                  cardPlaceholder []
+                  cardDiv
+                    [class_ $ if i == view.round.leader then "collected winning" else "collected"]
+                    (Vec.index cards i)
               | otherwise -> cardPlaceholder []
             Just c -> cardDiv [class_ "winning" | Just i == view.round.trickWinner] c
       when choosing $ variantChoice view
@@ -361,7 +368,8 @@ playerView view = div_ [class_ "container"] $ do
 
     -- The skip switch is included in every card's message. 'PlayCard' with
     -- 'False' leaves the field out of hx-vals, so it can't override it.
-    div_ [class_ "hand", hxIncludeInherited_ "#skip-meld"] $
+    -- While the last trick is still shown, the hand can't be clicked ("hold").
+    div_ [class_ $ if isJust shownTrick then "hand hold" else "hand", hxIncludeInherited_ "#skip-meld"] $
       Round.foldHand view.round.hand $ \c status ->
         cardButton
           ( [ hxWsSend_,
@@ -373,6 +381,10 @@ playerView view = div_ [class_ "container"] $ do
           c
   where
     choosing = isNothing view.round.variant && view.round.currentPlayer == 0
+    -- The previous trick, as long as nobody has played into the current one.
+    shownTrick
+      | Vec.all isNothing view.round.playedCards = view.round.lastTrick
+      | otherwise = Nothing
     -- Same condition as 'Round.skipMeld': first trick, own card not played.
     ownMelds = Vec.index view.round.melds 0
     canSkipMeld =

@@ -10,6 +10,8 @@
   --card-height: clamp(4rem, 15svh, clamp(7rem, 12vw, 10rem));
   --card-width: calc(var(--card-height) * 2 / 3);
   --status-badge-height: 2.25rem;
+  /* How long a finished trick stays on the table. */
+  --trick-hold: 2s;
 }
 
 /* ---- Cards ------------------------------------------------------------- */
@@ -338,9 +340,28 @@ svg.icon {
 /* Centered above the top card. */
 .seat:nth-child(3) .seat-tags { justify-items: center; }
 
+/* A finished trick stays on the table for --trick-hold, then fades out. */
+.card.collected {
+  pointer-events: none;
+  animation: collect .4s var(--trick-hold) forwards;
+}
+
+@keyframes collect { to { opacity: 0; } }
+@keyframes release { to { visibility: hidden; } }
+
 .hand {
+  position: relative;
   display: flex;
   justify-content: center;
+
+  /* Meanwhile an invisible cover keeps the winner from leading right away,
+     which would clear the table for everyone. */
+  &.hold::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    animation: release 0s var(--trick-hold) forwards;
+  }
 
   /* A small gap if there is room; otherwise neighbours overlap just as far as
      it takes to fit a full hand of nine. */
@@ -353,9 +374,10 @@ svg.icon {
 
 /* ---- Weis (melds) ------------------------------------------------------ */
 
-/* The own empty card slot with the Weis panel on top of it. The panel may be
-   wider than the slot; the bottom row's side cells are empty. */
-.own-slot {
+/* An empty card slot with something on top of it: the Weis panel or the card
+   of the trick that was just collected. The Weis panel may be wider than the
+   slot; the bottom row's side cells are empty. */
+.slot {
   display: grid;
   place-items: center;
 
@@ -537,6 +559,10 @@ svg.icon {
 
   &.info { border-color: var(--primary); }
   &.leaving { animation: toast-out .2s ease-in forwards; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast, .toast.leaving { animation: none; }
 }
 
 @keyframes toast-in { from { opacity: 0; transform: translateY(.75rem); } }
