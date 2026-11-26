@@ -2,9 +2,12 @@
 
 module Jasskell.Server (application) where
 
+import Control.Applicative ((<|>))
 import Control.Concurrent.Async qualified as Async
+import Control.Concurrent.STM (STM)
 import Control.Concurrent.STM qualified as STM
-import Control.Monad ((<=<))
+import Control.Exception (Exception, throwIO)
+import Control.Monad (forever, when, (<=<))
 import Data.Aeson (eitherDecode, (.=))
 import Data.Aeson qualified as Aeson
 import Data.ByteString (ByteString)
@@ -12,12 +15,17 @@ import Data.ByteString.Builder (Builder)
 import Data.ByteString.Builder qualified as Builder
 import Data.ByteString.Char8 qualified as BS
 import Data.ByteString.Lazy (LazyByteString)
+import Data.Function (fix)
 import Data.Functor ((<&>))
 import Data.Maybe (isJust)
 import Data.Text (Text)
+import Data.Text qualified as Text
+import GHC.TypeLits (KnownNat)
+import Jasskell.Clock (Clock, Duration, Timestamp, diff)
+import Jasskell.Clock qualified as Clock
 import Jasskell.Database qualified as DB
 import Jasskell.Form qualified as Form
-import Jasskell.Game (GameId, Manager, Message (..))
+import Jasskell.Game (Action, GameId, Manager, Message (..))
 import Jasskell.Game qualified as Game
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
@@ -30,18 +38,20 @@ import Network.HTTP.Types qualified as HTTP
 import Network.Wai qualified as Wai
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets qualified as WS
+import Network.WebSockets.Connection qualified as WS
+import Network.WebSockets.Connection.PingPong qualified as WS
 import System.Random qualified as Random
 import Web.Cookie (SetCookie, parseCookies, renderSetCookieBS)
 
-application :: Logger -> DB.Pool -> Manager -> Wai.Application
-application logger db mangaer =
-  websocketsOr WS.defaultConnectionOptions (websocketApp logger db mangaer)
+application :: Logger -> Clock -> DB.Pool -> Manager -> Wai.Application
+application logger clock db mangaer =
+  websocketsOr WS.defaultConnectionOptions (websocketApp logger clock db mangaer)
     . requestLogger logger
     . Static.handlers
     $ routes logger db
 
-websocketApp :: Logger -> DB.Pool -> Manager -> WS.ServerApp
-websocketApp logger db tm pending = handling handleReject $ \reject -> do
+websocketApp :: Logger -> Clock -> DB.Pool -> Manager -> WS.ServerApp
+websocketApp logger clock db tm pending = handling handleReject $ \reject -> do
   let request = WS.pendingRequest pending
   gameId <- case parseGameId (WS.requestPath request) of
     Nothing -> throw reject $ WS.defaultRejectRequest {WS.rejectCode = 404}
@@ -56,44 +66,13 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
         throw reject $ WS.defaultRejectRequest {WS.rejectCode = 401}
       Right s -> pure s
   result <- Game.join logger db player gameId tm $
-    \gameConn -> do
-      wsConn <- WS.acceptRequest pending
-      WS.withPingThread wsConn 30 (pure ()) $ do
-        logger.debug "accepted websocket request" []
-        let sendLoop = do
-              msg <- WS.receiveData @LazyByteString wsConn
-              case eitherDecode msg of
-                Left err -> logger.error "decode websocket message" ["error" =: err]
-                Right cmd -> do
-                  logger.debug "got command" ["message" =: show cmd]
-                  STM.atomically $ gameConn.send cmd
-              sendLoop
-            receiveLoop = do
-              msg <- STM.atomically gameConn.receive
-              logger.debug "got game message" ["message" =: show msg]
-              case msg of
-                GameClosed -> closeWith wsConn Render.closedView "closed"
-                Superseded -> closeWith wsConn Render.supersededView "superseded"
-                Rejected rejection -> do
-                  -- JSON without a "content" field is not swapped by hx-ws;
-                  -- toast.js picks it up instead.
-                  WS.sendTextData wsConn . Aeson.encode $
-                    Aeson.object
-                      [ "toast" .= Render.rejectionMessage rejection,
-                        "type" .= ("error" :: Text)
-                      ]
-                  receiveLoop
-                Tickle _ -> receiveLoop
-                UpdateWaiting view -> do
-                  sendBuilder wsConn $ Render.fragment $ Render.waitingView view
-                  receiveLoop
-                UpdatePlayer view -> do
-                  sendBuilder wsConn $ Render.fragment $ Render.playerView view
-                  receiveLoop
-                UpdateSpectator view -> do
-                  sendBuilder wsConn $ Render.fragment $ Render.spectatorView view
-                  receiveLoop
-        Async.race_ sendLoop receiveLoop
+    \sendAction receiveMsg -> do
+      conn <- WS.acceptRequest pending
+      lastPong <- Clock.now clock >>= STM.newTVarIO
+      let options = WS.connectionOptions conn
+          onPong = Clock.now clock >>= STM.atomically . STM.writeTVar lastPong
+          connection = conn {WS.connectionOptions = options {WS.connectionOnPong = onPong}}
+      runWebSocketConnection logger connection lastPong sendAction receiveMsg
   maybe (throw reject $ WS.defaultRejectRequest {WS.rejectCode = 404}) pure result
   where
     handleReject rr = do
@@ -105,13 +84,69 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
     parseSessionCookie headers = do
       cookies <- lookup HTTP.hCookie headers
       lookup Player.sessionCookieName $ parseCookies cookies
-    sendBuilder c = WS.sendTextData c . Builder.toLazyByteString
+
+data ReceiverExited = ReceiverExited
+  deriving (Eq, Show)
+
+instance Exception ReceiverExited
+
+pingInterval, pongTimeout :: Duration
+pingInterval = Clock.seconds 20
+pongTimeout = Clock.seconds 60
+
+runWebSocketConnection ::
+  (KnownNat n) =>
+  Logger ->
+  WS.Connection ->
+  STM.TVar Timestamp ->
+  (Action n -> STM ()) ->
+  STM (Message n) ->
+  IO ()
+runWebSocketConnection logger connection lastPong sendAction receiveMsg = do
+  Async.withAsync receiver $ \receiverThread -> fix $ \loop -> do
+    let waitReceiver = Async.waitSTM receiverThread >> STM.throwSTM ReceiverExited
+    msg <- STM.atomically $ waitReceiver <|> receiveMsg
+    case msg of
+      GameClosed -> closeWith Render.closedView "closed"
+      Superseded -> closeWith Render.supersededView "superseded"
+      Rejected rejection -> do
+        -- JSON without a "content" field is not swapped by hx-ws;
+        -- toast.js picks it up instead.
+        WS.sendTextData connection $
+          Aeson.encode $
+            Aeson.object
+              [ "toast" .= Render.rejectionMessage rejection,
+                "type" .= ("error" :: Text)
+              ]
+        loop
+      Tickle tick -> do
+        pong <- STM.readTVarIO lastPong
+        let d = tick `diff` pong
+        when (d > pongTimeout) $ throwIO WS.PongTimeout
+        when (d > pingInterval) $ WS.sendPing connection (Text.show tick)
+        loop
+      UpdateWaiting view -> do
+        sendBuilder $ Render.fragment $ Render.waitingView view
+        loop
+      UpdatePlayer view -> do
+        sendBuilder $ Render.fragment $ Render.playerView view
+        loop
+      UpdateSpectator view -> do
+        sendBuilder $ Render.fragment $ Render.spectatorView view
+        loop
+  where
+    receiver = forever $ do
+      msg <- WS.receiveData @LazyByteString connection
+      case eitherDecode msg of
+        Left err -> logger.error "decode websocket message" ["error" =: err]
+        Right action -> STM.atomically $ sendAction action
+    sendBuilder = WS.sendTextData connection . Builder.toLazyByteString
     -- Render a final message and send a normal close frame (code 1000).
     -- Without it the client sees an abnormal close (1006) and hx-ws
     -- reconnects, which would e.g. let two tabs supersede each other forever.
-    closeWith c view reason = do
-      sendBuilder c $ Render.fragment view
-      WS.sendClose c (reason :: Text)
+    closeWith view reason = do
+      sendBuilder $ Render.fragment view
+      WS.sendClose connection (reason :: Text)
 
 routes :: Logger -> DB.Pool -> Wai.Application
 routes logger db request respond =

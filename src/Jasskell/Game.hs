@@ -10,7 +10,6 @@ module Jasskell.Game
     GameInfo (..),
     getGameInfo,
     join,
-    Connection (..),
     Message (..),
     Rejection (..),
     Action (..),
@@ -116,11 +115,6 @@ data ClientState n
   = Connected (STM.TMVar (Message n))
   | Disconnected Timestamp
   deriving (Eq)
-
-data Connection n = Connection
-  { receive :: STM (Message n),
-    send :: Action n -> STM ()
-  }
 
 data Event n
   = PlayerJoined PlayerId
@@ -276,7 +270,7 @@ join ::
   Player ->
   GameId ->
   Manager ->
-  (forall n. (KnownNat n) => Connection n -> IO a) ->
+  (forall n. (KnownNat n) => (Action n -> STM ()) -> STM (Message n) -> IO a) ->
   IO (Maybe a)
 join logger db player gameId manager handler = handling pure $ \notFound -> do
   games <- readMVar manager.games
@@ -292,15 +286,12 @@ join logger db player gameId manager handler = handling pure $ \notFound -> do
     Just t -> pure t
   messageBox <- STM.newEmptyTMVarIO
   let client = Client {player, state = Connected messageBox}
-      connection =
-        Connection
-          { receive = do
-              closed <- STM.readTVar game.closed
-              if closed
-                then pure GameClosed
-                else STM.takeTMVar messageBox,
-            send = STM.writeTBQueue game.eventQueue . PlayerAction player.id
-          }
+      send = STM.writeTBQueue game.eventQueue . PlayerAction player.id
+      receive = do
+        closed <- STM.readTVar game.closed
+        if closed
+          then pure GameClosed
+          else STM.takeTMVar messageBox
       acquire = STM.atomically $ do
         clients <- STM.readTVar game.clients
         case IntMap.lookup player.id clients of
@@ -317,7 +308,7 @@ join logger db player gameId manager handler = handling pure $ \notFound -> do
               (\c -> if c == client then client {state = disconnected} else c)
               player.id
           STM.writeTBQueue game.eventQueue $ PlayerLeft player.id
-  bracket acquire release $ \() -> Just <$> handler connection
+  bracket acquire release $ \() -> Just <$> handler send receive
 
 spawnGame :: forall n. (KnownNat n) => Logger -> DB.Pool -> GameId -> Phase n -> Manager -> IO (Game n)
 spawnGame l db gameId phase manager = do
@@ -491,7 +482,7 @@ tickInterval :: Duration
 tickInterval = seconds 5
 
 gameLoop :: (KnownNat n) => Logger -> DB.Pool -> Game n -> Phase n -> IO ()
-gameLoop logger db game initial = undefined tickInterval Tick >>= go initial
+gameLoop logger db game initial = Clock.delayed game.clock tickInterval Tick >>= go initial
   where
     go !phase tick = do
       event <- STM.atomically $ tick <|> STM.readTBQueue game.eventQueue
