@@ -71,6 +71,7 @@ library
     Jasskell.Card.Internal
     Jasskell.Card.Seq
     Jasskell.Card.Set
+    Jasskell.Clock
     Jasskell.Database
     Jasskell.Database.Migration
     Jasskell.Dealer

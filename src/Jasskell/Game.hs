@@ -17,22 +17,24 @@ module Jasskell.Game
   )
 where
 
+import Control.Applicative ((<|>))
 import Control.Concurrent (forkIOWithUnmask)
 import Control.Concurrent.MVar (MVar, modifyMVarMasked, modifyMVar_, newMVar, readMVar)
 import Control.Concurrent.STM (STM)
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (SomeException (..), bracket, evaluate, try)
 import Control.Monad (foldM, forM_, unless, when)
-import Data.BitSet (BitSet)
-import Data.BitSet qualified as BitSet
-import Data.Bits qualified as Bits
 import Data.Aeson (FromJSON (..), ToJSON (..), (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Types qualified as Aeson.Types
-import Data.Bifunctor (bimap, first)
+import Data.Bifunctor (first)
+import Data.BitSet (BitSet)
+import Data.BitSet qualified as BitSet
+import Data.Bits qualified as Bits
 import Data.Data (Proxy (..))
 import Data.Fin (Fin)
 import Data.Fin qualified as Fin
+import Data.Functor (($>))
 import Data.Int (Int16, Int32, Int64)
 import Data.IntMap.Coercible (IntMap)
 import Data.IntMap.Coercible qualified as IntMap
@@ -40,7 +42,6 @@ import Data.Maybe (isJust, isNothing)
 import Data.Profunctor (dimap, lmap)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Time (UTCTime, getCurrentTime)
 import Data.Type.Equality (type (:~:) (Refl))
 import Data.Vec (Vec)
 import Data.Vec qualified as Vec
@@ -51,17 +52,19 @@ import GHC.Generics (Generic)
 import GHC.TypeLits (KnownNat, sameNat)
 import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
-import Hasql.Transaction qualified as Transaction
 import Hasql.TH
   ( maybeStatement,
     resultlessStatement,
     rowsAffectedStatement,
     vectorStatement,
   )
+import Hasql.Transaction qualified as Transaction
 import Jasskell.Card (Card)
 import Jasskell.Card qualified as Card
 import Jasskell.Card.Set (CardSet)
 import Jasskell.Card.Set qualified as CardSet
+import Jasskell.Clock (Clock, Duration, Timestamp, seconds)
+import Jasskell.Clock qualified as Clock
 import Jasskell.Database qualified as DB
 import Jasskell.Dealer qualified as Dealer
 import Jasskell.Id (Id (..))
@@ -81,21 +84,24 @@ type GameId = Id Game
 
 data Some f = forall n. (KnownNat n) => Some (f n)
 
-newtype Manager = Manager
-  { games :: MVar (IntMap GameId (Some Game))
+data Manager = Manager
+  { games :: MVar (IntMap GameId (Some Game)),
+    clock :: Clock
   }
 
 data Game n = Game
   { id :: GameId,
     ioGen :: Random.IOGenM Random.StdGen,
+    clock :: Clock,
     eventQueue :: STM.TBQueue (Event n),
     clients :: STM.TVar (IntMap PlayerId (Client n)),
     closed :: STM.TVar Bool
   }
 
-withManager :: (Manager -> IO a) -> IO a
-withManager f = do
-  tm <- Manager <$> newMVar IntMap.empty
+withManager :: Clock -> (Manager -> IO a) -> IO a
+withManager clock f = do
+  games <- newMVar IntMap.empty
+  let tm = Manager {games, clock}
   -- TODO: reaper thread
   -- TODO: stop all games on cleanup
   f tm
@@ -108,7 +114,7 @@ data Client n = Client
 
 data ClientState n
   = Connected (STM.TMVar (Message n))
-  | Disconnected UTCTime
+  | Disconnected Timestamp
   deriving (Eq)
 
 data Connection n = Connection
@@ -120,6 +126,7 @@ data Event n
   = PlayerJoined PlayerId
   | PlayerLeft PlayerId
   | PlayerAction PlayerId (Action n)
+  | Tick
   deriving (Eq, Show)
 
 data Action n
@@ -139,6 +146,7 @@ data Message n
   | UpdatePlayer (View.Playing n)
   | UpdateSpectator (View.Spectating n)
   | Rejected (Rejection n)
+  | Tickle Timestamp
   | Superseded
   | GameClosed
   deriving (Show)
@@ -302,7 +310,7 @@ join logger db player gameId manager handler = handling pure $ \notFound -> do
           IntMap.insert player.id client clients
         STM.writeTBQueue game.eventQueue $ PlayerJoined player.id
       release _ = do
-        disconnected <- Disconnected <$> getCurrentTime
+        disconnected <- Disconnected <$> Clock.now game.clock
         STM.atomically $ do
           STM.modifyTVar' game.clients $
             IntMap.adjust
@@ -323,7 +331,7 @@ spawnGame l db gameId phase manager = do
       Nothing -> do
         closed <- STM.newTVarIO False
         ioGen <- Random.newStdGen >>= Random.newIOGenM
-        let !game = Game {id = gameId, ioGen, eventQueue, clients, closed} :: Game n
+        let !game = Game {id = gameId, ioGen, clock = manager.clock, eventQueue, clients, closed}
         _threadId <- forkIOWithUnmask $ \unmask -> do
           result <- try $ unmask $ do
             logger.debug "game started" []
@@ -479,43 +487,50 @@ selectStoredGame =
         _ -> Left "incomplete round row"
       pure StoredGame {gameId = Id.fromInt64 gameId, seats, score, round}
 
+tickInterval :: Duration
+tickInterval = seconds 5
+
 gameLoop :: (KnownNat n) => Logger -> DB.Pool -> Game n -> Phase n -> IO ()
-gameLoop logger db game = go
+gameLoop logger db game initial = undefined tickInterval Tick >>= go initial
   where
-    go phase = do
-      event <- STM.atomically $ STM.readTBQueue game.eventQueue
+    go !phase tick = do
+      event <- STM.atomically $ tick <|> STM.readTBQueue game.eventQueue
       logger.debug "got game event" ["event" =: show event]
       clients <- STM.readTVarIO game.clients
       case event of
         PlayerJoined playerId -> do
-          case IntMap.lookup playerId clients of
-            Just Client {state = Connected box} ->
-              STM.atomically $ STM.writeTMVar box $ render phase playerId
-            _ -> pure ()
-          go phase
-        PlayerLeft _ -> go phase
-        PlayerAction playerId action ->
-          go =<< case IntMap.lookup playerId clients of
+          forM_ (IntMap.lookup playerId clients) $
+            \client -> clientSend client $ render phase client.player.id
+          go phase tick
+        PlayerLeft _ -> go phase tick
+        PlayerAction playerId action -> do
+          nextPhase <- case IntMap.lookup playerId clients of
             Nothing -> pure phase
-            Just Client {player, state = clientState} ->
-              applyAction db game phase player action >>= \case
-                Left rejection -> case clientState of
-                  Disconnected _ -> pure phase
-                  Connected box -> do
-                    STM.atomically $ STM.writeTMVar box $ Rejected rejection
-                    pure phase
-                Right p -> do
-                  let renderClient = render p
-                  forM_ clients $ \client -> case client.state of
-                    Disconnected _ -> pure ()
-                    Connected box -> STM.atomically $ STM.writeTMVar box $ renderClient client.player.id
-                  pure p
+            Just client ->
+              applyAction db game phase client.player action >>= \case
+                Left rejection -> clientSend client (Rejected rejection) $> phase
+                Right p -> broadcast clients (render p) $> p
+          go nextPhase tick
+        Tick -> do
+          ts <- Clock.now game.clock
+          broadcast clients $ const $ Tickle ts
+          next <- Clock.delayed game.clock tickInterval Tick
+          go phase next
     render = \case
       Waiting seats -> UpdateWaiting . View.makeWaiting seats
       Playing state -> \playerId ->
         case Vec.findIndex (\p -> p.id == playerId) state.players of
           Nothing -> UpdateSpectator $ View.makeSpectating state.players
           Just i -> UpdatePlayer $ View.makePlaying state.players state.score state.round i
+
+clientSend :: Client n -> Message n -> IO ()
+clientSend client msg = case client.state of
+  Disconnected _ -> pure ()
+  Connected box -> STM.atomically $ STM.writeTMVar box msg
+
+broadcast :: IntMap PlayerId (Client n) -> (PlayerId -> Message n) -> IO ()
+broadcast clients makeMsg =
+  forM_ clients $ \client -> clientSend client (makeMsg client.player.id)
 
 applyAction :: (KnownNat n) => DB.Pool -> Game n -> Phase n -> Player -> Action n -> IO (Either (Rejection n) (Phase n))
 applyAction db game phase player action = trying $ \reject -> case action of
@@ -585,19 +600,14 @@ applyAction db game phase player action = trying $ \reject -> case action of
         Right round -> do
           let cardParams = (game.id, gs.roundNumber, gs.cardSeqNumber, card)
               result = Round.close round
-          if
-            -- The common case: just the card.
-            | not skip && isNothing result ->
-                DB.statement db insertPlayedCard cardParams
-            -- The card also skips the player's Weis (only possible with their
-            -- first card) or ends the round: store everything together, so a
-            -- restored round is consistent.
-            | otherwise -> DB.transaction db $ do
-                Transaction.statement cardParams insertPlayedCard
-                when skip $
-                  Transaction.statement (game.id, gs.roundNumber, seat) insertSkippedMeld
-                forM_ result $ \r ->
-                  Transaction.statement (game.id, gs.roundNumber, Round.total r) setRoundPoints
+          if not skip && isNothing result
+            then DB.statement db insertPlayedCard cardParams
+            else DB.transaction db $ do
+              Transaction.statement cardParams insertPlayedCard
+              when skip $
+                Transaction.statement (game.id, gs.roundNumber, seat) insertSkippedMeld
+              forM_ result $ \r ->
+                Transaction.statement (game.id, gs.roundNumber, Round.total r) setRoundPoints
           pure $ Playing $ gs {round = round, cardSeqNumber = gs.cardSeqNumber + 1}
   NextRound -> case phase of
     Waiting _ -> throw reject GameNotStarted

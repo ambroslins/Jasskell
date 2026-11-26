@@ -83,6 +83,7 @@ websocketApp logger db tm pending = handling handleReject $ \reject -> do
                         "type" .= ("error" :: Text)
                       ]
                   receiveLoop
+                Tickle _ -> receiveLoop
                 UpdateWaiting view -> do
                   sendBuilder wsConn $ Render.fragment $ Render.waitingView view
                   receiveLoop
