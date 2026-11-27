@@ -31,8 +31,9 @@ import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8Lenient)
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Format.ISO8601 (iso8601Show)
-import GHC.Clock (getMonotonicTimeNSec)
 import GHC.Records (HasField (..))
+import Jasskell.Clock (Clock)
+import Jasskell.Clock qualified as Clock
 import Network.HTTP.Types (Status (..), hContentLength)
 import Network.Wai qualified as Wai
 import System.Log.FastLogger
@@ -103,12 +104,12 @@ withStderrLogger minLevel action =
         threadId <- myThreadId
         logger $ fmtMessage time level threadId msg pairs
 
-requestLogger :: Logger -> Wai.Middleware
-requestLogger (Logger logger) app req respond = do
-  start <- getMonotonicTimeNSec
+requestLogger :: Clock -> Logger -> Wai.Middleware
+requestLogger clock (Logger logger) app req respond = do
+  start <- Clock.now clock
   let logResponse result = do
-        end <- getMonotonicTimeNSec
-        let !durationMs = fromIntegral (end - start) * 1e-6 :: Double
+        end <- Clock.now clock
+        let !duration = end `Clock.diff` start
             (!status, !size, rest) = case result of
               Left (ExceptionWithContext ctx (SomeException e)) ->
                 (500, Nothing, ["exception" =: show e, "context" =: showContext ctx])
@@ -129,7 +130,7 @@ requestLogger (Logger logger) app req respond = do
             : "query" =: decodeUtf8Lenient (Wai.rawQueryString req)
             : "status" =: status
             : "size" =: size
-            : "duration_ms" =: durationMs
+            : "duration" =: duration
             : rest
 
       respondWithLog response = do

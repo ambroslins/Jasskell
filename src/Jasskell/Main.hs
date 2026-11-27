@@ -36,6 +36,6 @@ main = do
   let clock = Clock.monotonic
   withStderrLogger Debug $ \logger ->
     DB.withPool config.database $ \db -> do
-      runMigrations logger db
+      runMigrations clock logger db
       Game.withManager clock $ \mangager ->
         Warp.run config.port $ Server.application logger clock db mangager

@@ -2,12 +2,10 @@
 
 module Jasskell.Database.Migration (runMigrations) where
 
-import Control.Monad (forM_)
-import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad (forM_, unless)
 import Data.ByteString (ByteString)
 import Data.Int (Int64)
 import Data.Text (Text)
-import GHC.Clock (getMonotonicTimeNSec)
 import GHC.Stack (HasCallStack)
 import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
@@ -18,6 +16,8 @@ import Hasql.Transaction.Sessions
     Mode (Write),
     transactionNoRetry,
   )
+import Jasskell.Clock (Clock)
+import Jasskell.Clock qualified as Clock
 import Jasskell.Database qualified as DB
 import Jasskell.Logger
 
@@ -26,23 +26,18 @@ data Migration = Migration
     sql :: !ByteString
   }
 
-runMigrations :: (HasCallStack) => Logger -> DB.Pool -> IO ()
-runMigrations logger pool = do
+runMigrations :: (HasCallStack) => Clock -> Logger -> DB.Pool -> IO ()
+runMigrations clock logger pool = do
   DB.use pool createSchemaMigrationsTable
   forM_ (zip [1 ..] migrations) $ \(s, m) -> do
-    start <- liftIO getMonotonicTimeNSec
-    applied <- DB.use pool $ transactionNoRetry ReadCommitted Write $ do
+    (duration, applied) <- Clock.timed clock $ DB.use pool $ transactionNoRetry ReadCommitted Write $ do
       Transaction.sql "select pg_advisory_xact_lock(5432)"
       already <- Transaction.statement s isAlreadyApplied
-      if already
-        then pure False
-        else do
-          Transaction.sql m.sql
-          Transaction.statement (s, m.name) insertMigration
-          pure True
-    end <- liftIO getMonotonicTimeNSec
-    let !durationMs = fromIntegral (end - start) * 1e-6 :: Double
-        info = ["seq" =: s, "name" =: m.name, "duration_ms" =: durationMs]
+      unless already $ do
+        Transaction.sql m.sql
+        Transaction.statement (s, m.name) insertMigration
+      pure $ not already
+    let info = ["seq" =: s, "name" =: m.name, "duration" =: duration]
     if applied
       then logger.info "migration applied" info
       else logger.debug "skipping migration: already applied" info

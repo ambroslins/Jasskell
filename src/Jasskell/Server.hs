@@ -47,7 +47,7 @@ import Web.Cookie (SetCookie, parseCookies, renderSetCookieBS)
 application :: Logger -> Clock -> DB.Pool -> Manager -> Wai.Application
 application logger clock db mangaer =
   websocketsOr WS.defaultConnectionOptions (websocketApp logger clock db mangaer)
-    . requestLogger logger
+    . requestLogger clock logger
     . Static.handlers
     $ routes logger db
 
@@ -136,7 +136,7 @@ runWebSocketConnection logger clock connection sendAction receiveMsg = do
             pong <- STM.readTVarIO lastPong
             let d = tick `diff` pong
             if d > pongTimeout
-              then logger.info "websocket pong timeout" ["since" =: show d]
+              then logger.info "websocket pong timeout" ["since" =: d]
               else do
                 when (d > pingInterval) $ WS.sendPing conn (Text.show tick)
                 loop
