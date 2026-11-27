@@ -16,6 +16,7 @@ module Jasskell.Id
 where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Aeson (ToJSON)
 import Data.Binary.Get qualified as Get
 import Data.Binary.Put qualified as Put
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
@@ -31,7 +32,7 @@ import Data.Word (Word64)
 import System.Random.Stateful qualified as Random
 
 newtype Id a = Id Int
-  deriving newtype (Eq, Show)
+  deriving newtype (Eq, Show, ToJSON)
 
 toInt :: Id a -> Int
 toInt (Id i) = i

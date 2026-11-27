@@ -6,7 +6,7 @@ import Control.Applicative ((<|>))
 import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.STM (STM)
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (Exception, throwIO)
+import Control.Exception (Exception (toException), catch, fromException)
 import Control.Monad (forever, when, (<=<))
 import Data.Aeson (eitherDecode, (.=))
 import Data.Aeson qualified as Aeson
@@ -20,8 +20,9 @@ import Data.Functor ((<&>))
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Text.Encoding (decodeUtf8Lenient)
 import GHC.TypeLits (KnownNat)
-import Jasskell.Clock (Clock, Duration, Timestamp, diff)
+import Jasskell.Clock (Clock, Duration, diff)
 import Jasskell.Clock qualified as Clock
 import Jasskell.Database qualified as DB
 import Jasskell.Form qualified as Form
@@ -29,6 +30,7 @@ import Jasskell.Game (Action, GameId, Manager, Message (..))
 import Jasskell.Game qualified as Game
 import Jasskell.Id qualified as Id
 import Jasskell.Logger
+import Jasskell.Logger qualified as Logger
 import Jasskell.Player (Player (id))
 import Jasskell.Player qualified as Player
 import Jasskell.Render qualified as Render
@@ -39,7 +41,6 @@ import Network.Wai qualified as Wai
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets qualified as WS
 import Network.WebSockets.Connection qualified as WS
-import Network.WebSockets.Connection.PingPong qualified as WS
 import System.Random qualified as Random
 import Web.Cookie (SetCookie, parseCookies, renderSetCookieBS)
 
@@ -67,16 +68,14 @@ websocketApp logger clock db tm pending = handling handleReject $ \reject -> do
       Right s -> pure s
   result <- Game.join logger db player gameId tm $
     \sendAction receiveMsg -> do
-      conn <- WS.acceptRequest pending
-      lastPong <- Clock.now clock >>= STM.newTVarIO
-      let options = WS.connectionOptions conn
-          onPong = Clock.now clock >>= STM.atomically . STM.writeTVar lastPong
-          connection = conn {WS.connectionOptions = options {WS.connectionOnPong = onPong}}
-      runWebSocketConnection logger connection lastPong sendAction receiveMsg
+      connection <- WS.acceptRequest pending
+      let l = Logger.withContext logger ["game_id" =: gameId, "player_id" =: player.id]
+      l.debug "websocket connection accepted" []
+      runWebSocketConnection l clock connection sendAction receiveMsg
   maybe (throw reject $ WS.defaultRejectRequest {WS.rejectCode = 404}) pure result
   where
     handleReject rr = do
-      logger.error "reject websocket request" ["code" =: WS.rejectCode rr]
+      logger.info "reject websocket request" ["code" =: WS.rejectCode rr]
       WS.rejectRequestWith pending rr
     parseGameId path = do
       t <- BS.stripPrefix "/games/" path
@@ -85,68 +84,96 @@ websocketApp logger clock db tm pending = handling handleReject $ \reject -> do
       cookies <- lookup HTTP.hCookie headers
       lookup Player.sessionCookieName $ parseCookies cookies
 
-data ReceiverExited = ReceiverExited
-  deriving (Eq, Show)
-
-instance Exception ReceiverExited
-
-pingInterval, pongTimeout :: Duration
+pingInterval, pongTimeout, closeTimeout :: Duration
 pingInterval = Clock.seconds 20
 pongTimeout = Clock.seconds 60
+closeTimeout = Clock.seconds 5
 
 runWebSocketConnection ::
   (KnownNat n) =>
   Logger ->
+  Clock ->
   WS.Connection ->
-  STM.TVar Timestamp ->
   (Action n -> STM ()) ->
   STM (Message n) ->
   IO ()
-runWebSocketConnection logger connection lastPong sendAction receiveMsg = do
-  Async.withAsync receiver $ \receiverThread -> fix $ \loop -> do
-    let waitReceiver = Async.waitSTM receiverThread >> STM.throwSTM ReceiverExited
-    msg <- STM.atomically $ waitReceiver <|> receiveMsg
-    case msg of
-      GameClosed -> closeWith Render.closedView "closed"
-      Superseded -> closeWith Render.supersededView "superseded"
-      Rejected rejection -> do
-        -- JSON without a "content" field is not swapped by hx-ws;
-        -- toast.js picks it up instead.
-        WS.sendTextData connection $
-          Aeson.encode $
-            Aeson.object
-              [ "toast" .= Render.rejectionMessage rejection,
-                "type" .= ("error" :: Text)
-              ]
-        loop
-      Tickle tick -> do
-        pong <- STM.readTVarIO lastPong
-        let d = tick `diff` pong
-        when (d > pongTimeout) $ throwIO WS.PongTimeout
-        when (d > pingInterval) $ WS.sendPing connection (Text.show tick)
-        loop
-      UpdateWaiting view -> do
-        sendBuilder $ Render.fragment $ Render.waitingView view
-        loop
-      UpdatePlayer view -> do
-        sendBuilder $ Render.fragment $ Render.playerView view
-        loop
-      UpdateSpectator view -> do
-        sendBuilder $ Render.fragment $ Render.spectatorView view
-        loop
+runWebSocketConnection logger clock connection sendAction receiveMsg = do
+  lastPong <- Clock.now clock >>= STM.newTVarIO
+  let options = WS.connectionOptions connection
+      onPong = do
+        ts <- Clock.now clock
+        STM.atomically $ STM.writeTVar lastPong ts
+        WS.connectionOnPong options
+      conn = connection {WS.connectionOptions = options {WS.connectionOnPong = onPong}}
+  Async.withAsync (receiver conn) (sender conn lastPong)
+    `catch` \(ce :: WS.ConnectionException) ->
+      logWebSocketConnectionException "sender" (toException ce)
   where
-    receiver = forever $ do
-      msg <- WS.receiveData @LazyByteString connection
+    receiver conn = forever $ do
+      msg <- WS.receiveData @LazyByteString conn
       case eitherDecode msg of
-        Left err -> logger.error "decode websocket message" ["error" =: err]
+        Left err -> logger.warning "decode websocket message" ["error" =: err]
         Right action -> STM.atomically $ sendAction action
-    sendBuilder = WS.sendTextData connection . Builder.toLazyByteString
+    sender conn lastPong receiverThread = fix $ \loop -> do
+      result <- STM.atomically $ Left <$> Async.waitCatchSTM receiverThread <|> Right <$> receiveMsg
+      case result of
+        Left (Left e) -> logWebSocketConnectionException "receiver" e
+        Left (Right ()) -> logger.warning "websocket receiver exited" []
+        Right msg -> case msg of
+          GameClosed -> closeWith conn receiverThread Render.closedView "closed"
+          Superseded -> closeWith conn receiverThread Render.supersededView "superseded"
+          Rejected rejection -> do
+            -- JSON without a "content" field is not swapped by hx-ws;
+            -- toast.js picks it up instead.
+            WS.sendTextData conn $
+              Aeson.encode $
+                Aeson.object
+                  [ "toast" .= Render.rejectionMessage rejection,
+                    "type" .= ("error" :: Text)
+                  ]
+            loop
+          Tickle tick -> do
+            pong <- STM.readTVarIO lastPong
+            let d = tick `diff` pong
+            if d > pongTimeout
+              then logger.info "websocket pong timeout" ["since" =: show d]
+              else do
+                when (d > pingInterval) $ WS.sendPing conn (Text.show tick)
+                loop
+          UpdateWaiting view -> do
+            sendFragment conn $ Render.waitingView view
+            loop
+          UpdatePlayer view -> do
+            sendFragment conn $ Render.playerView view
+            loop
+          UpdateSpectator view -> do
+            sendFragment conn $ Render.spectatorView view
+            loop
+    sendFragment conn = WS.sendTextData conn . Builder.toLazyByteString . Render.fragment
     -- Render a final message and send a normal close frame (code 1000).
     -- Without it the client sees an abnormal close (1006) and hx-ws
     -- reconnects, which would e.g. let two tabs supersede each other forever.
-    closeWith view reason = do
-      sendBuilder $ Render.fragment view
-      WS.sendClose connection (reason :: Text)
+    closeWith conn receiverThread view reason = do
+      sendFragment conn view
+      -- After sending the close the receiverThread should receive a CloseRequest exception,
+      -- only then is the connection considered closed.
+      WS.sendClose conn (reason :: ByteString)
+      deadline <- Clock.delayed clock closeTimeout $ Right ()
+      result <- STM.atomically $ Async.waitCatchSTM receiverThread <|> deadline
+      case result of
+        Left e -> logWebSocketConnectionException "receiver" e
+        Right () -> logger.warning "websocket receiver timed out after close" ["reason" =: decodeUtf8Lenient reason]
+    logWebSocketConnectionException who = \e -> case fromException e of
+      Just (WS.CloseRequest code reason) ->
+        l.debug "websocket connection closed" ["code" =: code, "reason" =: decodeUtf8Lenient (BS.toStrict reason)]
+      Just WS.ConnectionClosed ->
+        l.info "websocket connection dropped" []
+      Just ce ->
+        l.warning "websocket protocol error" ["error" =: show ce]
+      Nothing ->
+        l.error "websocket connection crashed" ["exception" =: show e]
+      where
+        l = Logger.withContext logger ["who" =: (who :: Text)]
 
 routes :: Logger -> DB.Pool -> Wai.Application
 routes logger db request respond =
