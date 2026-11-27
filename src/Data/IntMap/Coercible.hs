@@ -1,6 +1,7 @@
 module Data.IntMap.Coercible
   ( IntMap,
     empty,
+    null,
     singleton,
     insert,
     lookup,
@@ -9,6 +10,7 @@ module Data.IntMap.Coercible
     update,
     alter,
     alterF,
+    filter,
     fromList,
     toList,
     keys,
@@ -19,7 +21,7 @@ where
 import Control.Monad (void)
 import Data.Coerce (Coercible, coerce)
 import Data.IntMap.Strict qualified as Impl
-import Prelude hiding (lookup)
+import Prelude hiding (filter, lookup, null)
 
 newtype IntMap k v = IntMap (Impl.IntMap v)
   deriving newtype (Eq, Show, Ord, Functor, Foldable)
@@ -28,6 +30,9 @@ deriving instance Traversable (IntMap k)
 
 empty :: IntMap k v
 empty = IntMap Impl.empty
+
+null :: IntMap k v -> Bool
+null (IntMap m) = Impl.null m
 
 singleton :: (Coercible Int k) => k -> v -> IntMap k v
 singleton k v = IntMap $ Impl.singleton (coerce k) v
@@ -52,6 +57,9 @@ alter f k (IntMap m) = IntMap $ Impl.alter f (coerce k) m
 
 alterF :: (Functor f, Coercible Int k) => (Maybe v -> f (Maybe v)) -> k -> IntMap k v -> f (IntMap k v)
 alterF f k (IntMap m) = IntMap <$> Impl.alterF f (coerce k) m
+
+filter :: (a -> Bool) -> IntMap k a -> IntMap k a
+filter p (IntMap m) = IntMap $ Impl.filter p m
 
 fromList :: (Coercible Int k) => [(k, v)] -> IntMap k v
 fromList = IntMap . Impl.fromList . coerce

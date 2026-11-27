@@ -326,7 +326,7 @@ spawnGame l db gameId phase manager = do
         _threadId <- forkIOWithUnmask $ \unmask -> do
           result <- try $ unmask $ do
             logger.debug "game started" []
-            gameLoop logger db game phase
+            gameLoop db game phase
           modifyMVar_ manager.games (evaluate . IntMap.delete gameId)
           STM.atomically $ STM.writeTVar closed True
           unmask $ case result of
@@ -478,15 +478,15 @@ selectStoredGame =
         _ -> Left "incomplete round row"
       pure StoredGame {gameId = Id.fromInt64 gameId, seats, score, round}
 
-tickInterval :: Duration
+tickInterval, clientTimeout :: Duration
 tickInterval = seconds 5
+clientTimeout = seconds 30
 
-gameLoop :: (KnownNat n) => Logger -> DB.Pool -> Game n -> Phase n -> IO ()
-gameLoop logger db game initial = Clock.delayed game.clock tickInterval Tick >>= go initial
+gameLoop :: (KnownNat n) => DB.Pool -> Game n -> Phase n -> IO ()
+gameLoop db game initial = Clock.delayed game.clock tickInterval Tick >>= go initial
   where
     go !phase tick = do
       event <- STM.atomically $ tick <|> STM.readTBQueue game.eventQueue
-      logger.debug "got game event" ["event" =: show event]
       clients <- STM.readTVarIO game.clients
       case event of
         PlayerJoined playerId -> do
@@ -504,9 +504,21 @@ gameLoop logger db game initial = Clock.delayed game.clock tickInterval Tick >>=
           go nextPhase tick
         Tick -> do
           ts <- Clock.now game.clock
-          broadcast clients $ const $ Tickle ts
-          next <- Clock.delayed game.clock tickInterval Tick
-          go phase next
+          let isActive c = case c.state of
+                Disconnected lastSeen -> (ts `Clock.diff` lastSeen) < clientTimeout
+                _ -> True
+          activeClients <-
+            if all isActive clients
+              then pure clients
+              else STM.atomically $ do
+                cs <- STM.readTVar game.clients
+                let active = IntMap.filter isActive cs
+                STM.writeTVar game.clients active
+                pure active
+          unless (IntMap.null activeClients) $ do
+            broadcast activeClients $ const $ Tickle ts
+            next <- Clock.delayed game.clock tickInterval Tick
+            go phase next
     render = \case
       Waiting seats -> UpdateWaiting . View.makeWaiting seats
       Playing state -> \playerId ->
