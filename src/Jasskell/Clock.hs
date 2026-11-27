@@ -4,7 +4,7 @@ module Jasskell.Clock
   ( Clock,
     now,
     delayed,
-    systemClock,
+    monotonic,
     Timestamp,
     Duration,
     diff,
@@ -29,8 +29,8 @@ data Clock = Clock
     delayed :: forall a. Duration -> a -> IO (STM a)
   }
 
-systemClock :: Clock
-systemClock =
+monotonic :: Clock
+monotonic =
   Clock
     { now = Timestamp . fromIntegral <$> getMonotonicTimeNSec,
       delayed = \(Duration d) x -> do

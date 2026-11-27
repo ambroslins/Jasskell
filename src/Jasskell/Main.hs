@@ -33,7 +33,7 @@ configParser =
 main :: IO ()
 main = do
   config <- Envparse.parse (Envparse.header "jasskell 0.1.0") configParser
-  let clock = Clock.systemClock
+  let clock = Clock.monotonic
   withStderrLogger Debug $ \logger ->
     DB.withPool config.database $ \db -> do
       runMigrations logger db
