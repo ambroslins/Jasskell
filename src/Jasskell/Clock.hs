@@ -5,9 +5,11 @@ module Jasskell.Clock
     now,
     delayed,
     monotonic,
-    Timestamp,
-    Duration,
+    Timestamp (..),
+    Duration (..),
+    add,
     diff,
+    scale,
     timed,
     nanoseconds,
     microseconds,
@@ -71,8 +73,14 @@ instance ToJSON Duration where
           base = 10 ^ d
           (n, rest) = i `quotRem` base
 
+add :: Timestamp -> Duration -> Timestamp
+add (Timestamp ts) (Duration d) = Timestamp (ts + d)
+
 diff :: Timestamp -> Timestamp -> Duration
 diff (Timestamp a) (Timestamp b) = Duration (a - b)
+
+scale :: Duration -> Int -> Duration
+scale (Duration d) n = Duration (d * fromIntegral n)
 
 timed :: Clock -> IO a -> IO (Duration, a)
 timed Clock {now} action = do

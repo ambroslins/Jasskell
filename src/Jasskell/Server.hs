@@ -1,6 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
 
-module Jasskell.Server (application) where
+module Jasskell.Server (Config (..), application) where
 
 import Control.Applicative ((<|>))
 import Control.Concurrent.Async qualified as Async
@@ -15,9 +15,10 @@ import Data.ByteString.Builder (Builder)
 import Data.ByteString.Builder qualified as Builder
 import Data.ByteString.Char8 qualified as BS
 import Data.ByteString.Lazy (LazyByteString)
+import Data.CaseInsensitive qualified as CI
 import Data.Function (fix)
 import Data.Functor ((<&>))
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8Lenient)
@@ -29,6 +30,8 @@ import Jasskell.Form qualified as Form
 import Jasskell.Game (Action, GameId, Manager, Message (..))
 import Jasskell.Game qualified as Game
 import Jasskell.Id qualified as Id
+import Jasskell.Limiter (Limiter)
+import Jasskell.Limiter qualified as Limiter
 import Jasskell.Logger
 import Jasskell.Logger qualified as Logger
 import Jasskell.Player (Player (id))
@@ -37,6 +40,7 @@ import Jasskell.Render qualified as Render
 import Jasskell.Static qualified as Static
 import Jasskell.Throw
 import Network.HTTP.Types qualified as HTTP
+import Network.Wai (Middleware)
 import Network.Wai qualified as Wai
 import Network.Wai.Handler.WebSockets (websocketsOr)
 import Network.WebSockets qualified as WS
@@ -44,11 +48,19 @@ import Network.WebSockets.Connection qualified as WS
 import System.Random qualified as Random
 import Web.Cookie (SetCookie, parseCookies, renderSetCookieBS)
 
-application :: Logger -> Clock -> DB.Pool -> Manager -> Wai.Application
-application logger clock db mangaer =
-  websocketsOr WS.defaultConnectionOptions (websocketApp logger clock db mangaer)
-    . requestLogger clock logger
-    . Static.handlers
+data Config = Config
+  { limiter :: Limiter.Config,
+    limiterHeader :: ByteString
+  }
+
+application :: Logger -> Clock -> DB.Pool -> Config -> Manager -> IO Wai.Application
+application logger clock db config manager = do
+  limiter <- Limiter.newLimiter clock config.limiter
+  pure
+    $ rateLimiter config.limiterHeader limiter
+      . websocketsOr WS.defaultConnectionOptions (websocketApp logger clock db manager)
+      . requestLogger clock logger
+      . Static.handlers
     $ routes logger db
 
 websocketApp :: Logger -> Clock -> DB.Pool -> Manager -> WS.ServerApp
@@ -285,3 +297,20 @@ getPlayerSession logger db sessionError request =
 
 setCookieHeader :: SetCookie -> HTTP.Header
 setCookieHeader setCookie = ("Set-Cookie", renderSetCookieBS setCookie)
+
+rateLimiter :: ByteString -> Limiter ByteString -> Middleware
+rateLimiter header limiter next = \request respond -> do
+  let headers = Wai.requestHeaders request
+      key = fromMaybe "" $ lookup ciHeader headers
+      method = Wai.requestMethod request
+      cost
+        | Just "websocket" <- lookup "Upgrade" headers = 5
+        | method == HTTP.methodGet = 1
+        | method == HTTP.methodHead = 1
+        | otherwise = 5
+  allow <- Limiter.allowN limiter key cost
+  if allow
+    then next request respond
+    else respond $ Wai.responseLBS HTTP.status429 [] "Rate limit exceeded"
+  where
+    ciHeader = CI.mk header

@@ -78,6 +78,7 @@ library
     Jasskell.Form
     Jasskell.Game
     Jasskell.Id
+    Jasskell.Limiter
     Jasskell.Logger
     Jasskell.Main
     Jasskell.Meld
@@ -112,6 +113,7 @@ library
     envparse,
     fast-logger,
     file-embed,
+    hashable,
     hasql,
     hasql-pool,
     hasql-th,
