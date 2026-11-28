@@ -1,16 +1,19 @@
 {-# LANGUAGE ApplicativeDo #-}
 
-module Jasskell.Main where
+module Jasskell.Main (Config, configParser, main) where
 
+import Control.Exception (SomeAsyncException (..), fromException, handle, throwIO)
+import Control.Monad (forever)
 import Data.Bits qualified as Bits
 import Env (auto, def, var)
 import Env qualified as Envparse
+import Jasskell.Clock (Clock)
 import Jasskell.Clock qualified as Clock
 import Jasskell.Database qualified as DB
 import Jasskell.Database.Migration (runMigrations)
 import Jasskell.Game qualified as Game
 import Jasskell.Limiter qualified as Limiter
-import Jasskell.Logger (Level (..), withStderrLogger)
+import Jasskell.Logger (Level (..), Logger, withStderrLogger, (=:))
 import Jasskell.Server qualified as Server
 import Network.Wai.Handler.Warp qualified as Warp
 
@@ -55,3 +58,13 @@ main = do
       Game.withManager clock $ \mangager -> do
         application <- Server.application logger clock db config.server mangager
         Warp.run config.port application
+
+cleaner :: Logger -> Clock -> DB.Pool -> IO ()
+cleaner logger clock db = forever $ handle handler $ do
+  Clock.sleep clock interval
+  DB.use db $ pure ()
+  where
+    interval = Clock.seconds 300
+    handler e
+      | Just (SomeAsyncException _) <- fromException e = throwIO e
+      | otherwise = logger.error "cleaner crashed" ["exception" =: show e]

@@ -11,6 +11,7 @@ module Jasskell.Clock
     diff,
     scale,
     timed,
+    sleep,
     nanoseconds,
     microseconds,
     milliseconds,
@@ -19,6 +20,7 @@ module Jasskell.Clock
 where
 
 import Control.Concurrent.STM (STM, registerDelay, retry)
+import Control.Concurrent.STM qualified as STM
 import Control.Concurrent.STM.TVar (readTVar)
 import Data.Aeson (ToJSON (..))
 import Data.Int (Int64)
@@ -89,6 +91,11 @@ timed Clock {now} action = do
   end <- now
   let !d = end `diff` start
   pure (d, result)
+
+sleep :: Clock -> Duration -> IO ()
+sleep clock d = do
+  delay <- delayed clock d ()
+  STM.atomically delay
 
 nanoseconds, microseconds, milliseconds, seconds :: Int64 -> Duration
 nanoseconds = Duration
