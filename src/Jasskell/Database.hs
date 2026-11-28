@@ -4,6 +4,7 @@ module Jasskell.Database
     withPool,
     use,
     statement,
+    pipeline,
     transaction,
   )
 where
@@ -12,6 +13,7 @@ import Control.Exception (bracket, throwIO)
 import Data.Text (Text)
 import Data.Word (Word16)
 import Hasql.Connection.Settings qualified as Hasql
+import Hasql.Pipeline qualified
 import Hasql.Pool qualified
 import Hasql.Pool.Config qualified
 import Hasql.Session qualified as Hasql
@@ -55,7 +57,10 @@ use (Pool pool) session =
   Hasql.Pool.use pool session >>= either throwIO pure
 
 statement :: Pool -> Hasql.Statement params result -> params -> IO result
-statement pool statement params = use pool $ Hasql.statement params statement
+statement pool stmt params = use pool $ Hasql.statement params stmt
+
+pipeline :: Pool -> Hasql.Pipeline.Pipeline result -> IO result
+pipeline pool = use pool . Hasql.pipeline
 
 -- | Run a read-committed write transaction. It is retried on serialization
 -- failures, so it must not have side effects outside the database.

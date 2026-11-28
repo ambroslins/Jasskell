@@ -48,13 +48,21 @@ migrations =
   [ Migration
       "create players"
       """
-      -- A player IS a session. There are no accounts.
       create table players (
         player_id int8 primary key,
-        secret_sha256 bytea not null, -- session secret hash
         nickname text not null,
+        created_at timestamptz not null default now()
+      );
+      """,
+    Migration
+      "create sessions"
+      """
+      create table sessions (
+        session_id int8 primary key,
+        player_id int8 references players(player_id) on delete cascade,
+        secret_sha256 bytea not null, -- session secret hash
         created_at timestamptz not null default now(),
-        expires_at timestamptz not null default now() + '30 days'::interval
+        expires_at timestamptz not null default now() + interval '7 days'
       );
       """,
     Migration
