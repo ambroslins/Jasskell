@@ -11,6 +11,7 @@ module Jasskell.Id
     decodeText,
     decodeByteString,
     new,
+    fromSystemTime,
     utcTime,
   )
 where
@@ -28,7 +29,7 @@ import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8Lenient, encodeUtf8)
 import Data.Time (UTCTime)
 import Data.Time.Clock.System (SystemTime (..), getSystemTime, systemToUTCTime)
-import Data.Word (Word64)
+import Data.Word (Word32, Word64)
 import System.Random.Stateful qualified as Random
 
 newtype Id a = Id Int
@@ -70,16 +71,23 @@ decodeText = decodeByteString . encodeUtf8
 
 new :: (MonadIO m) => m (Id a)
 new = do
-  ts <- liftIO $ systemMilliseconds <$> getSystemTime
+  time <- liftIO getSystemTime
   r <- Random.uniformWord32 Random.globalStdGen
-  let high = fromIntegral ts `shiftL` 20 :: Word64
+  pure $ make time r
+
+make :: SystemTime -> Word32 -> Id a
+make time r =
+  let high = fromIntegral (systemMilliseconds time) `shiftL` 20 :: Word64
       low = fromIntegral (r .&. 0x000f_fff)
-  pure . Id . fromIntegral $ high .|. low
+   in Id . fromIntegral $ high .|. low
 
 systemMilliseconds :: SystemTime -> Int64
 systemMilliseconds st =
   systemSeconds st * 1000
     + fromIntegral (systemNanoseconds st) `div` 1_000_000
+
+fromSystemTime :: SystemTime -> Id a
+fromSystemTime time = make time 0
 
 utcTime :: Id a -> UTCTime
 utcTime (Id i) =

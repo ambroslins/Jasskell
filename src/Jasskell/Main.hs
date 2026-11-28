@@ -2,11 +2,13 @@
 
 module Jasskell.Main (Config, configParser, main) where
 
+import Control.Concurrent.Async qualified as Async
 import Control.Exception (SomeAsyncException (..), fromException, handle, throwIO)
 import Control.Monad (forever)
 import Data.Bits qualified as Bits
 import Env (auto, def, var)
 import Env qualified as Envparse
+import Hasql.Pipeline qualified
 import Jasskell.Clock (MonotonicClock, SystemClock)
 import Jasskell.Clock qualified as Clock
 import Jasskell.Database qualified as DB
@@ -14,6 +16,7 @@ import Jasskell.Database.Migration (runMigrations)
 import Jasskell.Game qualified as Game
 import Jasskell.Limiter qualified as Limiter
 import Jasskell.Logger (Level (..), Logger, withStderrLogger, (=:))
+import Jasskell.Player qualified as Player
 import Jasskell.Server qualified as Server
 import Network.Wai.Handler.Warp qualified as Warp
 
@@ -56,16 +59,23 @@ main = do
   withStderrLogger systemClock Debug $ \logger ->
     DB.withPool config.database $ \db -> do
       runMigrations monotonicClock logger db
-      Game.withManager monotonicClock $ \mangager -> do
-        application <- Server.application logger monotonicClock db config.server mangager
-        Warp.run config.port application
+      Game.withManager monotonicClock $ \mangager ->
+        Async.race_ (cleaner logger monotonicClock systemClock db) $ do
+          application <- Server.application logger monotonicClock db config.server mangager
+          Warp.run config.port application
 
 cleaner :: Logger -> MonotonicClock -> SystemClock -> DB.Pool -> IO ()
 cleaner logger monotonicClock systemClock db = forever $ handle handler $ do
   Clock.sleep monotonicClock interval
-  DB.use db $ pure ()
+  now <- Clock.getSystemTime systemClock
+  (duration, ()) <-
+    Clock.timed monotonicClock $
+      DB.pipeline db $
+        Hasql.Pipeline.statement now Player.deleteExpiredSessions
+          *> Hasql.Pipeline.statement now Player.deleteExpiredPlayers
+  logger.debug "cleaner done" ["duration" =: duration]
   where
-    interval = Clock.seconds 300
+    interval = Clock.minutes 5
     handler e
       | Just (SomeAsyncException _) <- fromException e = throwIO e
       | otherwise = logger.error "cleaner crashed" ["exception" =: show e]

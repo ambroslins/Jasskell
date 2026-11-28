@@ -66,7 +66,7 @@ allowN :: (Hashable a) => Limiter a -> a -> Int -> IO Bool
 allowN limiter key n = do
   now <- Clock.getMonotonicTime limiter.clock
   let go !tat =
-        let newTat = Clock.add (max tat now) (Clock.scale limiter.interval n)
+        let newTat = Clock.addMonotonic (max tat now) (Clock.scale limiter.interval n)
          in if Clock.elapsed now newTat > limiter.burst
               then pure False
               else do

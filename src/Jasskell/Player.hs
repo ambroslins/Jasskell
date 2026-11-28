@@ -7,10 +7,13 @@ module Jasskell.Player
     Nickname (..),
     parseNickname,
     Player (..),
+    SessionId,
     SessionError (..),
     sessionCookieName,
     newSession,
     fromSessionCookie,
+    deleteExpiredSessions,
+    deleteExpiredPlayers,
   )
 where
 
@@ -34,6 +37,7 @@ import Hasql.Pipeline qualified
 import Hasql.Session qualified as Hasql
 import Hasql.Statement qualified as Hasql
 import Hasql.TH (maybeStatement, resultlessStatement)
+import Jasskell.Clock qualified as Clock
 import Jasskell.Database qualified as DB
 import Jasskell.Id (Id)
 import Jasskell.Id qualified as Id
@@ -171,3 +175,26 @@ parseSessionCookie cookie = case BS.split '.' cookie of
     secret <- Base64.decode secretBase64
     pure $ Session {id = sessionId, secret}
   _ -> Left "invalid session cookie"
+
+deleteExpiredSessions :: Hasql.Statement Clock.SystemTime ()
+deleteExpiredSessions =
+  lmap
+    ( \now ->
+        let cutoffId = Id.fromSystemTime $ Clock.addSystem now (Clock.days (-7))
+         in (Id.toInt64 cutoffId, Clock.systemToUTCTime now)
+    )
+    [resultlessStatement|
+      delete from sessions
+      where session_id < $1::int8 and expires_at < $2::timestamptz
+    |]
+
+deleteExpiredPlayers :: Hasql.Statement Clock.SystemTime ()
+deleteExpiredPlayers =
+  lmap
+    ( \now ->
+        let cutoffId = Id.fromSystemTime $ Clock.addSystem now (Clock.days (-30))
+         in Id.toInt64 cutoffId
+    )
+    [resultlessStatement|
+      delete from players p where p.player_id < $1::int8
+    |]

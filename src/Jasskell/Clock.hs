@@ -9,18 +9,24 @@ module Jasskell.Clock
     timed,
     sleep,
     SystemClock,
+    SystemTime (..),
     system,
     getSystemTime,
-    SystemTime (..),
+    addSystem,
+    UTCTime (..),
+    Data.Time.Clock.System.systemToUTCTime,
+    getUTCTime,
     Duration (..),
-    add,
+    addMonotonic,
     elapsed,
     scale,
     nanoseconds,
     microseconds,
     milliseconds,
     seconds,
+    minutes,
     hours,
+    days,
   )
 where
 
@@ -30,7 +36,8 @@ import Control.Concurrent.STM.TVar (readTVar)
 import Data.Aeson (ToJSON (..))
 import Data.Int (Int64)
 import Data.Primitive (Prim)
-import Data.Time.Clock.System (SystemTime)
+import Data.Time.Clock (UTCTime (..))
+import Data.Time.Clock.System (SystemTime (..))
 import Data.Time.Clock.System qualified
 import GHC.Clock (getMonotonicTimeNSec)
 
@@ -53,10 +60,43 @@ monotonic =
           if done then pure x else retry
     }
 
+timed :: MonotonicClock -> IO a -> IO (Duration, a)
+timed MonotonicClock {getMonotonicTime} action = do
+  start <- getMonotonicTime
+  !result <- action
+  end <- getMonotonicTime
+  let !d = elapsed start end
+  pure (d, result)
+
+sleep :: MonotonicClock -> Duration -> IO ()
+sleep clock d = do
+  delay <- delayed clock d ()
+  STM.atomically delay
+
+addMonotonic :: MonotonicTime -> Duration -> MonotonicTime
+addMonotonic (MonotonicTime ts) (Duration d) = MonotonicTime (ts + d)
+
+elapsed :: MonotonicTime -> MonotonicTime -> Duration
+elapsed (MonotonicTime start) (MonotonicTime end) = Duration (end - start)
+
 newtype SystemClock = SystemClock {getSystemTime :: IO SystemTime}
+
+getUTCTime :: SystemClock -> IO UTCTime
+getUTCTime = fmap Data.Time.Clock.System.systemToUTCTime . getSystemTime
 
 system :: SystemClock
 system = SystemClock Data.Time.Clock.System.getSystemTime
+
+addSystem :: SystemTime -> Duration -> SystemTime
+addSystem t (Duration d) =
+  MkSystemTime
+    { systemSeconds = systemSeconds t + s + if carry then 1 else 0,
+      systemNanoseconds = if carry then systemNs else systemNs - nanosecondsInSecond
+    }
+  where
+    (s, ns) = d `divMod` nanosecondsInSecond
+    systemNs = systemNanoseconds t + fromIntegral ns
+    carry = systemNs >= nanosecondsInSecond
 
 newtype Duration = Duration Int64
   deriving newtype (Eq, Ord, Show)
@@ -87,31 +127,17 @@ instance ToJSON Duration where
           base = 10 ^ d
           (n, rest) = i `quotRem` base
 
-add :: MonotonicTime -> Duration -> MonotonicTime
-add (MonotonicTime ts) (Duration d) = MonotonicTime (ts + d)
-
-elapsed :: MonotonicTime -> MonotonicTime -> Duration
-elapsed (MonotonicTime start) (MonotonicTime end) = Duration (end - start)
-
 scale :: Duration -> Int -> Duration
 scale (Duration d) n = Duration (d * fromIntegral n)
 
-timed :: MonotonicClock -> IO a -> IO (Duration, a)
-timed MonotonicClock {getMonotonicTime} action = do
-  start <- getMonotonicTime
-  !result <- action
-  end <- getMonotonicTime
-  let !d = elapsed start end
-  pure (d, result)
+nanosecondsInSecond :: (Num a) => a
+nanosecondsInSecond = 1_000_000_000
 
-sleep :: MonotonicClock -> Duration -> IO ()
-sleep clock d = do
-  delay <- delayed clock d ()
-  STM.atomically delay
-
-nanoseconds, microseconds, milliseconds, seconds, hours :: Int64 -> Duration
+nanoseconds, microseconds, milliseconds, seconds, minutes, hours, days :: Int64 -> Duration
 nanoseconds = Duration
-microseconds = Duration . (* 1_000)
-milliseconds = Duration . (* 1_000_000)
-seconds = Duration . (* 1_000_000_000)
-hours = Duration . (* 60_000_000_000)
+microseconds = nanoseconds . (* 1_000)
+milliseconds = nanoseconds . (* 1_000_000)
+seconds = nanoseconds . (* nanosecondsInSecond)
+minutes = seconds . (* 60)
+hours = minutes . (* 60)
+days = hours . (* 24)
