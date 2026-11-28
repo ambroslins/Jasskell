@@ -29,10 +29,10 @@ import Data.ByteString.Char8 qualified as BS
 import Data.Char qualified as Char
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8Lenient)
-import Data.Time (UTCTime, getCurrentTime)
+import Data.Time.Clock.System (systemToUTCTime)
 import Data.Time.Format.ISO8601 (iso8601Show)
 import GHC.Records (HasField (..))
-import Jasskell.Clock (Clock)
+import Jasskell.Clock (MonotonicClock, SystemClock, SystemTime)
 import Jasskell.Clock qualified as Clock
 import Network.HTTP.Types (Status (..), hContentLength)
 import Network.Wai qualified as Wai
@@ -80,10 +80,10 @@ showLevel = \case
   Warning -> "WARNING"
   Error -> "ERROR"
 
-fmtMessage :: UTCTime -> Level -> ThreadId -> Text -> [Pair] -> LogStr
-fmtMessage time level threadId msg pairs =
+fmtMessage :: SystemTime -> Level -> ThreadId -> Text -> [Pair] -> LogStr
+fmtMessage !time !level !threadId !msg pairs =
   "time="
-    <> toLogStr (iso8601Show time)
+    <> toLogStr (iso8601Show $ systemToUTCTime time)
     <> " level="
     <> showLevel level
     <> " thread_id="
@@ -95,21 +95,21 @@ fmtMessage time level threadId msg pairs =
   where
     fmtPair Pair {key, value} = " " <> toLogStr key <> "=" <> toLogStr value
 
-withStderrLogger :: Level -> (Logger -> IO a) -> IO a
-withStderrLogger minLevel action =
+withStderrLogger :: SystemClock -> Level -> (Logger -> IO a) -> IO a
+withStderrLogger clock minLevel action =
   bracket (newFastLogger1 $ LogStderr defaultBufSize) snd $
     \(logger, _cleanup) ->
       action $ Logger $ \level msg pairs -> when (level >= minLevel) $ do
-        time <- getCurrentTime
+        time <- Clock.getSystemTime clock
         threadId <- myThreadId
         logger $ fmtMessage time level threadId msg pairs
 
-requestLogger :: Clock -> Logger -> Wai.Middleware
+requestLogger :: MonotonicClock -> Logger -> Wai.Middleware
 requestLogger clock (Logger logger) app req respond = do
-  start <- Clock.now clock
+  start <- Clock.getMonotonicTime clock
   let logResponse result = do
-        end <- Clock.now clock
-        let !duration = end `Clock.diff` start
+        end <- Clock.getMonotonicTime clock
+        let !duration = Clock.elapsed start end
             (!status, !size, rest) = case result of
               Left (ExceptionWithContext ctx (SomeException e)) ->
                 (500, Nothing, ["exception" =: show e, "context" =: showContext ctx])

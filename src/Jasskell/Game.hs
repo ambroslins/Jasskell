@@ -62,7 +62,7 @@ import Jasskell.Card (Card)
 import Jasskell.Card qualified as Card
 import Jasskell.Card.Set (CardSet)
 import Jasskell.Card.Set qualified as CardSet
-import Jasskell.Clock (Clock, Duration, Timestamp, seconds)
+import Jasskell.Clock (Duration, MonotonicClock, MonotonicTime)
 import Jasskell.Clock qualified as Clock
 import Jasskell.Database qualified as DB
 import Jasskell.Dealer qualified as Dealer
@@ -85,19 +85,19 @@ data Some f = forall n. (KnownNat n) => Some (f n)
 
 data Manager = Manager
   { games :: MVar (IntMap GameId (Some Game)),
-    clock :: Clock
+    clock :: MonotonicClock
   }
 
 data Game n = Game
   { id :: GameId,
     ioGen :: Random.IOGenM Random.StdGen,
-    clock :: Clock,
+    clock :: MonotonicClock,
     eventQueue :: STM.TBQueue (Event n),
     clients :: STM.TVar (IntMap PlayerId (Client n)),
     closed :: STM.TVar Bool
   }
 
-withManager :: Clock -> (Manager -> IO a) -> IO a
+withManager :: MonotonicClock -> (Manager -> IO a) -> IO a
 withManager clock f = do
   games <- newMVar IntMap.empty
   let tm = Manager {games, clock}
@@ -113,7 +113,7 @@ data Client n = Client
 
 data ClientState n
   = Connected (STM.TMVar (Message n))
-  | Disconnected Timestamp
+  | Disconnected MonotonicTime
   deriving (Eq)
 
 data Event n
@@ -140,7 +140,7 @@ data Message n
   | UpdatePlayer (View.Playing n)
   | UpdateSpectator (View.Spectating n)
   | Rejected (Rejection n)
-  | Tickle Timestamp
+  | Tickle MonotonicTime
   | Superseded
   | GameClosed
   deriving (Show)
@@ -301,7 +301,7 @@ join logger db player gameId manager handler = handling pure $ \notFound -> do
           IntMap.insert player.id client clients
         STM.writeTBQueue game.eventQueue $ PlayerJoined player.id
       release _ = do
-        disconnected <- Disconnected <$> Clock.now game.clock
+        disconnected <- Disconnected <$> Clock.getMonotonicTime game.clock
         STM.atomically $ do
           STM.modifyTVar' game.clients $
             IntMap.adjust
@@ -479,8 +479,8 @@ selectStoredGame =
       pure StoredGame {gameId = Id.fromInt64 gameId, seats, score, round}
 
 tickInterval, clientTimeout :: Duration
-tickInterval = seconds 5
-clientTimeout = seconds 30
+tickInterval = Clock.seconds 5
+clientTimeout = Clock.seconds 30
 
 gameLoop :: (KnownNat n) => DB.Pool -> Game n -> Phase n -> IO ()
 gameLoop db game initial = Clock.delayed game.clock tickInterval Tick >>= go initial
@@ -503,9 +503,9 @@ gameLoop db game initial = Clock.delayed game.clock tickInterval Tick >>= go ini
                 Right p -> broadcast clients (render p) $> p
           go nextPhase tick
         Tick -> do
-          ts <- Clock.now game.clock
+          now <- Clock.getMonotonicTime game.clock
           let isActive c = case c.state of
-                Disconnected lastSeen -> (ts `Clock.diff` lastSeen) < clientTimeout
+                Disconnected lastSeen -> Clock.elapsed lastSeen now < clientTimeout
                 _ -> True
           activeClients <-
             if all isActive clients
@@ -516,7 +516,7 @@ gameLoop db game initial = Clock.delayed game.clock tickInterval Tick >>= go ini
                 STM.writeTVar game.clients active
                 pure active
           unless (IntMap.null activeClients) $ do
-            broadcast activeClients $ const $ Tickle ts
+            broadcast activeClients $ const $ Tickle now
             next <- Clock.delayed game.clock tickInterval Tick
             go phase next
     render = \case

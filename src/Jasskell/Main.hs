@@ -7,7 +7,7 @@ import Control.Monad (forever)
 import Data.Bits qualified as Bits
 import Env (auto, def, var)
 import Env qualified as Envparse
-import Jasskell.Clock (Clock)
+import Jasskell.Clock (MonotonicClock, SystemClock)
 import Jasskell.Clock qualified as Clock
 import Jasskell.Database qualified as DB
 import Jasskell.Database.Migration (runMigrations)
@@ -51,17 +51,18 @@ configParser =
 main :: IO ()
 main = do
   config <- Envparse.parse (Envparse.header "jasskell 0.1.0") configParser
-  let clock = Clock.monotonic
-  withStderrLogger Debug $ \logger ->
+  let monotonicClock = Clock.monotonic
+      systemClock = Clock.system
+  withStderrLogger systemClock Debug $ \logger ->
     DB.withPool config.database $ \db -> do
-      runMigrations clock logger db
-      Game.withManager clock $ \mangager -> do
-        application <- Server.application logger clock db config.server mangager
+      runMigrations monotonicClock logger db
+      Game.withManager monotonicClock $ \mangager -> do
+        application <- Server.application logger monotonicClock db config.server mangager
         Warp.run config.port application
 
-cleaner :: Logger -> Clock -> DB.Pool -> IO ()
-cleaner logger clock db = forever $ handle handler $ do
-  Clock.sleep clock interval
+cleaner :: Logger -> MonotonicClock -> SystemClock -> DB.Pool -> IO ()
+cleaner logger monotonicClock systemClock db = forever $ handle handler $ do
+  Clock.sleep monotonicClock interval
   DB.use db $ pure ()
   where
     interval = Clock.seconds 300

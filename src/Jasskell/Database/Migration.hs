@@ -16,7 +16,7 @@ import Hasql.Transaction.Sessions
     Mode (Write),
     transactionNoRetry,
   )
-import Jasskell.Clock (Clock)
+import Jasskell.Clock (MonotonicClock)
 import Jasskell.Clock qualified as Clock
 import Jasskell.Database qualified as DB
 import Jasskell.Logger
@@ -26,7 +26,7 @@ data Migration = Migration
     sql :: !ByteString
   }
 
-runMigrations :: (HasCallStack) => Clock -> Logger -> DB.Pool -> IO ()
+runMigrations :: (HasCallStack) => MonotonicClock -> Logger -> DB.Pool -> IO ()
 runMigrations clock logger pool = do
   DB.use pool createSchemaMigrationsTable
   forM_ (zip [1 ..] migrations) $ \(s, m) -> do

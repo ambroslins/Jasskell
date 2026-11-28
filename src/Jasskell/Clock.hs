@@ -1,21 +1,26 @@
 {-# LANGUAGE FieldSelectors #-}
 
 module Jasskell.Clock
-  ( Clock,
-    now,
-    delayed,
+  ( MonotonicClock,
+    MonotonicTime (..),
     monotonic,
-    Timestamp (..),
-    Duration (..),
-    add,
-    diff,
-    scale,
+    getMonotonicTime,
+    delayed,
     timed,
     sleep,
+    SystemClock,
+    system,
+    getSystemTime,
+    SystemTime (..),
+    Duration (..),
+    add,
+    elapsed,
+    scale,
     nanoseconds,
     microseconds,
     milliseconds,
     seconds,
+    hours,
   )
 where
 
@@ -25,26 +30,33 @@ import Control.Concurrent.STM.TVar (readTVar)
 import Data.Aeson (ToJSON (..))
 import Data.Int (Int64)
 import Data.Primitive (Prim)
+import Data.Time.Clock.System (SystemTime)
+import Data.Time.Clock.System qualified
 import GHC.Clock (getMonotonicTimeNSec)
 
-newtype Timestamp = Timestamp Int64
+newtype MonotonicTime = MonotonicTime Int64
   deriving newtype (Eq, Ord, Show, Prim)
 
-data Clock = Clock
-  { now :: IO Timestamp,
+data MonotonicClock = MonotonicClock
+  { getMonotonicTime :: IO MonotonicTime,
     delayed :: forall a. Duration -> a -> IO (STM a)
   }
 
-monotonic :: Clock
+monotonic :: MonotonicClock
 monotonic =
-  Clock
-    { now = Timestamp . fromIntegral <$> getMonotonicTimeNSec,
+  MonotonicClock
+    { getMonotonicTime = MonotonicTime . fromIntegral <$> getMonotonicTimeNSec,
       delayed = \(Duration d) x -> do
         delay <- registerDelay (fromIntegral d `div` 1000)
         pure $ do
           done <- readTVar delay
           if done then pure x else retry
     }
+
+newtype SystemClock = SystemClock {getSystemTime :: IO SystemTime}
+
+system :: SystemClock
+system = SystemClock Data.Time.Clock.System.getSystemTime
 
 newtype Duration = Duration Int64
   deriving newtype (Eq, Ord, Show)
@@ -75,30 +87,31 @@ instance ToJSON Duration where
           base = 10 ^ d
           (n, rest) = i `quotRem` base
 
-add :: Timestamp -> Duration -> Timestamp
-add (Timestamp ts) (Duration d) = Timestamp (ts + d)
+add :: MonotonicTime -> Duration -> MonotonicTime
+add (MonotonicTime ts) (Duration d) = MonotonicTime (ts + d)
 
-diff :: Timestamp -> Timestamp -> Duration
-diff (Timestamp a) (Timestamp b) = Duration (a - b)
+elapsed :: MonotonicTime -> MonotonicTime -> Duration
+elapsed (MonotonicTime start) (MonotonicTime end) = Duration (end - start)
 
 scale :: Duration -> Int -> Duration
 scale (Duration d) n = Duration (d * fromIntegral n)
 
-timed :: Clock -> IO a -> IO (Duration, a)
-timed Clock {now} action = do
-  start <- now
+timed :: MonotonicClock -> IO a -> IO (Duration, a)
+timed MonotonicClock {getMonotonicTime} action = do
+  start <- getMonotonicTime
   !result <- action
-  end <- now
-  let !d = end `diff` start
+  end <- getMonotonicTime
+  let !d = elapsed start end
   pure (d, result)
 
-sleep :: Clock -> Duration -> IO ()
+sleep :: MonotonicClock -> Duration -> IO ()
 sleep clock d = do
   delay <- delayed clock d ()
   STM.atomically delay
 
-nanoseconds, microseconds, milliseconds, seconds :: Int64 -> Duration
+nanoseconds, microseconds, milliseconds, seconds, hours :: Int64 -> Duration
 nanoseconds = Duration
 microseconds = Duration . (* 1_000)
 milliseconds = Duration . (* 1_000_000)
 seconds = Duration . (* 1_000_000_000)
+hours = Duration . (* 60_000_000_000)

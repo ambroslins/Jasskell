@@ -23,7 +23,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding (decodeUtf8Lenient)
 import GHC.TypeLits (KnownNat)
-import Jasskell.Clock (Clock, Duration, diff)
+import Jasskell.Clock (Duration, MonotonicClock)
 import Jasskell.Clock qualified as Clock
 import Jasskell.Database qualified as DB
 import Jasskell.Form qualified as Form
@@ -53,7 +53,7 @@ data Config = Config
     limiterHeader :: ByteString
   }
 
-application :: Logger -> Clock -> DB.Pool -> Config -> Manager -> IO Wai.Application
+application :: Logger -> MonotonicClock -> DB.Pool -> Config -> Manager -> IO Wai.Application
 application logger clock db config manager = do
   limiter <- Limiter.newLimiter clock config.limiter
   pure
@@ -63,7 +63,7 @@ application logger clock db config manager = do
       . Static.handlers
     $ routes logger db
 
-websocketApp :: Logger -> Clock -> DB.Pool -> Manager -> WS.ServerApp
+websocketApp :: Logger -> MonotonicClock -> DB.Pool -> Manager -> WS.ServerApp
 websocketApp logger clock db tm pending = handling handleReject $ \reject -> do
   let request = WS.pendingRequest pending
   gameId <- case parseGameId (WS.requestPath request) of
@@ -77,7 +77,7 @@ websocketApp logger clock db tm pending = handling handleReject $ \reject -> do
       Left err -> do
         logger.error "invalid session cookie" ["error" =: show err]
         throw reject $ WS.defaultRejectRequest {WS.rejectCode = 401}
-      Right s -> pure s
+      Right p -> pure p
   result <- Game.join logger db player gameId tm $
     \sendAction receiveMsg -> do
       connection <- WS.acceptRequest pending
@@ -104,17 +104,17 @@ closeTimeout = Clock.seconds 5
 runWebSocketConnection ::
   (KnownNat n) =>
   Logger ->
-  Clock ->
+  MonotonicClock ->
   WS.Connection ->
   (Action n -> STM ()) ->
   STM (Message n) ->
   IO ()
 runWebSocketConnection logger clock connection sendAction receiveMsg = do
-  lastPong <- Clock.now clock >>= STM.newTVarIO
+  lastPong <- Clock.getMonotonicTime clock >>= STM.newTVarIO
   let options = WS.connectionOptions connection
       onPong = do
-        ts <- Clock.now clock
-        STM.atomically $ STM.writeTVar lastPong ts
+        now <- Clock.getMonotonicTime clock
+        STM.atomically $ STM.writeTVar lastPong now
         WS.connectionOnPong options
       conn = connection {WS.connectionOptions = options {WS.connectionOnPong = onPong}}
   Async.withAsync (receiver conn) (sender conn lastPong)
@@ -146,7 +146,7 @@ runWebSocketConnection logger clock connection sendAction receiveMsg = do
             loop
           Tickle tick -> do
             pong <- STM.readTVarIO lastPong
-            let d = tick `diff` pong
+            let d = Clock.elapsed pong tick
             if d > pongTimeout
               then logger.info "websocket pong timeout" ["since" =: d]
               else do

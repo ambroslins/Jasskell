@@ -22,7 +22,7 @@ import Data.Primitive.ByteArray
 import GHC.Exts (Int (..), casInt64Array#)
 import GHC.IO (IO (..))
 import GHC.Int (Int64 (..))
-import Jasskell.Clock (Clock, Duration, Timestamp (..), nanoseconds)
+import Jasskell.Clock (Duration, MonotonicClock, MonotonicTime (..), nanoseconds)
 import Jasskell.Clock qualified as Clock
 import System.Random.Stateful qualified as Random
 
@@ -39,14 +39,14 @@ data Limiter a = Limiter
     salt :: Int,
     interval :: Duration,
     burst :: Duration,
-    clock :: Clock
+    clock :: MonotonicClock
   }
 
-newLimiter :: Clock -> Config -> IO (Limiter a)
+newLimiter :: MonotonicClock -> Config -> IO (Limiter a)
 newLimiter clock config = do
   salt <- Random.uniformM Random.globalStdGen
   slots <- newAlignedPinnedByteArray (size * 8) 64
-  now <- Clock.now clock
+  now <- Clock.getMonotonicTime clock
   setByteArray slots 0 size now
   pure $
     Limiter
@@ -64,10 +64,10 @@ newLimiter clock config = do
 
 allowN :: (Hashable a) => Limiter a -> a -> Int -> IO Bool
 allowN limiter key n = do
-  now <- Clock.now limiter.clock
+  now <- Clock.getMonotonicTime limiter.clock
   let go !tat =
         let newTat = Clock.add (max tat now) (Clock.scale limiter.interval n)
-         in if newTat `Clock.diff` now > limiter.burst
+         in if Clock.elapsed now newTat > limiter.burst
               then pure False
               else do
                 prev <- casTimestamp limiter.slots i tat newTat
@@ -77,10 +77,10 @@ allowN limiter key n = do
     h = hashWithSalt limiter.salt key
     i = h .&. limiter.mask
 
-casTimestamp :: MutableByteArray RealWorld -> Int -> Timestamp -> Timestamp -> IO Timestamp
-casTimestamp (MutableByteArray mba) (I# i) (Timestamp (I64# old)) (Timestamp (I64# new)) =
+casTimestamp :: MutableByteArray RealWorld -> Int -> MonotonicTime -> MonotonicTime -> IO MonotonicTime
+casTimestamp (MutableByteArray mba) (I# i) (MonotonicTime (I64# old)) (MonotonicTime (I64# new)) =
   IO
     ( \s -> case casInt64Array# mba i old new s of
-        (# s', prev #) -> (# s', Timestamp (I64# prev) #)
+        (# s', prev #) -> (# s', MonotonicTime (I64# prev) #)
     )
 {-# INLINE casTimestamp #-}
